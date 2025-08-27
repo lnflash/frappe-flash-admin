@@ -1,6 +1,6 @@
 ### Admin Panel
 
-Tool for admin users to manage the Flash application
+Extension to ERPnext for Flash admin users to manage the accounts & services.
 
 ### Installation
 

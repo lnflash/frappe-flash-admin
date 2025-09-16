@@ -11,15 +11,15 @@ app_license = "mit"
 # required_apps = []
 
 # Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "admin_panel",
-# 		"logo": "/assets/admin_panel/logo.png",
-# 		"title": "Admin Panel",
-# 		"route": "/admin_panel",
-# 		"has_permission": "admin_panel.api.permission.has_app_permission"
-# 	}
-# ]
+add_to_apps_screen = [
+	{
+		"name": "admin_panel",
+		"logo": "/assets/admin_panel/logo.png",
+		"title": "Admin Panel",
+		"route": "/app/account-management",
+		"has_permission": "admin_panel.api.permission.has_app_permission"
+	}
+]
 
 # Includes in <head>
 # ------------------
@@ -86,7 +86,7 @@ app_license = "mit"
 # ------------
 
 # before_install = "admin_panel.install.before_install"
-# after_install = "admin_panel.install.after_install"
+after_install = "admin_panel.install.after_install"
 
 # Uninstallation
 # ------------
@@ -237,3 +237,19 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+# Fixtures for installation
+# -------------------------
+fixtures = [
+    {
+        "doctype": "Page",
+        "filters": {
+            "name": ["in", ["account-management"]]
+        }
+    },
+    {
+        "doctype": "Role",
+        "filters": {
+            "name": ["in", ["Accounts Manager"]]
+        }
+    }
+]

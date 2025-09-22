@@ -14,10 +14,10 @@ app_license = "mit"
 add_to_apps_screen = [
 	{
 		"name": "admin_panel",
-		"logo": "/assets/admin_panel/logo.png",
+		"logo": "/assets/admin_panel/logo-black.png",
 		"title": "Admin Panel",
 		"route": "/app/account-management",
-		"has_permission": "admin_panel.api.permission.has_app_permission"
+		"has_permission": "admin_panel.api.admin_api.has_app_permission"
 	}
 ]
 
@@ -86,7 +86,7 @@ add_to_apps_screen = [
 # ------------
 
 # before_install = "admin_panel.install.before_install"
-after_install = "admin_panel.install.after_install"
+# after_install = "admin_panel.install.after_install"
 
 # Uninstallation
 # ------------
@@ -244,12 +244,6 @@ fixtures = [
         "doctype": "Page",
         "filters": {
             "name": ["in", ["account-management"]]
-        }
-    },
-    {
-        "doctype": "Role",
-        "filters": {
-            "name": ["in", ["Accounts Manager"]]
         }
     }
 ]

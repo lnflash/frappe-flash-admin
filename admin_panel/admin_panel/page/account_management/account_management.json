@@ -1,10 +1,9 @@
-[
 {
- "creation": "2024-09-15 10:00:00.000000",
+ "creation": "2025-09-22 10:00:00.000000",
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2024-09-15 10:00:00.000000",
+ "modified": "2025-09-22 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Admin Panel",
  "name": "account-management",
@@ -24,4 +23,3 @@
  "system_page": 0,
  "title": "Account Management"
 }
-]

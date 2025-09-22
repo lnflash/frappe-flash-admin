@@ -26,3 +26,12 @@ def update_account_level(uid, level):
 		frappe.logger().error(f"Unexpected error updating account {uid} to level {level}: {str(e)}")
 		frappe.response['http_status_code'] = 500
 		return GENERIC_ERROR
+
+def has_app_permission():
+	"""Check if the current user has permission to access the admin panel app"""
+	if frappe.session.user == "Guest":
+		return False
+	if "Accounts Manager" in frappe.get_roles():
+		return True
+
+	return False

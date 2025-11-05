@@ -44,7 +44,6 @@ class GraphQLClient:
 		if variables:
 			payload["variables"] = variables
 		
-		# try:
 		headers = self.get_headers()
 		response = requests.post(
 			url=self.url,
@@ -55,21 +54,6 @@ class GraphQLClient:
 		
 		response.raise_for_status()
 		return response.json()
-
-		
-			
-		# except requests.exceptions.Timeout:
-		# 	frappe.log_error(f"Timeout error for GraphQL query", "GraphQL API Timeout")
-		# 	raise requests.exceptions.Timeout("Request timed out")
-		# except requests.exceptions.ConnectionError as e:
-		# 	frappe.log_error(f"Connection error for GraphQL query", "GraphQL API Connection")
-		# 	raise requests.exceptions.ConnectionError("Could not connect to the external service")
-		# except requests.exceptions.RequestException as e:
-		# 	frappe.log_error(f"Request error for GraphQL query: {str(e)}", "GraphQL API Request")
-		# 	raise requests.exceptions.RequestException(f"Network error: {str(e)}")
-		# except Exception as e:
-		# 	frappe.log_error(f"Unexpected error for GraphQL query: {str(e)}", "GraphQL API General")
-		# 	raise Exception(f"An unexpected error occurred: {str(e)}")
 	
 	def get_account_by_phone(self, phone):
 		"""Get account details by phone number"""
@@ -142,3 +126,30 @@ class GraphQLClient:
 		
 		data = self.execute_query(mutation, {"input": input_data})
 		return data.get("accountUpdateLevel", {})
+	
+	def send_broadcast_alert(self, title, body, tag="EMERGENCY"):
+		"""Send broadcast alert to all users"""
+		mutation = """
+			mutation adminBroadcastSend($input: AdminBroadcastSendInput!) {
+				adminBroadcastSend(input: $input) {
+					success
+					errors {
+						message
+					}
+				}
+			}
+		"""
+		
+		input_data = {
+			"title": title,
+			"body": body,
+			"tag": tag
+		}
+		
+		resp = self.execute_query(mutation, {"input": input_data})
+		
+		errors = resp.get('errors')
+		if errors:
+			raise GraphQLError(f"GraphQL errors: {errors}")
+		
+		return resp["data"]["adminBroadcastSend"]

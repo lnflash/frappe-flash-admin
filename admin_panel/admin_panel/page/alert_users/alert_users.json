@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2025-10-29 18:46:51.633558",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2025-10-29 18:46:51.633558",
+ "modified_by": "Administrator",
+ "module": "Admin Panel",
+ "name": "alert-users",
+ "owner": "Administrator",
+ "page_name": "alert-users",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Alert Users"
+}

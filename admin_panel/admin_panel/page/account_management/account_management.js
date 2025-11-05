@@ -1,22 +1,4 @@
 frappe.pages['account-management'].on_page_load = function(wrapper) {
-    if (!frappe.user_roles.includes('Accounts Manager')) {
-        var page = frappe.ui.make_app_page({
-            parent: wrapper,
-            title: 'Flash Account Manager',
-            single_column: true
-        });
-        
-        page.main.html(`
-            <div class="text-center mt-5">
-                <div class="alert alert-warning">
-                    <h4>Access Denied</h4>
-                    <p>You do not have permission to access this page. Please contact your administrator to get the "Account Manager" role.</p>
-                </div>
-            </div>
-        `);
-        return;
-    }
-
     var page = frappe.ui.make_app_page({
         parent: wrapper,
         title: 'Flash Account Manager',

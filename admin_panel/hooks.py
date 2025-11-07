@@ -237,3 +237,10 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+# Add workspace
+fixtures = [
+    {
+        "doctype": "Workspace",
+        "filters": [["name", "in", ["Admin Panel"]]]
+    }
+]

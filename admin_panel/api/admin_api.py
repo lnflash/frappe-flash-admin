@@ -70,6 +70,16 @@ def send_alert(title, message, tag="EMERGENCY"):
 		
 		# Success
 		if result.get('success'):
+			frappe.get_doc({
+				"doctype": "Alert Log",
+                "title": title,
+                "message": message,
+                "tag": tag,
+                "sent_by": frappe.session.user,
+                "sent_on": frappe.utils.now_datetime()
+			}).insert(ignore_permissions=True)
+			frappe.db.commit()
+			
 			return {
 				"success": True,
 				"message": f"Alert sent successfully: {title}"
@@ -104,3 +114,19 @@ def send_alert(title, message, tag="EMERGENCY"):
 			"success": False,
 			"error": "An internal error occurred"
 		}
+
+@frappe.whitelist()
+def get_alert_logs(limit=10):
+    """Return latest alert logs"""
+    try:
+        logs = frappe.get_all(
+            "Alert Log",
+            fields=["title", "message", "tag", "sent_by", "sent_on"],
+            order_by="sent_on desc",
+            limit_page_length=int(limit)
+        )
+        return {"logs": logs}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Error fetching alert logs")
+        frappe.response["http_status_code"] = 500
+        return {"error": str(e)}

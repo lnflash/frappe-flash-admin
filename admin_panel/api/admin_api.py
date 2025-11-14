@@ -71,7 +71,7 @@ def send_alert(title, message, tag="EMERGENCY"):
 		# Success
 		if result.get('success'):
 			frappe.get_doc({
-				"doctype": "Alert Log",
+				"doctype": "User Alerts",
                 "title": title,
                 "message": message,
                 "tag": tag,
@@ -116,17 +116,17 @@ def send_alert(title, message, tag="EMERGENCY"):
 		}
 
 @frappe.whitelist()
-def get_alert_logs(limit=10):
-    """Return latest alert logs"""
+def get_user_alerts(limit=10):
+    """Return latest User Alerts"""
     try:
         logs = frappe.get_all(
-            "Alert Log",
+            "User Alerts",
             fields=["title", "message", "tag", "sent_by", "sent_on"],
             order_by="sent_on desc",
             limit_page_length=int(limit)
         )
         return {"logs": logs}
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Error fetching alert logs")
+        frappe.log_error(frappe.get_traceback(), "Error fetching User Alerts")
         frappe.response["http_status_code"] = 500
         return {"error": str(e)}

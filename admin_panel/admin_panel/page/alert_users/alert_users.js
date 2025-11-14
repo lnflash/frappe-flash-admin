@@ -348,7 +348,7 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
 
     function loadAlertHistory() {
         frappe.call({
-            method: 'admin_panel.api.admin_api.get_alert_logs',
+            method: 'admin_panel.api.admin_api.get_user_alerts',
             args: { limit: 10 },
             callback: function(r) {
                 const $historyList = page.main.find('#alert-history-list');

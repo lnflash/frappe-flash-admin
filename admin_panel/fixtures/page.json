@@ -1,0 +1,36 @@
+[
+ {
+  "content": null,
+  "docstatus": 0,
+  "doctype": "Page",
+  "icon": null,
+  "modified": "2025-10-29 18:46:51.633558",
+  "module": "Admin Panel",
+  "name": "alert-users",
+  "page_name": "alert-users",
+  "restrict_to_domain": null,
+  "roles": [],
+  "script": null,
+  "standard": "Yes",
+  "style": null,
+  "system_page": 0,
+  "title": "Alert Users"
+ },
+ {
+  "content": null,
+  "docstatus": 0,
+  "doctype": "Page",
+  "icon": null,
+  "modified": "2025-11-04 19:53:25.289517",
+  "module": "Admin Panel",
+  "name": "account-management",
+  "page_name": "account-management",
+  "restrict_to_domain": null,
+  "roles": [],
+  "script": null,
+  "standard": "Yes",
+  "style": null,
+  "system_page": 0,
+  "title": "Account Management"
+ }
+]

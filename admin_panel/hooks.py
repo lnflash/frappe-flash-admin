@@ -239,8 +239,8 @@ app_license = "mit"
 
 # Add workspace
 fixtures = [
-    {
-        "doctype": "Workspace",
-        "filters": [["name", "in", ["Admin Panel"]]]
-    }
+    {"doctype": "DocType", "filters": [["module", "=", "Admin Panel"]]},
+    {"doctype": "Page", "filters": [["module", "=", "Admin Panel"]]},
+    {"doctype": "Workspace", "filters": [["module", "=", "Admin Panel"]]},
+    {"doctype": "Client Script", "filters": [["module", "=", "Admin Panel"]]},
 ]

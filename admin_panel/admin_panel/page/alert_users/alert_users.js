@@ -156,6 +156,39 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                 text-align: right;
                 margin-top: 4px;
             }
+
+            .alert-history-container {
+            max-width: 800px;
+            margin: 20px auto 60px;
+            padding: 24px;
+            background: #FFFFFF;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            }
+
+            .alert-item {
+                border-left: 4px solid #007856;
+                background: #F9FAF9;
+                padding: 16px 20px;
+                border-radius: 6px;
+                margin-bottom: 14px;
+            }
+
+            .alert-item h4 {
+                margin: 0 0 6px 0;
+                color: #002118;
+            }
+
+            .alert-item p {
+                margin: 0;
+                color: #555;
+            }
+
+            .alert-item small {
+                color: #888;
+                display: block;
+                margin-top: 6px;
+            }
         </style>
         
         <div class="alert-form-container">
@@ -204,8 +237,9 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                 </label>
                 <select class="form-control" id="alert-tag">
                     <option value="EMERGENCY">Emergency</option>
-                    <option value="WARNING">Warning</option>
+                    <option value="ATTENTION">Attention</option>
                     <option value="INFO">Information</option>
+                    <option value="MARKETING">Marketing</option>
                 </select>
             </div>
             
@@ -220,6 +254,15 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                     <p id="preview-description"></p>
                     <p><small id="preview-tag"></small></p>
                 </div>
+            </div>
+        </div>
+        <div class="alert-history-container">
+            <div class="alert-form-header">
+                <h3>📜 Sent Alerts History</h3>
+                <p>Recently sent alerts will appear here</p>
+            </div>
+            <div id="alert-history-list">
+                <p style="color:#939998;">Loading history...</p>
             </div>
         </div>
     `);
@@ -275,6 +318,8 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                     $titleCount.text('0');
                     $descriptionCount.text('0');
                     $previewContainer.fadeOut();
+                    
+                    loadAlertHistory();
                 } else {
                     const errorMsg = response.message?.error || 
                                    (response.message?.errors ? response.message.errors.join(', ') : '') || 
@@ -297,6 +342,36 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
             always: function() {
                 $sendButton.prop('disabled', false);
                 $sendButton.html('<span class="btn-text">Send Alert to All Users</span>');
+            }
+        });
+    }
+
+    function loadAlertHistory() {
+        frappe.call({
+            method: 'admin_panel.api.admin_api.get_user_alerts',
+            args: { limit: 10 },
+            callback: function(r) {
+                const $historyList = page.main.find('#alert-history-list');
+                $historyList.empty();
+
+                if (!r.message || !r.message.logs || r.message.logs.length === 0) {
+                    $historyList.html('<p style="color:#939998;">No alerts have been sent yet.</p>');
+                    return;
+                }
+
+                r.message.logs.forEach(log => {
+                    const date = frappe.datetime.str_to_user(log.sent_on);
+                    const item = `
+                        <div class="alert-item">
+                            <h4>${frappe.utils.escape_html(log.title)}</h4>
+                            <p>${frappe.utils.escape_html(log.message)}</p>
+                            <small>
+                                🏷️ ${log.tag} &nbsp;&nbsp;👤 ${log.sent_by} &nbsp;&nbsp;🕒 ${date}
+                            </small>
+                        </div>
+                    `;
+                    $historyList.append(item);
+                });
             }
         });
     }
@@ -349,4 +424,6 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
             }
         );
     });
+
+    loadAlertHistory();
 }

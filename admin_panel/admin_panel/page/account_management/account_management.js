@@ -366,7 +366,7 @@ class FlashAccountManager {
                     color: var(--color-text01);
                     font-weight: 500;
                 }
-                
+
                 .notes-box {
                     background: var(--color-background);
                     padding: 16px;
@@ -567,6 +567,12 @@ class FlashAccountManager {
                                         <span class="detail-value detail-business-address"></span>
                                     </div>
                                 </div>
+                                <div class="col-md-6">
+                                    <div class="detail-item">
+                                        <span class="detail-label">Terminal Requested</span>
+                                        <span class="detail-value detail-terminal-requested"></span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -586,6 +592,10 @@ class FlashAccountManager {
                                         <span class="detail-label">Account Number</span>
                                         <span class="detail-value detail-account-number"></span>
                                     </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Currency</span>
+                                        <span class="detail-value detail-currency"></span>
+                                    </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="detail-item">
@@ -595,6 +605,10 @@ class FlashAccountManager {
                                     <div class="detail-item">
                                         <span class="detail-label">Account Type</span>
                                         <span class="detail-value detail-account-type"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">ID Document</span>
+                                        <span class="detail-value detail-id-document"></span>
                                     </div>
                                 </div>
                             </div>
@@ -615,23 +629,34 @@ class FlashAccountManager {
                                     <div class="detail-item">
                                         <span class="detail-label">Requested Level</span>
                                         <span class="detail-value detail-requested-level"></span>
+                                    </div><div class="detail-item">
+                                        <span class="detail-label">Status</span>
+                                        <span class="detail-value detail-status"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Approved/Rejected By</span>
+                                        <span class="detail-value detail-approved-by"></span>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
+                                    <div class="detail-item">
+                                        <span class="detail-label">Request ID</span>    
+                                        <span class="detail-value detail-request-id"></span>
+                                    </div>
                                     <div class="detail-item">
                                         <span class="detail-label">Submitted</span>
                                         <span class="detail-value detail-submitted"></span>
                                     </div>
                                     <div class="detail-item">
-                                        <span class="detail-label">Request ID</span>    
-                                        <span class="detail-value detail-request-id"></span>
+                                        <span class="detail-label">Approval/Rejection Date</span>
+                                        <span class="detail-value detail-approval-date"></span>
                                     </div>
                                 </div>
                             </div>
-                            <div class="row mt-3">
+                            <div class="row mt-3 rejection-reason">
                                 <div class="col-12">
-                                    <span class="detail-label">Notes</span>
-                                    <p class="detail-notes notes-box"></p>
+                                    <span class="detail-label">Rejection Reason</span>
+                                    <p class="detail-rejection-reason notes-box"></p>
                                 </div>
                             </div>
                         </div>
@@ -728,10 +753,13 @@ class FlashAccountManager {
                     <td><span class="modern-badge ${badgeClass}">${getAccountLevelLabel(req.requested_level)}</span></td>
                     <td>${this.formatDateTime(req.creation)}</td>
                     <td><span class="modern-badge ${statusBadge}">${req.status || 'Pending'}</span></td>
-                    <td style="text-align:center;">
-                        <button class="modern-icon-btn modern-icon-btn-success btn-quick-approve" data-request-id="${req.name}" title="Approve"><i class="fa fa-check"></i></button>
-                        <button class="modern-icon-btn modern-icon-btn-danger btn-quick-reject" data-request-id="${req.name}" title="Reject"><i class="fa fa-times"></i></button>
-                    </td>
+                    ${ req.status === "Pending" ? 
+                        `<td style="text-align:center;">
+                            <button class="modern-icon-btn modern-icon-btn-success btn-quick-approve" data-request-id="${req.name}" title="Approve"><i class="fa fa-check"></i></button>
+                            <button class="modern-icon-btn modern-icon-btn-danger btn-quick-reject" data-request-id="${req.name}" title="Reject"><i class="fa fa-times"></i></button>
+                        </td>` :
+                        `<td style="text-align:center;"><span>-</span></td>`
+                    }
                 </tr>
             `);
 
@@ -753,6 +781,23 @@ class FlashAccountManager {
         this.selected_request = req;
         const panel = this.page.main.find('.request-details');
 
+        const approveBtn = panel.find('.btn-approve');
+        const rejectBtn = panel.find('.btn-reject');
+        if (req.status === "Pending") {
+            approveBtn.show();
+            rejectBtn.show();
+        } else {
+            approveBtn.hide();
+            rejectBtn.hide();
+        }
+
+        const rejectionResonContainer = panel.find(".rejection-reason") 
+        if(req.rejection_reason){
+            rejectionResonContainer.show()
+        }else{
+            rejectionResonContainer.hide()
+        }
+        
         // Fill personal info
         panel.find('.detail-username').text(req.username || '-');
         panel.find('.detail-phone').text(this.formatPhone(req.phone_number) || '-');
@@ -764,6 +809,7 @@ class FlashAccountManager {
             panel.find('.business-info').show();
             panel.find('.detail-business-name').text(req.business_name || '-');
             panel.find('.detail-business-address').text(req.business_address || '-');
+            panel.find('.detail-terminal-requested').text(req.terminal_requested ? 'Yes' : 'No');
         } else {
             panel.find('.business-info').hide();
         }
@@ -774,6 +820,8 @@ class FlashAccountManager {
             panel.find('.detail-account-number').text(req.account_number || '-');
             panel.find('.detail-account-type').text(req.account_type || '-');
             panel.find('.detail-bank-branch').text(req.bank_branch || '-');
+            panel.find('.detail-currency').text(req.currency || '-');
+            panel.find('.detail-id-document').text(req.id_document || '-');
             panel.find('.detail-section:has(.fa-bank)').show();
         } else {
             panel.find('.detail-section:has(.fa-bank)').hide();
@@ -782,9 +830,12 @@ class FlashAccountManager {
         // Request info
         panel.find('.detail-current-level').text(getAccountLevelLabel(req.current_level) || '-');
         panel.find('.detail-requested-level').text(getAccountLevelLabel(req.requested_level) || '-');
+        panel.find('.detail-status').text(getAccountLevelLabel(req.status) || '-');
+        panel.find('.detail-approved-by').text(getAccountLevelLabel(req.approved_by) || '-');
         panel.find('.detail-submitted').text(this.formatDateTime(req.creation));
+        panel.find('.detail-approval-date').text(this.formatDateTime(req.approval_date));
         panel.find('.detail-request-id').text(req.name);
-        panel.find('.detail-notes').text(req.terminal_requested || 'No additional notes');
+        panel.find('.detail-rejection-reason').text(req.rejection_reason);
 
         panel.show();
 

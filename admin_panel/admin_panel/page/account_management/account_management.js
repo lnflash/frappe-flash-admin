@@ -26,11 +26,24 @@ frappe.pages['account-management'].on_page_load = function(wrapper) {
     new FlashAccountManager(page);
 };
 
+const AccountLevels = {
+    TRIAL: "ZERO",
+    PERSONAL: "ONE",
+    PRO: "TWO",
+    MERCHANT: "THREE"
+}
+
+const AccountStatus = {
+    PENDING: "Pending",
+    REJECTED: "Rejected",
+    APPROVED: "Approved"
+}
+
 const accountLevels = [
-    {label: 'Trial', value: 'ZERO'},
-    {label: 'Personal', value: 'ONE'},
-    {label: 'Pro', value: 'TWO'},
-    {label: 'Merchant', value: 'THREE'}
+    {label: 'Trial', value: AccountLevels.TRIAL},
+    {label: 'Personal', value: AccountLevels.PERSONAL},
+    {label: 'Pro', value: AccountLevels.PRO},
+    {label: 'Merchant', value: AccountLevels.MERCHANT}
 ];
 
 function getAccountLevelLabel(level) {
@@ -450,16 +463,16 @@ class FlashAccountManager {
                     <div class="modern-search-wrapper">
                         <select id="filter-status" class="modern-search-input modern-search-select">
                             <option value="">Status (All)</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Approved">Approved</option>
-                            <option value="Rejected">Rejected</option>
+                            <option value=${AccountStatus.PENDING}>Pending</option>
+                            <option value=${AccountStatus.APPROVED}>Approved</option>
+                            <option value=${AccountStatus.REJECTED}>Rejected</option>
                         </select>
                         <select id="filter-level" class="modern-search-input modern-search-select">
                             <option value="">Requested Level (All)</option>
-                            <option value="ZERO">Trial</option>
-                            <option value="ONE">Personal</option>
-                            <option value="TWO">Pro</option>
-                            <option value="THREE">Merchant</option>
+                            <option value=${AccountLevels.TRIAL}>Trial</option>
+                            <option value=${AccountLevels.PERSONAL}>Personal</option>
+                            <option value=${AccountLevels.PRO}>Pro</option>
+                            <option value=${AccountLevels.MERCHANT}>Merchant</option>
                         </select>
                     </div>
                 </div>
@@ -744,16 +757,16 @@ class FlashAccountManager {
         this.page.main.find('.no-requests').hide();
 
         this.upgrade_requests.forEach((req) => {
-            const badgeClass = req.requested_level==='ONE'?'badge-personal': req.requested_level==='TWO'?'badge-business':'badge-merchant';
-            const statusBadge = req.status === "Approved" ? "badge-approved" : req.status === "Rejected" ? "badge-rejected" : "badge-pending";
+            const badgeClass = req.requested_level=== AccountLevels.PERSONAL?'badge-personal': req.requested_level===AccountLevels.PRO?'badge-business':'badge-merchant';
+            const statusBadge = req.status === AccountStatus.APPROVED ? "badge-approved" : req.status === AccountStatus.REJECTED ? "badge-rejected" : "badge-pending";
             const row = $(`
                 <tr class="request-row" data-request-id="${req.name}">
                     <td><strong>${req.username || '-'}</strong></td>
                     <td>${this.formatPhone(req.phone_number)}</td>
                     <td><span class="modern-badge ${badgeClass}">${getAccountLevelLabel(req.requested_level)}</span></td>
                     <td>${this.formatDateTime(req.creation)}</td>
-                    <td><span class="modern-badge ${statusBadge}">${req.status || 'Pending'}</span></td>
-                    ${ req.status === "Pending" ? 
+                    <td><span class="modern-badge ${statusBadge}">${req.status || AccountStatus.PENDING}</span></td>
+                    ${ req.status === AccountStatus.PENDING ? 
                         `<td style="text-align:center;">
                             <button class="modern-icon-btn modern-icon-btn-success btn-quick-approve" data-request-id="${req.name}" title="Approve"><i class="fa fa-check"></i></button>
                             <button class="modern-icon-btn modern-icon-btn-danger btn-quick-reject" data-request-id="${req.name}" title="Reject"><i class="fa fa-times"></i></button>
@@ -783,7 +796,7 @@ class FlashAccountManager {
 
         const approveBtn = panel.find('.btn-approve');
         const rejectBtn = panel.find('.btn-reject');
-        if (req.status === "Pending") {
+        if (req.status === AccountStatus.PENDING) {
             approveBtn.show();
             rejectBtn.show();
         } else {
@@ -805,7 +818,7 @@ class FlashAccountManager {
         panel.find('.detail-email').text(req.email || '-');
 
         // Business info
-        if (req.requested_level === 'TWO' || req.requested_level === 'THREE') {
+        if (req.requested_level === AccountLevels.PRO || req.requested_level === AccountLevels.MERCHANT) {
             panel.find('.business-info').show();
             panel.find('.detail-business-name').text(req.business_name || '-');
             panel.find('.detail-business-address').text(req.business_address || '-');
@@ -815,7 +828,7 @@ class FlashAccountManager {
         }
 
         // Bank info
-        if (req.requested_level === 'THREE') {
+        if (req.requested_level === AccountLevels.MERCHANT) {
             panel.find('.detail-bank-name').text(req.bank_name || '-');
             panel.find('.detail-account-number').text(req.account_number || '-');
             panel.find('.detail-account-type').text(req.account_type || '-');
@@ -949,15 +962,15 @@ class FlashAccountManager {
         main.find('.requests-list table').show();
 
         results.forEach(account => {
-            const badgeClass = account.current_level === 'ONE' ? 'badge-personal' : account.current_level === 'TWO' ? 'badge-business' : 'badge-merchant';
-            const statusBadge = account.status === "Approved" ? "badge-approved" : account.status === "Rejected" ? "badge-rejected" : "badge-pending";
+            const badgeClass = account.current_level === AccountLevels.PERSONAL ? 'badge-personal' : account.current_level === AccountLevels.PRO ? 'badge-business' : 'badge-merchant';
+            const statusBadge = account.status === AccountStatus.APPROVED ? "badge-approved" : account.status === AccountStatus.REJECTED ? "badge-rejected" : "badge-pending";
             const row = $(`
                 <tr class="request-row" data-request-id="${account.name}">
                     <td><strong>${account.username || '-'}</strong></td>
                     <td>${this.formatPhone(account.phone_number)}</td>
                     <td><span class="modern-badge ${badgeClass}">${getAccountLevelLabel(account.current_level)}</span></td>
                     <td>${this.formatDateTime(account.creation)}</td>
-                    <td><span class="modern-badge ${statusBadge}">${account.status || 'Pending'}</span></td>
+                    <td><span class="modern-badge ${statusBadge}">${account.status || AccountStatus.PENDING}</span></td>
                     <td style="text-align:center;">
                         <button class="modern-icon-btn modern-icon-btn-success btn-quick-approve" data-request-id="${account.name}" title="Approve"><i class="fa fa-check"></i></button>
                         <button class="modern-icon-btn modern-icon-btn-danger btn-quick-reject" data-request-id="${account.name}" title="Reject"><i class="fa fa-times"></i></button>

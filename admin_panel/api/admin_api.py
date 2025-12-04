@@ -159,19 +159,22 @@ def get_upgrade_requests(status=None, requested_level=None):
         return {"error": "An internal error occurred"}
 
 
+PhoneNumber = str
+Username = str
+
 @frappe.whitelist()
-def search_account(query):
+def search_account(id: PhoneNumber | Username):
     """Search account by phone number"""
     try:
-        if not query:
+        if not id:
             frappe.response['http_status_code'] = 400
-            return {"error": "Phone number is required"}
+            return {"error": "Phone number or Username is required"}
    
-        cleaned_query = ''.join(filter(str.isdigit, query))
-        if len(cleaned_query) >= 10:
+        cleaned_id = ''.join(filter(str.isdigit, id))
+        if len(cleaned_id) >= 10:
             requests = frappe.get_all(
                 "Account Upgrade Request",
-                filters=[["phone_number", "like", f"%{query}%"]],
+                filters=[["phone_number", "like", f"%{id}%"]],
                 fields=["*"],
                 order_by="creation desc"
             )
@@ -184,7 +187,7 @@ def search_account(query):
         else:
             requests = frappe.get_all(
                 "Account Upgrade Request",
-                filters=[["username", "like", f"%{query}%"]],
+                filters=[["username", "like", f"%{id}%"]],
                 fields=["*"],
                 order_by="creation desc"
             )

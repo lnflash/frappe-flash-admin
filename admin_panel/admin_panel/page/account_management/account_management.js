@@ -919,8 +919,8 @@ class FlashAccountManager {
     }
 
     search() {
-        const query = this.page.main.find('.search-input').val().trim();
-        if (!query) {
+        const input = this.page.main.find('.search-input').val().trim();
+        if (!input) {
             frappe.show_alert({ message: 'Please enter a username or phone number', indicator: 'orange' }, 3);
             return;
         }
@@ -932,7 +932,7 @@ class FlashAccountManager {
 
         frappe.call({
             method: 'admin_panel.api.admin_api.search_account',
-            args: { query },
+            args: { id: input },
             callback: (res) => {
                 const results = res.message || [];
                 main.find('.search-loading').hide();

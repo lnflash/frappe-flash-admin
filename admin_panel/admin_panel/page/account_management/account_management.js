@@ -962,13 +962,13 @@ class FlashAccountManager {
         main.find('.requests-list table').show();
 
         results.forEach(account => {
-            const badgeClass = account.current_level === AccountLevels.PERSONAL ? 'badge-personal' : account.current_level === AccountLevels.PRO ? 'badge-business' : 'badge-merchant';
+            const badgeClass = account.requested_level === AccountLevels.PERSONAL ? 'badge-personal' : account.current_level === AccountLevels.PRO ? 'badge-business' : 'badge-merchant';
             const statusBadge = account.status === AccountStatus.APPROVED ? "badge-approved" : account.status === AccountStatus.REJECTED ? "badge-rejected" : "badge-pending";
             const row = $(`
                 <tr class="request-row" data-request-id="${account.name}">
                     <td><strong>${account.username || '-'}</strong></td>
                     <td>${this.formatPhone(account.phone_number)}</td>
-                    <td><span class="modern-badge ${badgeClass}">${getAccountLevelLabel(account.current_level)}</span></td>
+                    <td><span class="modern-badge ${badgeClass}">${getAccountLevelLabel(account.requested_level)}</span></td>
                     <td>${this.formatDateTime(account.creation)}</td>
                     <td><span class="modern-badge ${statusBadge}">${account.status || AccountStatus.PENDING}</span></td>
                     <td style="text-align:center;">

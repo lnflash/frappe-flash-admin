@@ -115,6 +115,7 @@ def send_alert(title, message, tag="EMERGENCY"):
 			"error": "An internal error occurred"
 		}
 
+
 @frappe.whitelist()
 def get_user_alerts(limit=10):
     """Return latest User Alerts"""
@@ -130,3 +131,102 @@ def get_user_alerts(limit=10):
         frappe.log_error(frappe.get_traceback(), "Error fetching User Alerts")
         frappe.response["http_status_code"] = 500
         return {"error": str(e)}
+
+
+@frappe.whitelist()
+def get_upgrade_requests(status=None, requested_level=None):
+    """Get all pending upgrade requests from Account Upgrade Request doctype"""
+    try:
+        filters = {}
+        if status:
+            filters["status"] = status
+
+        if requested_level:
+            filters["requested_level"] = requested_level
+
+        requests = frappe.get_all(
+            "Account Upgrade Request",
+            filters=filters,
+            fields=["*"],
+            order_by="creation desc"
+        )
+
+        return requests
+
+    except Exception as e:
+        frappe.logger().error(f"Error fetching upgrade requests: {str(e)}")
+        frappe.response["http_status_code"] = 500
+        return {"error": "An internal error occurred"}
+
+
+PhoneNumber = str
+Username = str
+
+@frappe.whitelist()
+def search_account(id: PhoneNumber | Username):
+    """Search account by phone number"""
+    try:
+        if not id:
+            frappe.response['http_status_code'] = 400
+            return {"error": "Phone number or Username is required"}
+   
+        cleaned_id = ''.join(filter(str.isdigit, id))
+        if len(cleaned_id) >= 10:
+            requests = frappe.get_all(
+                "Account Upgrade Request",
+                filters=[["phone_number", "like", f"%{id}%"]],
+                fields=["*"],
+                order_by="creation desc"
+            )
+
+            if requests:
+                return requests
+            else:
+                frappe.response['http_status_code'] = 404
+                return {"error": "Account not found"}
+        else:
+            requests = frappe.get_all(
+                "Account Upgrade Request",
+                filters=[["username", "like", f"%{id}%"]],
+                fields=["*"],
+                order_by="creation desc"
+            )
+    
+            if requests:
+                return requests
+            else:
+                frappe.response['http_status_code'] = 404
+                return {"error": "Account not found"}
+        
+
+    except Exception as e:
+        frappe.logger().error(f"Error searching account: {str(e)}")
+        frappe.response['http_status_code'] = 500
+        return {"error": "An internal error occurred"}
+
+@frappe.whitelist()
+def approve_upgrade_request(request_id):
+    req = frappe.get_doc("Account Upgrade Request", request_id)
+
+    req.status = "Approved"
+    req.approved_by = frappe.session.user
+    req.approval_date = frappe.utils.now_datetime()
+    req.save()
+
+    frappe.db.commit()
+
+    return {"success": True, "message": "Request approved and user level updated."}
+
+@frappe.whitelist()
+def reject_upgrade_request(request_id, reason=None):
+    req = frappe.get_doc("Account Upgrade Request", request_id)
+
+    req.status = "Rejected"
+    req.rejection_reason = reason or "No reason provided"
+    req.approved_by = frappe.session.user  # store the person who rejected
+    req.approval_date = frappe.utils.now_datetime()
+    req.save()
+
+    frappe.db.commit()
+
+    return {"success": True, "message": "Request rejected."}

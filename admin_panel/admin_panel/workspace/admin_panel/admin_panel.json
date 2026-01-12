@@ -1,0 +1,85 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"_EYFml0tr6\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Admin Panel</b></span>\",\"col\":12}},{\"id\":\"_F4e1CqrUd\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Alert Users\",\"col\":3}},{\"id\":\"_F4e1CqrUe\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Account Management\",\"col\":3}},{\"id\":\"4ahFnm2VDl\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Cashout Requests\",\"col\":3}},{\"id\":\"_bxWkoteNn\",\"type\":\"card\",\"data\":{\"card_name\":\"Tools\",\"col\":12}}]",
+ "creation": "2025-12-08 17:26:50.738905",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "tool",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Admin Panel",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Tools",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "icon": "notification",
+   "is_query_report": 0,
+   "label": "Alert Users",
+   "link_count": 0,
+   "link_to": "alert-users",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "icon": "users",
+   "is_query_report": 0,
+   "label": "Account Management",
+   "link_count": 0,
+   "link_to": "account-management",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2025-12-08 17:27:28.642858",
+ "modified_by": "nick@getflash.io",
+ "module": "Admin Panel",
+ "name": "Admin Panel",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 1.0,
+ "shortcuts": [
+  {
+   "color": "#E8D315",
+   "doc_view": "",
+   "format": "",
+   "icon": "notification",
+   "label": "Alert Users",
+   "link_to": "alert-users",
+   "type": "Page"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Cashout Requests",
+   "link_to": "cashout-requests",
+   "type": "Page"
+  },
+  {
+   "color": "#007856",
+   "doc_view": "",
+   "format": "",
+   "icon": "users",
+   "label": "Account Management",
+   "link_to": "account-management",
+   "type": "Page"
+  }
+ ],
+ "title": "Admin Panel"
+}

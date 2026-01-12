@@ -313,12 +313,6 @@ class FlashCashoutManager {
                     font-weight: 500;
                 }
 
-                .amount-highlight {
-                    font-size: 24px;
-                    font-weight: 700;
-                    color: var(--color-primary);
-                }
-
                 .confirmation-section {
                     background: var(--color-background);
                     padding: 24px;
@@ -387,10 +381,6 @@ class FlashCashoutManager {
 
                     .request-details .d-flex button {
                         width: 100%;
-                    }
-
-                    .amount-highlight {
-                        font-size: 20px;
                     }
                 }
             </style>
@@ -509,11 +499,11 @@ class FlashCashoutManager {
                                 <div class="col-md-6">
                                     <div class="detail-item">
                                         <span class="detail-label">Send Amount</span>
-                                        <span class="detail-value amount-highlight detail-send-amount"></span>
+                                        <span class="detail-value detail-send-amount"></span>
                                     </div>
                                     <div class="detail-item">
                                         <span class="detail-label">Receive Amount</span>
-                                        <span class="detail-value amount-highlight detail-receive-amount"></span>
+                                        <span class="detail-value detail-receive-amount"></span>
                                     </div>
                                     <div class="detail-item">
                                         <span class="detail-label">Expiration Time</span>

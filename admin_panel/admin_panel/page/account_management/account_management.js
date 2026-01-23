@@ -57,6 +57,10 @@ class FlashAccountManager {
         this.current_account_data = null;
         this.selected_request = null;
         this.upgrade_requests = [];
+        this.current_page = 1;
+        this.page_size = 10;
+        this.total_pages = 1;
+        this.total_count = 0;
         this.setup_page();
     }
 
@@ -518,6 +522,29 @@ class FlashAccountManager {
                             </div>
                         </div>
                     </div>
+                    <!-- Pagination Controls -->
+                    <div class="pagination-controls" style="display: none; padding: 16px 24px; border-top: 1px solid var(--color-border01); display: flex; justify-content: space-between; align-items: center;">
+                        <div class="pagination-info" style="color: var(--color-text02); font-size: 14px;">
+                            Showing <span class="page-start">1</span>-<span class="page-end">10</span> of <span class="total-count">0</span> requests
+                        </div>
+                        <div class="pagination-buttons" style="display: flex; gap: 8px; align-items: center;">
+                            <button class="modern-btn modern-btn-secondary btn-first-page" title="First page" style="padding: 8px 12px;">
+                                <i class="fa fa-angle-double-left"></i>
+                            </button>
+                            <button class="modern-btn modern-btn-secondary btn-prev-page" title="Previous page" style="padding: 8px 12px;">
+                                <i class="fa fa-angle-left"></i>
+                            </button>
+                            <span class="page-indicator" style="padding: 8px 16px; font-weight: 500; color: var(--color-text01);">
+                                Page <span class="current-page">1</span> of <span class="total-pages">1</span>
+                            </span>
+                            <button class="modern-btn modern-btn-secondary btn-next-page" title="Next page" style="padding: 8px 12px;">
+                                <i class="fa fa-angle-right"></i>
+                            </button>
+                            <button class="modern-btn modern-btn-secondary btn-last-page" title="Last page" style="padding: 8px 12px;">
+                                <i class="fa fa-angle-double-right"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Request Details Panel -->
@@ -703,6 +730,71 @@ class FlashAccountManager {
         `);
     }
 
+    show_id_document(fileUrl) {
+        const d = new frappe.ui.Dialog({
+            title: 'ID Document',
+            size: 'large',
+            fields: [
+                {
+                    fieldtype: 'HTML',
+                    fieldname: 'preview',
+                }
+            ],
+            primary_action_label: 'Close',
+            primary_action() {
+                d.hide();
+            }
+        });
+
+        d.fields_dict.preview.$wrapper.html(`
+                <div style="text-align:center;">
+                    <img
+                        src="${fileUrl}"
+                        style="
+                            max-width: 100%;
+                            max-height: 70vh;
+                            border-radius: 10px;
+                            border: 1px solid #DDE3E1;
+                        "
+                    />
+                </div>
+            `);
+        d.show();
+    }
+
+    prefetch_id_document_url(fileKey, containerEl) {
+        frappe.call({
+            method: 'admin_panel.api.admin_api.get_id_document_url',
+            args: { file_key: fileKey },
+            callback: (response) => {
+                if (response.message && response.message.success) {
+                    const preSignedUrl = response.message.url;
+                    containerEl.html(`
+                        <button class="btn btn-sm btn-secondary btn-view-id-doc">
+                            <i class="fa fa-eye"></i> View document
+                        </button>
+                    `);
+                    containerEl.find('.btn-view-id-doc').on('click', () => {
+                        this.show_id_document(preSignedUrl);
+                    });
+                } else {
+                    containerEl.html(`
+                        <button class="btn btn-sm btn-danger btn-view-id-doc" disabled>
+                            <i class="fa fa-exclamation-triangle"></i> Failed to load
+                        </button>
+                    `);
+                }
+            },
+            error: () => {
+                containerEl.html(`
+                    <button class="btn btn-sm btn-danger btn-view-id-doc" disabled>
+                        <i class="fa fa-exclamation-triangle"></i> Failed to load
+                    </button>
+                `);
+            }
+        });
+    }
+
     bind_events() {
         const main = this.page.main;
 
@@ -713,9 +805,21 @@ class FlashAccountManager {
         main.find('.btn-close-details').on('click', () => main.find('.request-details').hide());
         main.find('.btn-approve').on('click', () => this.approve_request(this.selected_request));
         main.find('.btn-reject').on('click', () => this.reject_request(this.selected_request));
-        
-        main.find('#filter-status').on('change', () => this.load_upgrade_requests());
-        main.find('#filter-level').on('change', () => this.load_upgrade_requests());
+
+        main.find('#filter-status').on('change', () => { this.current_page = 1; this.load_upgrade_requests(); });
+        main.find('#filter-level').on('change', () => { this.current_page = 1; this.load_upgrade_requests(); });
+
+        // Pagination events
+        main.find('.btn-first-page').on('click', () => this.go_to_page(1));
+        main.find('.btn-prev-page').on('click', () => this.go_to_page(this.current_page - 1));
+        main.find('.btn-next-page').on('click', () => this.go_to_page(this.current_page + 1));
+        main.find('.btn-last-page').on('click', () => this.go_to_page(this.total_pages));
+    }
+
+    go_to_page(page) {
+        if (page < 1 || page > this.total_pages) return;
+        this.current_page = page;
+        this.load_upgrade_requests();
     }
 
     load_upgrade_requests() {
@@ -724,23 +828,55 @@ class FlashAccountManager {
         main.find('.requests-list table').hide();
         main.find('.no-requests').hide();
         main.find('.request-details').hide();
+        main.find('.pagination-controls').hide();
 
         frappe.call({
             method: 'admin_panel.api.admin_api.get_upgrade_requests',
             args: {
                 status: this.page.main.find('#filter-status').val(),
                 requested_level: this.page.main.find('#filter-level').val(),
+                page: this.current_page,
+                page_size: this.page_size
             },
             callback: (response) => {
                 main.find('.requests-loading').hide();
-                this.upgrade_requests = response.message || [];
+                const result = response.message || {};
+                this.upgrade_requests = result.data || [];
+                this.total_count = result.total || 0;
+                this.total_pages = result.total_pages || 1;
+                this.current_page = result.page || 1;
                 this.render_requests();
+                this.update_pagination();
             },
             error: () => {
                 main.find('.requests-loading').hide();
                 frappe.show_alert({ message: 'Failed to load upgrade requests', indicator: 'red' }, 5);
             }
         });
+    }
+
+    update_pagination() {
+        const main = this.page.main;
+
+        if (this.total_count === 0) {
+            main.find('.pagination-controls').hide();
+            return;
+        }
+
+        main.find('.pagination-controls').css('display', 'flex');
+
+        const start = (this.current_page - 1) * this.page_size + 1;
+        const end = Math.min(this.current_page * this.page_size, this.total_count);
+
+        main.find('.page-start').text(start);
+        main.find('.page-end').text(end);
+        main.find('.total-count').text(this.total_count);
+        main.find('.current-page').text(this.current_page);
+        main.find('.total-pages').text(this.total_pages);
+
+        // Enable/disable buttons based on current page
+        main.find('.btn-first-page, .btn-prev-page').prop('disabled', this.current_page <= 1);
+        main.find('.btn-next-page, .btn-last-page').prop('disabled', this.current_page >= this.total_pages);
     }
 
     render_requests() {
@@ -834,7 +970,21 @@ class FlashAccountManager {
             panel.find('.detail-account-type').text(req.account_type || '-');
             panel.find('.detail-bank-branch').text(req.bank_branch || '-');
             panel.find('.detail-currency').text(req.currency || '-');
-            panel.find('.detail-id-document').text(req.id_document || '-');
+            const idDocEl = panel.find('.detail-id-document');
+            idDocEl.empty();
+                    
+            if (req.id_document) {
+                idDocEl.html(`
+                    <button class="btn btn-sm btn-secondary btn-view-id-doc" disabled>
+                        <i class="fa fa-spinner fa-spin"></i> Loading...
+                    </button>
+                `);
+
+                // Pre-fetch the document URL when details panel is rendered
+                this.prefetch_id_document_url(req.id_document, idDocEl);
+            } else {
+                idDocEl.text('-');
+            }
             panel.find('.detail-section:has(.fa-bank)').show();
         } else {
             panel.find('.detail-section:has(.fa-bank)').hide();

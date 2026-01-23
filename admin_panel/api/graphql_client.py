@@ -11,10 +11,15 @@ class GraphQLError(Exception):
 
 class GraphQLClient:
 	"""GraphQL client for admin API operations with JWT authentication"""
-	
+
 	def __init__(self):
 		self.url = frappe.conf.get("flash_admin_api_url")
 		self.api_key = frappe.conf.get("admin_api_key")
+
+		if not self.url:
+			raise ValueError("flash_admin_api_url is not configured in site_config.json")
+		if not self.api_key:
+			raise ValueError("admin_api_key is not configured in site_config.json")
 	
 	def create_jwt_token(self, user_id, roles, secret):
 		"""Create JWT token with user context and expiration"""
@@ -139,17 +144,38 @@ class GraphQLClient:
 				}
 			}
 		"""
-		
+
 		input_data = {
 			"title": title,
 			"body": body,
 			"tag": tag
 		}
-		
+
 		resp = self.execute_query(mutation, {"input": input_data})
-		
+
 		errors = resp.get('errors')
 		if errors:
 			raise GraphQLError(f"GraphQL errors: {errors}")
-		
+
 		return resp["data"]["adminBroadcastSend"]
+
+	def get_id_document_read_url(self, file_key):
+		"""Get pre-signed URL for ID document from Digital Ocean Spaces"""
+		query = """
+			query IdDocumentReadUrl($fileKey: String!) {
+				idDocumentReadUrl(fileKey: $fileKey) {
+					readUrl
+					errors {
+						message
+					}
+				}
+			}
+		"""
+
+		resp = self.execute_query(query, {"fileKey": file_key})
+
+		errors = resp.get('errors')
+		if errors:
+			raise GraphQLError(f"GraphQL errors: {errors}")
+
+		return resp["data"]["idDocumentReadUrl"]

@@ -31,24 +31,57 @@ const AccountLevels = {
     PERSONAL: "ONE",
     PRO: "TWO",
     MERCHANT: "THREE"
-}
+};
 
 const AccountStatus = {
     PENDING: "Pending",
     REJECTED: "Rejected",
     APPROVED: "Approved"
-}
+};
 
-const accountLevels = [
-    {label: 'Trial', value: AccountLevels.TRIAL},
-    {label: 'Personal', value: AccountLevels.PERSONAL},
-    {label: 'Pro', value: AccountLevels.PRO},
-    {label: 'Merchant', value: AccountLevels.MERCHANT}
-];
+const ACCOUNT_LEVEL_MAP = {
+    [AccountLevels.TRIAL]: 'Trial',
+    [AccountLevels.PERSONAL]: 'Personal',
+    [AccountLevels.PRO]: 'Pro',
+    [AccountLevels.MERCHANT]: 'Merchant'
+};
+
+const LEVEL_BADGE_MAP = {
+    [AccountLevels.PERSONAL]: 'badge-personal',
+    [AccountLevels.PRO]: 'badge-business',
+    [AccountLevels.MERCHANT]: 'badge-merchant'
+};
+
+const STATUS_BADGE_MAP = {
+    [AccountStatus.APPROVED]: 'badge-approved',
+    [AccountStatus.REJECTED]: 'badge-rejected',
+    [AccountStatus.PENDING]: 'badge-pending'
+};
+
+const accountLevels = Object.entries(ACCOUNT_LEVEL_MAP).map(([value, label]) => ({ label, value }));
 
 function getAccountLevelLabel(level) {
-    const levelObj = accountLevels.find(item => item.value === level);
-    return levelObj ? levelObj.label : level;
+    return ACCOUNT_LEVEL_MAP[level] || level;
+}
+
+function getLevelBadgeClass(level) {
+    return LEVEL_BADGE_MAP[level] || 'badge-merchant';
+}
+
+function getStatusBadgeClass(status) {
+    return STATUS_BADGE_MAP[status] || 'badge-pending';
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
 }
 
 class FlashAccountManager {
@@ -61,13 +94,32 @@ class FlashAccountManager {
         this.page_size = 10;
         this.total_pages = 1;
         this.total_count = 0;
+        this.$cache = {};
         this.setup_page();
     }
 
     setup_page() {
         this.create_layout();
+        this.cache_elements();
         this.bind_events();
         this.load_upgrade_requests();
+    }
+
+    cache_elements() {
+        const main = this.page.main;
+        this.$cache = {
+            searchInput: main.find('.search-input'),
+            requestsLoading: main.find('.requests-loading'),
+            requestsTable: main.find('.requests-list table'),
+            noRequests: main.find('.no-requests'),
+            requestDetails: main.find('.request-details'),
+            paginationControls: main.find('.pagination-controls'),
+            requestsTbody: main.find('.requests-tbody'),
+            searchLoading: main.find('.search-loading'),
+            searchError: main.find('.search-error'),
+            filterStatus: main.find('#filter-status'),
+            filterLevel: main.find('#filter-level')
+        };
     }
 
     create_layout() {
@@ -797,23 +849,62 @@ class FlashAccountManager {
 
     bind_events() {
         const main = this.page.main;
+        const debouncedSearch = debounce(() => this.search(), 300);
 
         main.find('.btn-search').on('click', () => this.search());
-        main.find('.search-input').on('keypress', (e) => { if(e.which===13) this.search(); });
+        this.$cache.searchInput.on('keypress', (e) => { if (e.which === 13) this.search(); });
+        this.$cache.searchInput.on('input', debouncedSearch);
 
         main.find('.btn-refresh').on('click', () => this.load_upgrade_requests());
-        main.find('.btn-close-details').on('click', () => main.find('.request-details').hide());
+        main.find('.btn-close-details').on('click', () => this.$cache.requestDetails.hide());
         main.find('.btn-approve').on('click', () => this.approve_request(this.selected_request));
         main.find('.btn-reject').on('click', () => this.reject_request(this.selected_request));
 
-        main.find('#filter-status').on('change', () => { this.current_page = 1; this.load_upgrade_requests(); });
-        main.find('#filter-level').on('change', () => { this.current_page = 1; this.load_upgrade_requests(); });
+        this.$cache.filterStatus.on('change', () => { this.current_page = 1; this.load_upgrade_requests(); });
+        this.$cache.filterLevel.on('change', () => { this.current_page = 1; this.load_upgrade_requests(); });
 
         // Pagination events
         main.find('.btn-first-page').on('click', () => this.go_to_page(1));
         main.find('.btn-prev-page').on('click', () => this.go_to_page(this.current_page - 1));
         main.find('.btn-next-page').on('click', () => this.go_to_page(this.current_page + 1));
         main.find('.btn-last-page').on('click', () => this.go_to_page(this.total_pages));
+    }
+
+    create_request_row(req, showActions = true) {
+        const levelBadge = getLevelBadgeClass(req.requested_level);
+        const statusBadge = getStatusBadgeClass(req.status);
+        const isPending = req.status === AccountStatus.PENDING;
+
+        const actionsHtml = showActions && isPending
+            ? `<td style="text-align:center;">
+                <button class="modern-icon-btn modern-icon-btn-success btn-quick-approve" data-request-id="${req.name}" title="Approve"><i class="fa fa-check"></i></button>
+                <button class="modern-icon-btn modern-icon-btn-danger btn-quick-reject" data-request-id="${req.name}" title="Reject"><i class="fa fa-times"></i></button>
+               </td>`
+            : `<td style="text-align:center;"><span>-</span></td>`;
+
+        const row = $(`
+            <tr class="request-row" data-request-id="${req.name}">
+                <td><strong>${req.username || '-'}</strong></td>
+                <td>${this.formatPhone(req.phone_number)}</td>
+                <td><span class="modern-badge ${levelBadge}">${getAccountLevelLabel(req.requested_level)}</span></td>
+                <td>${this.formatDateTime(req.creation)}</td>
+                <td><span class="modern-badge ${statusBadge}">${req.status || AccountStatus.PENDING}</span></td>
+                ${actionsHtml}
+            </tr>
+        `);
+
+        row.on('click', (e) => {
+            if (!$(e.target).closest('button').length) {
+                this.page.main.find('.request-row').removeClass('selected');
+                row.addClass('selected');
+                this.show_request_details(req);
+            }
+        });
+
+        row.find('.btn-quick-approve').on('click', (e) => { e.stopPropagation(); this.approve_request(req); });
+        row.find('.btn-quick-reject').on('click', (e) => { e.stopPropagation(); this.reject_request(req); });
+
+        return row;
     }
 
     go_to_page(page) {
@@ -823,23 +914,22 @@ class FlashAccountManager {
     }
 
     load_upgrade_requests() {
-        const main = this.page.main;
-        main.find('.requests-loading').show();
-        main.find('.requests-list table').hide();
-        main.find('.no-requests').hide();
-        main.find('.request-details').hide();
-        main.find('.pagination-controls').hide();
+        this.$cache.requestsLoading.show();
+        this.$cache.requestsTable.hide();
+        this.$cache.noRequests.hide();
+        this.$cache.requestDetails.hide();
+        this.$cache.paginationControls.hide();
 
         frappe.call({
             method: 'admin_panel.api.admin_api.get_upgrade_requests',
             args: {
-                status: this.page.main.find('#filter-status').val(),
-                requested_level: this.page.main.find('#filter-level').val(),
+                status: this.$cache.filterStatus.val(),
+                requested_level: this.$cache.filterLevel.val(),
                 page: this.current_page,
                 page_size: this.page_size
             },
             callback: (response) => {
-                main.find('.requests-loading').hide();
+                this.$cache.requestsLoading.hide();
                 const result = response.message || {};
                 this.upgrade_requests = result.data || [];
                 this.total_count = result.total || 0;
@@ -849,24 +939,23 @@ class FlashAccountManager {
                 this.update_pagination();
             },
             error: () => {
-                main.find('.requests-loading').hide();
+                this.$cache.requestsLoading.hide();
                 frappe.show_alert({ message: 'Failed to load upgrade requests', indicator: 'red' }, 5);
             }
         });
     }
 
     update_pagination() {
-        const main = this.page.main;
-
         if (this.total_count === 0) {
-            main.find('.pagination-controls').hide();
+            this.$cache.paginationControls.hide();
             return;
         }
 
-        main.find('.pagination-controls').css('display', 'flex');
+        this.$cache.paginationControls.css('display', 'flex');
 
         const start = (this.current_page - 1) * this.page_size + 1;
         const end = Math.min(this.current_page * this.page_size, this.total_count);
+        const main = this.page.main;
 
         main.find('.page-start').text(start);
         main.find('.page-end').text(end);
@@ -874,55 +963,24 @@ class FlashAccountManager {
         main.find('.current-page').text(this.current_page);
         main.find('.total-pages').text(this.total_pages);
 
-        // Enable/disable buttons based on current page
         main.find('.btn-first-page, .btn-prev-page').prop('disabled', this.current_page <= 1);
         main.find('.btn-next-page, .btn-last-page').prop('disabled', this.current_page >= this.total_pages);
     }
 
     render_requests() {
-        const tbody = this.page.main.find('.requests-tbody');
-        tbody.empty();
+        this.$cache.requestsTbody.empty();
 
         if (this.upgrade_requests.length === 0) {
-            this.page.main.find('.requests-list table').hide();
-            this.page.main.find('.no-requests').show();
+            this.$cache.requestsTable.hide();
+            this.$cache.noRequests.show();
             return;
         }
 
-        this.page.main.find('.requests-list table').show();
-        this.page.main.find('.no-requests').hide();
+        this.$cache.requestsTable.show();
+        this.$cache.noRequests.hide();
 
         this.upgrade_requests.forEach((req) => {
-            const badgeClass = req.requested_level=== AccountLevels.PERSONAL?'badge-personal': req.requested_level===AccountLevels.PRO?'badge-business':'badge-merchant';
-            const statusBadge = req.status === AccountStatus.APPROVED ? "badge-approved" : req.status === AccountStatus.REJECTED ? "badge-rejected" : "badge-pending";
-            const row = $(`
-                <tr class="request-row" data-request-id="${req.name}">
-                    <td><strong>${req.username || '-'}</strong></td>
-                    <td>${this.formatPhone(req.phone_number)}</td>
-                    <td><span class="modern-badge ${badgeClass}">${getAccountLevelLabel(req.requested_level)}</span></td>
-                    <td>${this.formatDateTime(req.creation)}</td>
-                    <td><span class="modern-badge ${statusBadge}">${req.status || AccountStatus.PENDING}</span></td>
-                    ${ req.status === AccountStatus.PENDING ? 
-                        `<td style="text-align:center;">
-                            <button class="modern-icon-btn modern-icon-btn-success btn-quick-approve" data-request-id="${req.name}" title="Approve"><i class="fa fa-check"></i></button>
-                            <button class="modern-icon-btn modern-icon-btn-danger btn-quick-reject" data-request-id="${req.name}" title="Reject"><i class="fa fa-times"></i></button>
-                        </td>` :
-                        `<td style="text-align:center;"><span>-</span></td>`
-                    }
-                </tr>
-            `);
-
-            row.on('click', (e) => { 
-                if(!$(e.target).closest('button').length) {
-                    this.page.main.find('.request-row').removeClass('selected');
-                    row.addClass('selected');
-                    this.show_request_details(req); 
-                }
-            });
-            row.find('.btn-quick-approve').on('click', (e)=>{ e.stopPropagation(); this.approve_request(req); });
-            row.find('.btn-quick-reject').on('click', (e)=>{ e.stopPropagation(); this.reject_request(req); });
-
-            tbody.append(row);
+            this.$cache.requestsTbody.append(this.create_request_row(req));
         });
     }
 
@@ -1064,88 +1122,66 @@ class FlashAccountManager {
     }
 
     close_details() {
-        this.page.main.find('.request-details').hide();
+        this.$cache.requestDetails.hide();
         this.selected_request = null;
     }
 
     search() {
-        const input = this.page.main.find('.search-input').val().trim();
+        const input = this.$cache.searchInput.val().trim();
         if (!input) {
             frappe.show_alert({ message: 'Please enter a username or phone number', indicator: 'orange' }, 3);
             return;
         }
 
-        const main = this.page.main;
-        main.find('.search-loading').show();
-        main.find('.search-error').hide();
-        main.find('.request-details').hide();
+        this.$cache.searchLoading.show();
+        this.$cache.searchError.hide();
+        this.$cache.requestDetails.hide();
 
         frappe.call({
             method: 'admin_panel.api.admin_api.search_account',
             args: { id: input },
             callback: (res) => {
+                this.$cache.searchLoading.hide();
                 const results = res.message || [];
-                main.find('.search-loading').hide();
                 this.show_search_results(results);
             },
             error: (e) => {
-                main.find('.search-loading').hide();
+                this.$cache.searchLoading.hide();
                 this.show_search_error(e.message || 'Account not found');
             }
         });
     }
 
     show_search_results(results) {
-        const main = this.page.main;
-        const tbody = main.find('.requests-tbody');
-
-        tbody.empty();
+        this.$cache.requestsTbody.empty();
 
         if (!results.length) {
-            main.find('.no-requests').show();
-            main.find('.requests-list table').hide();
+            this.$cache.noRequests.show();
+            this.$cache.requestsTable.hide();
             this.show_search_error('No accounts found');
             return;
         }
 
-        main.find('.no-requests').hide();
-        main.find('.requests-list table').show();
+        this.$cache.noRequests.hide();
+        this.$cache.requestsTable.show();
 
         results.forEach(account => {
-            const badgeClass = account.requested_level === AccountLevels.PERSONAL ? 'badge-personal' : account.current_level === AccountLevels.PRO ? 'badge-business' : 'badge-merchant';
-            const statusBadge = account.status === AccountStatus.APPROVED ? "badge-approved" : account.status === AccountStatus.REJECTED ? "badge-rejected" : "badge-pending";
-            const row = $(`
-                <tr class="request-row" data-request-id="${account.name}">
-                    <td><strong>${account.username || '-'}</strong></td>
-                    <td>${this.formatPhone(account.phone_number)}</td>
-                    <td><span class="modern-badge ${badgeClass}">${getAccountLevelLabel(account.requested_level)}</span></td>
-                    <td>${this.formatDateTime(account.creation)}</td>
-                    <td><span class="modern-badge ${statusBadge}">${account.status || AccountStatus.PENDING}</span></td>
-                    <td style="text-align:center;">
-                        <button class="modern-icon-btn modern-icon-btn-success btn-quick-approve" data-request-id="${account.name}" title="Approve"><i class="fa fa-check"></i></button>
-                        <button class="modern-icon-btn modern-icon-btn-danger btn-quick-reject" data-request-id="${account.name}" title="Reject"><i class="fa fa-times"></i></button>
-                    </td>
-                </tr>
-            `);
-
-            // Clicking row shows details below
-            row.on('click', (e) => { 
-                if (!$(e.target).closest('button').length){
-                    this.page.main.find('.request-row').removeClass('selected');
-                    row.addClass('selected');
-                    this.show_request_details(account); 
-                }
-            });
-
-            row.find('.btn-quick-approve').on('click', (e) => { e.stopPropagation(); this.approve_request(account); });
-            row.find('.btn-quick-reject').on('click', (e) => { e.stopPropagation(); this.reject_request(account); });
-
-            tbody.append(row);
+            this.$cache.requestsTbody.append(this.create_request_row(account, true));
         });
     }
 
-    show_search_error(msg){ this.page.main.find('.search-loading').hide(); this.page.main.find('.search-error').show(); this.page.main.find('.error-message').text(msg); }
+    show_search_error(msg) {
+        this.$cache.searchLoading.hide();
+        this.$cache.searchError.show();
+        this.page.main.find('.error-message').text(msg);
+    }
 
-    formatPhone(phone){ return phone ? phone.replace(/^(\d{3})(\d{3})(\d{2})(\d{2})$/,'+$1 $2 $3 $4') : '-'; }
-    formatDateTime(dt){ return dt ? frappe.datetime.str_to_user(dt) : '-'; }
+    formatPhone(phone) {
+        if (!phone) return '-';
+        return phone.replace(/^(\d{3})(\d{3})(\d{2})(\d{2})$/, '+$1 $2 $3 $4');
+    }
+
+    formatDateTime(dt) {
+        return dt ? frappe.datetime.str_to_user(dt) : '-';
+    }
 }

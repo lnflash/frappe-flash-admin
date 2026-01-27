@@ -872,8 +872,11 @@ class FlashAccountManager {
 
     create_request_row(req, showActions = true) {
         const levelBadge = getLevelBadgeClass(req.requested_level);
-        const statusBadge = getStatusBadgeClass(req.status);
-        const isPending = req.status === AccountStatus.PENDING;
+        const isProUpgrade = req.requested_level === AccountLevels.PRO;
+        // PRO upgrades are auto-approved, so treat them as approved
+        const displayStatus = isProUpgrade ? AccountStatus.APPROVED : (req.status || AccountStatus.PENDING);
+        const statusBadge = getStatusBadgeClass(displayStatus);
+        const isPending = req.status === AccountStatus.PENDING && !isProUpgrade;
 
         const actionsHtml = showActions && isPending
             ? `<td style="text-align:center;">
@@ -888,7 +891,7 @@ class FlashAccountManager {
                 <td>${this.formatPhone(req.phone_number)}</td>
                 <td><span class="modern-badge ${levelBadge}">${getAccountLevelLabel(req.requested_level)}</span></td>
                 <td>${this.formatDateTime(req.creation)}</td>
-                <td><span class="modern-badge ${statusBadge}">${req.status || AccountStatus.PENDING}</span></td>
+                <td><span class="modern-badge ${statusBadge}">${displayStatus}</span></td>
                 ${actionsHtml}
             </tr>
         `);
@@ -990,7 +993,10 @@ class FlashAccountManager {
 
         const approveBtn = panel.find('.btn-approve');
         const rejectBtn = panel.find('.btn-reject');
-        if (req.status === AccountStatus.PENDING) {
+        const isProUpgrade = req.requested_level === AccountLevels.PRO;
+
+        // Show buttons only for pending non-PRO requests (PRO upgrades are auto-approved)
+        if (req.status === AccountStatus.PENDING && !isProUpgrade) {
             approveBtn.show();
             rejectBtn.show();
         } else {
@@ -1049,10 +1055,11 @@ class FlashAccountManager {
         }
 
         // Request info
+        const detailStatus = isProUpgrade ? AccountStatus.APPROVED : (req.status || '-');
         panel.find('.detail-current-level').text(getAccountLevelLabel(req.current_level) || '-');
         panel.find('.detail-requested-level').text(getAccountLevelLabel(req.requested_level) || '-');
-        panel.find('.detail-status').text(getAccountLevelLabel(req.status) || '-');
-        panel.find('.detail-approved-by').text(getAccountLevelLabel(req.approved_by) || '-');
+        panel.find('.detail-status').text(detailStatus);
+        panel.find('.detail-approved-by').text(req.approved_by || '-');
         panel.find('.detail-submitted').text(this.formatDateTime(req.creation));
         panel.find('.detail-approval-date').text(this.formatDateTime(req.approval_date));
         panel.find('.detail-request-id').text(req.name);
@@ -1066,30 +1073,50 @@ class FlashAccountManager {
         }
     }
 
-    approve_request(req){ 
-        if(!req) return; 
+    approve_request(req) {
+        if (!req) return;
+        const levelLabel = getAccountLevelLabel(req.requested_level);
         frappe.confirm(
-            `Are you sure you want to approve the upgrade request for ${req.username}?`,
+            `Are you sure you want to approve the upgrade request for ${req.username}? This will update the account level to ${levelLabel}.`,
             () => frappe.call({
                 method: 'admin_panel.api.admin_api.approve_upgrade_request',
                 args: { request_id: req.name },
                 freeze: true,
-                freeze_message: "Approving request...",
+                freeze_message: "Approving request and updating account level...",
                 callback: (r) => {
-                    if (!r.exc) {
-                        frappe.msgprint("Request approved successfully");
+                    const result = r.message || {};
+                    if (result.success) {
+                        frappe.msgprint({
+                            title: 'Success',
+                            indicator: 'green',
+                            message: result.message || "Request approved and account level updated."
+                        });
                         this.close_details();
                         this.load_upgrade_requests();
+                    } else if (result.error || result.errors) {
+                        const errorMsg = result.error || result.errors?.join(', ') || 'Unknown error';
+                        frappe.msgprint({
+                            title: 'Error',
+                            indicator: 'red',
+                            message: errorMsg
+                        });
                     }
+                },
+                error: (err) => {
+                    frappe.msgprint({
+                        title: 'Error',
+                        indicator: 'red',
+                        message: err.message || 'Failed to approve request'
+                    });
                 }
             })
-        )
+        );
     }
-    
-    reject_request(req){
-        if(!req) return;
 
-        let d = new frappe.ui.Dialog({
+    reject_request(req) {
+        if (!req) return;
+
+        const d = new frappe.ui.Dialog({
             title: "Reject Upgrade Request",
             fields: [
                 {
@@ -1107,13 +1134,32 @@ class FlashAccountManager {
                     freeze: true,
                     freeze_message: "Rejecting request...",
                     callback: (r) => {
-                        if (!r.exc) {
-                            frappe.msgprint("Request rejected");
+                        const result = r.message || {};
+                        if (result.success) {
+                            frappe.msgprint({
+                                title: 'Request Rejected',
+                                indicator: 'orange',
+                                message: result.message || "Request rejected."
+                            });
                             this.close_details();
                             this.load_upgrade_requests();
+                        } else if (result.error || result.errors) {
+                            const errorMsg = result.error || result.errors?.join(', ') || 'Unknown error';
+                            frappe.msgprint({
+                                title: 'Error',
+                                indicator: 'red',
+                                message: errorMsg
+                            });
                         }
+                    },
+                    error: (err) => {
+                        frappe.msgprint({
+                            title: 'Error',
+                            indicator: 'red',
+                            message: err.message || 'Failed to reject request'
+                        });
                     }
-                })
+                });
                 d.hide();
             }
         });

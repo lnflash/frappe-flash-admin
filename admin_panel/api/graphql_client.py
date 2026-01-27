@@ -124,15 +124,24 @@ class GraphQLClient:
 	"""
 
 	UPDATE_LEVEL_MUTATION = """
-		mutation accountUpdateLevel($input: AccountUpdateLevelInput!) {
+		mutation AccountUpdateLevel($input: AccountUpdateLevelInput!) {
 			accountUpdateLevel(input: $input) {
-				errors {
-					message
-				}
 				accountDetails {
 					id
-					username
 					level
+					status
+					username
+					owner {
+						phone
+						email {
+							address
+						}
+					}
+				}
+				errors {
+					message
+					code
+					path
 				}
 			}
 		}

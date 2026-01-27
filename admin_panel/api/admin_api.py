@@ -159,36 +159,44 @@ def search_account(id: str):
 @frappe.whitelist()
 @handle_api_errors
 def approve_upgrade_request(request_id):
-	"""Approve an account upgrade request"""
+	"""Approve an account upgrade request and update account level via GraphQL"""
 	req = frappe.get_doc("Account Upgrade Request", request_id)
 
+	# Get account details to retrieve the UID
+	client = GraphQLClient()
+	account = client.get_account_by_phone(req.phone_number)
+	if not account:
+		frappe.response['http_status_code'] = 404
+		return {"success": False, "error": "Account not found in external system"}
+
+	# Update account level via GraphQL (ZERO, ONE, TWO, THREE)
+	result = client.update_account_level(
+		uid=account['id'],
+		level=req.requested_level
+	)
+
+	if result.get('errors'):
+		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
+		frappe.response['http_status_code'] = 400
+		return {"success": False, "errors": error_messages}
+
+	# Update local request record
 	req.status = "Approved"
 	req.approved_by = frappe.session.user
 	req.approval_date = frappe.utils.now_datetime()
 	req.save()
 
-	# Create bank account if all bank details are provided
-	bank_fields = [req.bank_name, req.bank_branch, req.account_type, req.currency, req.account_number]
-	if all(bank_fields):
-		frappe.get_doc({
-			"doctype": "Bank Account",
-			"account_name": f"{req.username}-{req.bank_name}",
-			"bank": req.bank_name,
-			"account_type": req.account_type,
-			"branch_code": req.bank_branch,
-			"bank_account_no": req.account_number
-		}).insert()
-
 	frappe.db.commit()
-	return {"success": True, "message": "Request approved and user level updated."}
+	return {"success": True, "message": "Request approved and account level updated."}
 
 
 @frappe.whitelist()
 @handle_api_errors
 def reject_upgrade_request(request_id, reason=None):
-	"""Reject an account upgrade request"""
+	"""Reject an account upgrade request (local record only, no level change)"""
 	req = frappe.get_doc("Account Upgrade Request", request_id)
 
+	# Update local request record only - rejection doesn't change account level
 	req.status = "Rejected"
 	req.rejection_reason = reason or "No reason provided"
 	req.approved_by = frappe.session.user

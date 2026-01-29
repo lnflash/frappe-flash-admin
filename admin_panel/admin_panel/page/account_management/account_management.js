@@ -625,18 +625,22 @@ class FlashAccountManager {
                                         <span class="detail-value detail-username"></span>
                                     </div>
                                     <div class="detail-item">
+                                        <span class="detail-label">Full Name</span>
+                                        <span class="detail-value detail-fullname"></span>
+                                    </div>
+                                    <div class="detail-item">
                                         <span class="detail-label">Phone</span>
                                         <span class="detail-value detail-phone"></span>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="detail-item">
-                                        <span class="detail-label">Full Name</span>
-                                        <span class="detail-value detail-fullname"></span>
-                                    </div>
-                                    <div class="detail-item">
                                         <span class="detail-label">Email</span>
                                         <span class="detail-value detail-email"></span>
+                                    </div>
+                                    <div class="detail-item id-document-item" style="display: none;">
+                                        <span class="detail-label">ID Document</span>
+                                        <span class="detail-value detail-id-document"></span>
                                     </div>
                                 </div>
                             </div>
@@ -697,10 +701,6 @@ class FlashAccountManager {
                                     <div class="detail-item">
                                         <span class="detail-label">Account Type</span>
                                         <span class="detail-value detail-account-type"></span>
-                                    </div>
-                                    <div class="detail-item">
-                                        <span class="detail-label">ID Document</span>
-                                        <span class="detail-value detail-id-document"></span>
                                     </div>
                                 </div>
                             </div>
@@ -1027,31 +1027,37 @@ class FlashAccountManager {
             panel.find('.business-info').hide();
         }
 
-        // Bank info
-        if (req.requested_level === AccountLevels.MERCHANT) {
-            panel.find('.detail-bank-name').text(req.bank_name || '-');
-            panel.find('.detail-account-number').text(req.account_number || '-');
-            panel.find('.detail-account-type').text(req.account_type || '-');
-            panel.find('.detail-bank-branch').text(req.bank_branch || '-');
-            panel.find('.detail-currency').text(req.currency || '-');
+        // ID Document (PRO and MERCHANT)
+        const idDocItem = panel.find('.id-document-item');
+        if (req.requested_level === AccountLevels.PRO || req.requested_level === AccountLevels.MERCHANT) {
             const idDocEl = panel.find('.detail-id-document');
             idDocEl.empty();
-                    
+
             if (req.id_document) {
                 idDocEl.html(`
                     <button class="btn btn-sm btn-secondary btn-view-id-doc" disabled>
                         <i class="fa fa-spinner fa-spin"></i> Loading...
                     </button>
                 `);
-
-                // Pre-fetch the document URL when details panel is rendered
                 this.prefetch_id_document_url(req.id_document, idDocEl);
             } else {
                 idDocEl.text('-');
             }
-            panel.find('.detail-section:has(.fa-bank)').show();
+            idDocItem.show();
         } else {
-            panel.find('.detail-section:has(.fa-bank)').hide();
+            idDocItem.hide();
+        }
+
+        // Bank info (MERCHANT only)
+        if (req.requested_level === AccountLevels.MERCHANT) {
+            panel.find('.detail-bank-name').text(req.bank_name || '-');
+            panel.find('.detail-account-number').text(req.account_number || '-');
+            panel.find('.detail-account-type').text(req.account_type || '-');
+            panel.find('.detail-bank-branch').text(req.bank_branch || '-');
+            panel.find('.detail-currency').text(req.currency || '-');
+            panel.find('.bank-info-section').show();
+        } else {
+            panel.find('.bank-info-section').hide();
         }
 
         // Request info

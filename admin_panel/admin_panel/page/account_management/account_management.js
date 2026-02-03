@@ -672,8 +672,8 @@ class FlashAccountManager {
                             </div>
                         </div>
 
-                        <!-- Bank Information -->
-                        <div class="detail-section mb-4">
+                        <!-- Bank Information (optional for PRO, required for MERCHANT) -->
+                        <div class="detail-section bank-info-section mb-4" style="display: none;">
                             <h6 class="section-header">
                                 <i class="fa fa-bank" style="margin-right: 8px; color: var(--color-primary);"></i>
                                 Bank Information
@@ -1048,8 +1048,12 @@ class FlashAccountManager {
             idDocItem.hide();
         }
 
-        // Bank info (MERCHANT only)
-        if (req.requested_level === AccountLevels.MERCHANT) {
+        // Bank info (required for MERCHANT, optional for PRO)
+        const hasBankInfo = req.bank_name || req.account_number || req.bank_branch;
+        const showBankInfo = req.requested_level === AccountLevels.MERCHANT ||
+                            (req.requested_level === AccountLevels.PRO && hasBankInfo);
+
+        if (showBankInfo) {
             panel.find('.detail-bank-name').text(req.bank_name || '-');
             panel.find('.detail-account-number').text(req.account_number || '-');
             panel.find('.detail-account-type').text(req.account_type || '-');

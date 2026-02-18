@@ -47,6 +47,7 @@ const ACCOUNT_LEVEL_MAP = {
 };
 
 const LEVEL_BADGE_MAP = {
+    [AccountLevels.TRIAL]: 'badge-trial',
     [AccountLevels.PERSONAL]: 'badge-personal',
     [AccountLevels.PRO]: 'badge-business',
     [AccountLevels.MERCHANT]: 'badge-merchant'
@@ -58,14 +59,12 @@ const STATUS_BADGE_MAP = {
     [AccountStatus.PENDING]: 'badge-pending'
 };
 
-const accountLevels = Object.entries(ACCOUNT_LEVEL_MAP).map(([value, label]) => ({ label, value }));
-
 function getAccountLevelLabel(level) {
     return ACCOUNT_LEVEL_MAP[level] || level;
 }
 
 function getLevelBadgeClass(level) {
-    return LEVEL_BADGE_MAP[level] || 'badge-merchant';
+    return LEVEL_BADGE_MAP[level] || 'badge-trial';
 }
 
 function getStatusBadgeClass(status) {
@@ -87,7 +86,6 @@ function debounce(func, wait) {
 class FlashAccountManager {
     constructor(page) {
         this.page = page;
-        this.current_account_data = null;
         this.selected_request = null;
         this.upgrade_requests = [];
         this.current_page = 1;
@@ -127,13 +125,11 @@ class FlashAccountManager {
             <style>
                 .flash-account-manager {
                     --color-primary: #007856;
-                    --color-accent: #E8D315;
                     --color-background: #F1F1F1;
                     --color-layer: #FFFFFF;
                     --color-text01: #212121;
                     --color-text02: #939998;
                     --color-border01: #DDE3E1;
-                    --color-button01: #002118;
                     --color-green: #00A700;
                     --color-error: #DC2626;
                     --color-warning: #F59E0B;
@@ -151,13 +147,6 @@ class FlashAccountManager {
                     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
                     border: 1px solid var(--color-border01);
                     margin-bottom: 24px;
-                }
-                
-                .search-title {
-                    font-size: 18px;
-                    font-weight: 600;
-                    color: var(--color-text01);
-                    margin-bottom: 16px;
                 }
                 
                 .modern-search-wrapper {
@@ -308,6 +297,11 @@ class FlashAccountManager {
                     letter-spacing: 0.5px;
                 }
                 
+                .badge-trial {
+                    background: rgba(148, 163, 159, 0.15);
+                    color: var(--color-text02);
+                }
+
                 .badge-personal {
                     background: rgba(0, 120, 86, 0.1);
                     color: var(--color-primary);
@@ -399,11 +393,6 @@ class FlashAccountManager {
                 
                 @keyframes spin {
                     to { transform: rotate(360deg); }
-                }
-                
-                .modern-btn-icon {
-                    width: 16px;
-                    height: 16px;
                 }
                 
                 .section-header {
@@ -519,16 +508,16 @@ class FlashAccountManager {
                     <div class="modern-search-wrapper">
                         <select id="filter-status" class="modern-search-input modern-search-select">
                             <option value="">Status (All)</option>
-                            <option value=${AccountStatus.PENDING}>Pending</option>
-                            <option value=${AccountStatus.APPROVED}>Approved</option>
-                            <option value=${AccountStatus.REJECTED}>Rejected</option>
+                            <option value="${AccountStatus.PENDING}">Pending</option>
+                            <option value="${AccountStatus.APPROVED}">Approved</option>
+                            <option value="${AccountStatus.REJECTED}">Rejected</option>
                         </select>
                         <select id="filter-level" class="modern-search-input modern-search-select">
                             <option value="">Requested Level (All)</option>
-                            <option value=${AccountLevels.TRIAL}>Trial</option>
-                            <option value=${AccountLevels.PERSONAL}>Personal</option>
-                            <option value=${AccountLevels.PRO}>Pro</option>
-                            <option value=${AccountLevels.MERCHANT}>Merchant</option>
+                            <option value="${AccountLevels.TRIAL}">Trial</option>
+                            <option value="${AccountLevels.PERSONAL}">Personal</option>
+                            <option value="${AccountLevels.PRO}">Pro</option>
+                            <option value="${AccountLevels.MERCHANT}">Merchant</option>
                         </select>
                     </div>
                 </div>
@@ -575,7 +564,7 @@ class FlashAccountManager {
                         </div>
                     </div>
                     <!-- Pagination Controls -->
-                    <div class="pagination-controls" style="display: none; padding: 16px 24px; border-top: 1px solid var(--color-border01); display: flex; justify-content: space-between; align-items: center;">
+                    <div class="pagination-controls" style="display: none; padding: 16px 24px; border-top: 1px solid var(--color-border01); justify-content: space-between; align-items: center;">
                         <div class="pagination-info" style="color: var(--color-text02); font-size: 14px;">
                             Showing <span class="page-start">1</span>-<span class="page-end">10</span> of <span class="total-count">0</span> requests
                         </div>
@@ -721,7 +710,8 @@ class FlashAccountManager {
                                     <div class="detail-item">
                                         <span class="detail-label">Requested Level</span>
                                         <span class="detail-value detail-requested-level"></span>
-                                    </div><div class="detail-item">
+                                    </div>
+                                    <div class="detail-item">
                                         <span class="detail-label">Status</span>
                                         <span class="detail-value detail-status"></span>
                                     </div>
@@ -849,7 +839,14 @@ class FlashAccountManager {
 
     bind_events() {
         const main = this.page.main;
-        const debouncedSearch = debounce(() => this.search(), 300);
+        const debouncedSearch = debounce(() => {
+            if (this.$cache.searchInput.val().trim()) {
+                this.search();
+            } else {
+                this.$cache.searchError.hide();
+                this.load_upgrade_requests();
+            }
+        }, 300);
 
         main.find('.btn-search').on('click', () => this.search());
         this.$cache.searchInput.on('keypress', (e) => { if (e.which === 13) this.search(); });
@@ -872,11 +869,9 @@ class FlashAccountManager {
 
     create_request_row(req, showActions = true) {
         const levelBadge = getLevelBadgeClass(req.requested_level);
-        const isProUpgrade = req.requested_level === AccountLevels.PRO;
-        // PRO upgrades are auto-approved, so treat them as approved
-        const displayStatus = isProUpgrade ? AccountStatus.APPROVED : (req.status || AccountStatus.PENDING);
+        const displayStatus = req.status || AccountStatus.PENDING;
         const statusBadge = getStatusBadgeClass(displayStatus);
-        const isPending = req.status === AccountStatus.PENDING && !isProUpgrade;
+        const isPending = req.status === AccountStatus.PENDING;
 
         const actionsHtml = showActions && isPending
             ? `<td style="text-align:center;">
@@ -904,8 +899,16 @@ class FlashAccountManager {
             }
         });
 
-        row.find('.btn-quick-approve').on('click', (e) => { e.stopPropagation(); this.approve_request(req); });
-        row.find('.btn-quick-reject').on('click', (e) => { e.stopPropagation(); this.reject_request(req); });
+        row.find('.btn-quick-approve').on('click', (e) => {
+            e.stopPropagation();
+            $(e.currentTarget).prop('disabled', true);
+            this.approve_request(req);
+        });
+        row.find('.btn-quick-reject').on('click', (e) => {
+            e.stopPropagation();
+            $(e.currentTarget).prop('disabled', true);
+            this.reject_request(req);
+        });
 
         return row;
     }
@@ -993,10 +996,9 @@ class FlashAccountManager {
 
         const approveBtn = panel.find('.btn-approve');
         const rejectBtn = panel.find('.btn-reject');
-        const isProUpgrade = req.requested_level === AccountLevels.PRO;
 
-        // Show buttons only for pending non-PRO requests (PRO upgrades are auto-approved)
-        if (req.status === AccountStatus.PENDING && !isProUpgrade) {
+        // Show buttons only for pending requests
+        if (req.status === AccountStatus.PENDING) {
             approveBtn.show();
             rejectBtn.show();
         } else {
@@ -1065,7 +1067,7 @@ class FlashAccountManager {
         }
 
         // Request info
-        const detailStatus = isProUpgrade ? AccountStatus.APPROVED : (req.status || '-');
+        const detailStatus = req.status || '-';
         panel.find('.detail-current-level').text(getAccountLevelLabel(req.current_level) || '-');
         panel.find('.detail-requested-level').text(getAccountLevelLabel(req.requested_level) || '-');
         panel.find('.detail-status').text(detailStatus);
@@ -1146,6 +1148,7 @@ class FlashAccountManager {
                     callback: (r) => {
                         const result = r.message || {};
                         if (result.success) {
+                            d.hide();
                             frappe.msgprint({
                                 title: 'Request Rejected',
                                 indicator: 'orange',
@@ -1170,7 +1173,6 @@ class FlashAccountManager {
                         });
                     }
                 });
-                d.hide();
             }
         });
 
@@ -1198,8 +1200,12 @@ class FlashAccountManager {
             args: { id: input },
             callback: (res) => {
                 this.$cache.searchLoading.hide();
-                const results = res.message || [];
-                this.show_search_results(results);
+                const results = res.message;
+                if (!results || results.error) {
+                    this.show_search_error(results?.error || 'Account not found');
+                    return;
+                }
+                this.show_search_results(Array.isArray(results) ? results : []);
             },
             error: (e) => {
                 this.$cache.searchLoading.hide();
@@ -1210,8 +1216,10 @@ class FlashAccountManager {
 
     show_search_results(results) {
         this.$cache.requestsTbody.empty();
+        this.$cache.searchError.hide();
+        this.$cache.paginationControls.hide();
 
-        if (!results.length) {
+        if (!results || !results.length) {
             this.$cache.noRequests.show();
             this.$cache.requestsTable.hide();
             this.show_search_error('No accounts found');

@@ -109,7 +109,7 @@ def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10
 		filters["requested_level"] = requested_level
 
 	page = int(page)
-	page_size = int(page_size)
+	page_size = min(int(page_size), 100)
 	offset = (page - 1) * page_size
 
 	total_count = frappe.db.count("Account Upgrade Request", filters=filters)
@@ -147,7 +147,8 @@ def search_account(id: str):
 		"Account Upgrade Request",
 		filters=[[search_field, "like", f"%{id}%"]],
 		fields=["*"],
-		order_by="creation desc"
+		order_by="creation desc",
+		limit_page_length=50
 	)
 
 	if not results:
@@ -160,7 +161,11 @@ def search_account(id: str):
 @handle_api_errors
 def approve_upgrade_request(request_id):
 	"""Approve an account upgrade request and update account level via GraphQL"""
-	req = frappe.get_doc("Account Upgrade Request", request_id)
+	req = frappe.get_doc("Account Upgrade Request", request_id, for_update=True)
+
+	if req.status != "Pending":
+		frappe.response['http_status_code'] = 400
+		return {"success": False, "error": f"Request has already been {req.status.lower()}"}
 
 	# Get account details to retrieve the UID
 	client = GraphQLClient()
@@ -194,7 +199,11 @@ def approve_upgrade_request(request_id):
 @handle_api_errors
 def reject_upgrade_request(request_id, reason=None):
 	"""Reject an account upgrade request (local record only, no level change)"""
-	req = frappe.get_doc("Account Upgrade Request", request_id)
+	req = frappe.get_doc("Account Upgrade Request", request_id, for_update=True)
+
+	if req.status != "Pending":
+		frappe.response['http_status_code'] = 400
+		return {"success": False, "error": f"Request has already been {req.status.lower()}"}
 
 	# Update local request record only - rejection doesn't change account level
 	req.status = "Rejected"

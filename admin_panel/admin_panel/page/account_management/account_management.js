@@ -36,7 +36,8 @@ const AccountLevels = {
 const AccountStatus = {
     PENDING: "Pending",
     REJECTED: "Rejected",
-    APPROVED: "Approved"
+    APPROVED: "Approved",
+    CLOSED: "Closed"
 };
 
 const ACCOUNT_LEVEL_MAP = {
@@ -56,7 +57,8 @@ const LEVEL_BADGE_MAP = {
 const STATUS_BADGE_MAP = {
     [AccountStatus.APPROVED]: 'badge-approved',
     [AccountStatus.REJECTED]: 'badge-rejected',
-    [AccountStatus.PENDING]: 'badge-pending'
+    [AccountStatus.PENDING]: 'badge-pending',
+    [AccountStatus.CLOSED]: 'badge-closed'
 };
 
 function getAccountLevelLabel(level) {
@@ -331,6 +333,11 @@ class FlashAccountManager {
                     background: #fde2e2;
                     color: #b91c1c;
                 }
+
+                .badge-closed {
+                    background: rgba(100, 116, 139, 0.15);
+                    color: #475569;
+                }
                 
                 .modern-icon-btn {
                     padding: 8px 12px;
@@ -511,6 +518,7 @@ class FlashAccountManager {
                             <option value="${AccountStatus.PENDING}">Pending</option>
                             <option value="${AccountStatus.APPROVED}">Approved</option>
                             <option value="${AccountStatus.REJECTED}">Rejected</option>
+                            <option value="${AccountStatus.CLOSED}">Closed</option>
                         </select>
                         <select id="filter-level" class="modern-search-input modern-search-select">
                             <option value="">Requested Level (All)</option>
@@ -648,13 +656,33 @@ class FlashAccountManager {
                                         <span class="detail-value detail-business-name"></span>
                                     </div>
                                     <div class="detail-item">
-                                        <span class="detail-label">Business Address</span>
-                                        <span class="detail-value detail-business-address"></span>
+                                        <span class="detail-label">Address Line 1</span>
+                                        <span class="detail-value detail-address-line1"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Address Line 2</span>
+                                        <span class="detail-value detail-address-line2"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">City</span>
+                                        <span class="detail-value detail-city"></span>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="detail-item">
-                                        <span class="detail-label">Terminal Requested</span>
+                                        <span class="detail-label">State</span>
+                                        <span class="detail-value detail-state"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Postal Code</span>
+                                        <span class="detail-value detail-pincode"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Country</span>
+                                        <span class="detail-value detail-country"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Terminals Requested</span>
                                         <span class="detail-value detail-terminal-requested"></span>
                                     </div>
                                 </div>
@@ -715,23 +743,15 @@ class FlashAccountManager {
                                         <span class="detail-label">Status</span>
                                         <span class="detail-value detail-status"></span>
                                     </div>
-                                    <div class="detail-item">
-                                        <span class="detail-label">Approved/Rejected By</span>
-                                        <span class="detail-value detail-approved-by"></span>
-                                    </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="detail-item">
-                                        <span class="detail-label">Request ID</span>    
+                                        <span class="detail-label">Request ID</span>
                                         <span class="detail-value detail-request-id"></span>
                                     </div>
                                     <div class="detail-item">
                                         <span class="detail-label">Submitted</span>
                                         <span class="detail-value detail-submitted"></span>
-                                    </div>
-                                    <div class="detail-item">
-                                        <span class="detail-label">Approval/Rejection Date</span>
-                                        <span class="detail-value detail-approval-date"></span>
                                     </div>
                                 </div>
                             </div>
@@ -997,7 +1017,7 @@ class FlashAccountManager {
         const approveBtn = panel.find('.btn-approve');
         const rejectBtn = panel.find('.btn-reject');
 
-        // Show buttons only for pending requests
+        // Show buttons only for pending requests (not approved, rejected, or closed)
         if (req.status === AccountStatus.PENDING) {
             approveBtn.show();
             rejectBtn.show();
@@ -1022,9 +1042,14 @@ class FlashAccountManager {
         // Business info
         if (req.requested_level === AccountLevels.PRO || req.requested_level === AccountLevels.MERCHANT) {
             panel.find('.business-info').show();
-            panel.find('.detail-business-name').text(req.business_name || '-');
-            panel.find('.detail-business-address').text(req.business_address || '-');
-            panel.find('.detail-terminal-requested').text(req.terminal_requested ? 'Yes' : 'No');
+            panel.find('.detail-business-name').text(req.address_title || '-');
+            panel.find('.detail-address-line1').text(req.address_line1 || '-');
+            panel.find('.detail-address-line2').text(req.address_line2 || '-');
+            panel.find('.detail-city').text(req.city || '-');
+            panel.find('.detail-state').text(req.state || '-');
+            panel.find('.detail-pincode').text(req.pincode || '-');
+            panel.find('.detail-country').text(req.country || '-');
+            panel.find('.detail-terminal-requested').text(req.terminal_requested ?? '-');
         } else {
             panel.find('.business-info').hide();
         }
@@ -1067,13 +1092,10 @@ class FlashAccountManager {
         }
 
         // Request info
-        const detailStatus = req.status || '-';
         panel.find('.detail-current-level').text(getAccountLevelLabel(req.current_level) || '-');
         panel.find('.detail-requested-level').text(getAccountLevelLabel(req.requested_level) || '-');
-        panel.find('.detail-status').text(detailStatus);
-        panel.find('.detail-approved-by').text(req.approved_by || '-');
+        panel.find('.detail-status').text(req.status || '-');
         panel.find('.detail-submitted').text(this.formatDateTime(req.creation));
-        panel.find('.detail-approval-date').text(this.formatDateTime(req.approval_date));
         panel.find('.detail-request-id').text(req.name);
         panel.find('.detail-rejection-reason').text(req.rejection_reason);
 

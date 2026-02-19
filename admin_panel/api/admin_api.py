@@ -187,8 +187,6 @@ def approve_upgrade_request(request_id):
 
 	# Update local request record
 	req.status = "Approved"
-	req.approved_by = frappe.session.user
-	req.approval_date = frappe.utils.now_datetime()
 	req.save()
 
 	frappe.db.commit()
@@ -208,8 +206,6 @@ def reject_upgrade_request(request_id, reason=None):
 	# Update local request record only - rejection doesn't change account level
 	req.status = "Rejected"
 	req.rejection_reason = reason or "No reason provided"
-	req.approved_by = frappe.session.user
-	req.approval_date = frappe.utils.now_datetime()
 	req.save()
 
 	frappe.db.commit()

@@ -157,6 +157,110 @@ def search_account(id: str):
 
 	return results
 
+def _create_erp_records(req):
+	"""Create Customer, Address, and Bank Account from upgrade request data.
+	Returns a list of warning strings for any records that failed to create.
+	Failures are non-fatal — the approval itself is not rolled back.
+	"""
+	warnings = []
+	customer_name = None
+
+	# 1. Create Customer
+	try:
+		# Avoid duplicates: check by phone number first
+		existing = frappe.db.get_value("Customer", {"mobile_no": req.phone_number}, "name")
+		if existing:
+			customer_name = existing
+		else:
+			customer = frappe.get_doc({
+				"doctype": "Customer",
+				"customer_name": req.full_name,
+				"customer_type": "Company" if req.address_title else "Individual",
+				"mobile_no": req.phone_number,
+				"email_id": req.email or "",
+			})
+			customer.insert(ignore_permissions=True)
+			customer_name = customer.name
+	except Exception as e:
+		frappe.log_error(frappe.get_traceback(), f"Customer creation failed for request {req.name}")
+		warnings.append(f"Customer: {e}")
+		# Address and Bank Account depend on Customer — skip them
+		return warnings
+
+	# 2. Create Address (requires at minimum address_line1, city, country)
+	if req.address_line1 and req.city and req.country:
+		try:
+			# Check if an identical address already exists for this customer
+			existing_addresses = frappe.get_all(
+				"Address",
+				filters=[
+					["Dynamic Link", "link_doctype", "=", "Customer"],
+					["Dynamic Link", "link_name", "=", customer_name],
+				],
+				fields=["address_line1", "address_line2", "city", "state", "pincode", "country"]
+			)
+			address_unchanged = any(
+				(a.address_line1 or "") == (req.address_line1 or "")
+				and (a.address_line2 or "") == (req.address_line2 or "")
+				and (a.city or "") == (req.city or "")
+				and (a.state or "") == (req.state or "")
+				and (a.pincode or "") == (req.pincode or "")
+				and (a.country or "") == (req.country or "")
+				for a in existing_addresses
+			)
+			if not address_unchanged:
+				address = frappe.get_doc({
+					"doctype": "Address",
+					"address_title": req.address_title or req.full_name,
+					"address_type": "Billing",
+					"address_line1": req.address_line1,
+					"address_line2": req.address_line2 or "",
+					"city": req.city,
+					"state": req.state or "",
+					"pincode": req.pincode or "",
+					"country": req.country,
+					"links": [{
+						"link_doctype": "Customer",
+						"link_name": customer_name,
+					}],
+				})
+				address.insert(ignore_permissions=True)
+		except Exception as e:
+			frappe.log_error(frappe.get_traceback(), f"Address creation failed for request {req.name}")
+			warnings.append(f"Address: {e}")
+
+	# 3. Create Bank Account (requires bank_name and account_number)
+	if req.bank_name and req.account_number:
+		try:
+			# Get or create the Bank record (Bank autonames from bank_name)
+			if not frappe.db.exists("Bank", req.bank_name):
+				frappe.get_doc({
+					"doctype": "Bank",
+					"bank_name": req.bank_name,
+				}).insert(ignore_permissions=True)
+
+			# Avoid duplicate bank accounts for the same account number
+			if not frappe.db.exists("Bank Account", {"bank_account_no": req.account_number}):
+				bank_account = frappe.get_doc({
+					"doctype": "Bank Account",
+					"account_name": req.address_title or req.full_name,
+					"bank": req.bank_name,
+					"bank_account_no": req.account_number,
+					"branch_code": req.bank_branch or "",
+					"account_type": req.account_type or "",
+					"currency": req.currency or "",
+					"is_company_account": 0,
+					"party_type": "Customer",
+					"party": customer_name,
+				})
+				bank_account.insert(ignore_permissions=True)
+		except Exception as e:
+			frappe.log_error(frappe.get_traceback(), f"Bank Account creation failed for request {req.name}")
+			warnings.append(f"Bank Account: {e}")
+
+	return warnings
+
+
 @frappe.whitelist()
 @handle_api_errors
 def approve_upgrade_request(request_id):
@@ -188,9 +292,21 @@ def approve_upgrade_request(request_id):
 	# Update local request record
 	req.status = "Approved"
 	req.save()
-
 	frappe.db.commit()
-	return {"success": True, "message": "Request approved and account level updated."}
+
+	# Enqueue ERP record creation in the background — keeps the approve response fast
+	if req.requested_level in ("TWO", "THREE"):
+		frappe.enqueue(
+			"admin_panel.api.admin_api._create_erp_records",
+			req=req,
+			queue="short",
+			now=frappe.flags.in_test,
+		)
+
+	return {
+		"success": True,
+		"message": "Request approved and account level updated.",
+	}
 
 
 @frappe.whitelist()

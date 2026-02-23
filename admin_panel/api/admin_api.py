@@ -1,4 +1,5 @@
 import functools
+import re
 import requests as requests_lib
 import frappe
 from .graphql_client import GraphQLClient, GraphQLError
@@ -140,8 +141,7 @@ def search_account(id: str):
 		return {"error": "Phone number or Username is required"}
 
 	# Determine search field based on input type
-	cleaned_id = ''.join(filter(str.isdigit, id))
-	search_field = "phone_number" if len(cleaned_id) >= 10 else "username"
+	search_field = "phone_number" if len(re.sub(r'\D', '', id)) >= 10 else "username"
 
 	results = frappe.get_all(
 		"Account Upgrade Request",

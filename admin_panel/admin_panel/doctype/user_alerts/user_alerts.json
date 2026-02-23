@@ -1,0 +1,76 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-11-20 20:07:29.944479",
+ "custom": 0,
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "message",
+  "tag",
+  "sent_by",
+  "sent_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Message",
+   "reqd": 1
+  },
+  {
+   "fieldname": "tag",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Tag",
+   "options": "EMERGENCY\nATTENTION\nINFO\nMARKETING",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sent_by",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Sent By",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sent_on",
+   "fieldtype": "Datetime",
+   "label": "Sent On",
+   "reqd": 1
+  }
+ ],
+ "links": [],
+ "modified": "2025-11-20 20:07:29.944479",
+ "modified_by": "Administrator",
+ "module": "Admin Panel",
+ "name": "User Alerts",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

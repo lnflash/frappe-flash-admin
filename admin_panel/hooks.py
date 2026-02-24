@@ -237,10 +237,9 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
-# Add workspace
+after_migrate = ["admin_panel.admin_panel.setup.after_migrate"]
+
 fixtures = [
-    {"doctype": "DocType", "filters": [["module", "=", "Admin Panel"]]},
-    {"doctype": "Page", "filters": [["module", "=", "Admin Panel"]]},
     {"doctype": "Workspace", "filters": [["module", "=", "Admin Panel"]]},
     {"doctype": "Client Script", "filters": [["module", "=", "Admin Panel"]]},
 ]

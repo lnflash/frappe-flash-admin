@@ -1,37 +1,52 @@
 {
  "actions": [],
  "allow_rename": 1,
- "creation": "2025-11-25 20:59:24.458971",
+ "creation": "2026-02-24 07:19:19.089877",
  "custom": 0,
+ "default_view": "List",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
   "current_level",
+  "column_break_pkcw",
   "requested_level",
+  "section_break_swha",
+  "status",
+  "support_note",
+  "user_section",
   "username",
   "full_name",
   "phone_number",
   "email",
-  "business_name",
-  "business_address",
+  "id_document",
+  "business_section",
+  "address_title",
+  "address_line1",
+  "address_line2",
+  "city",
+  "state",
+  "pincode",
+  "country",
   "terminal_requested",
+  "bank_account_section",
   "bank_name",
   "bank_branch",
   "account_type",
-  "currency",
   "account_number",
-  "id_document",
-  "status",
-  "approved_by",
-  "approval_date"
+  "currency"
  ],
  "fields": [
   {
    "fieldname": "current_level",
    "fieldtype": "Select",
    "label": "Current Level",
-   "options": "ZERO\nONE\nTWO\nTHREE"
+   "options": "ZERO\nONE\nTWO\nTHREE",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_pkcw",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "requested_level",
@@ -40,10 +55,33 @@
    "options": "ZERO\nONE\nTWO\nTHREE"
   },
   {
+   "fieldname": "section_break_swha",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "Pending",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Pending\nApproved\nRejected\nClosed"
+  },
+  {
+   "fieldname": "support_note",
+   "fieldtype": "Small Text",
+   "label": "Support Note"
+  },
+  {
+   "fieldname": "user_section",
+   "fieldtype": "Section Break",
+   "label": "User"
+  },
+  {
    "fieldname": "username",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Username",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -57,29 +95,78 @@
    "fieldname": "phone_number",
    "fieldtype": "Phone",
    "label": "Phone Number",
+   "read_only": 1,
    "reqd": 1
   },
   {
    "fieldname": "email",
    "fieldtype": "Data",
    "label": "Email",
-   "options": "Email"
+   "options": "Email",
+   "read_only": 1
   },
   {
-   "fieldname": "business_name",
+   "fieldname": "id_document",
+   "fieldtype": "Attach",
+   "label": "Id Document"
+  },
+  {
+   "fieldname": "business_section",
+   "fieldtype": "Section Break",
+   "label": "Business Details"
+  },
+  {
+   "fieldname": "address_title",
    "fieldtype": "Data",
-   "label": "Business Name"
+   "label": "Business Name",
+   "reqd": 1
   },
   {
-   "fieldname": "business_address",
-   "fieldtype": "Small Text",
-   "label": "Business Address"
+   "fieldname": "address_line1",
+   "fieldtype": "Data",
+   "label": "Address Line 1",
+   "reqd": 1
+  },
+  {
+   "fieldname": "address_line2",
+   "fieldtype": "Data",
+   "label": "Address Line 2"
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "City",
+   "reqd": 1
+  },
+  {
+   "fieldname": "state",
+   "fieldtype": "Data",
+   "label": "State",
+   "reqd": 1
+  },
+  {
+   "fieldname": "pincode",
+   "fieldtype": "Data",
+   "label": "Postal Code"
+  },
+  {
+   "fieldname": "country",
+   "fieldtype": "Link",
+   "label": "Country",
+   "options": "Country",
+   "reqd": 1
   },
   {
    "default": "0",
    "fieldname": "terminal_requested",
-   "fieldtype": "Check",
-   "label": "Terminal Requested"
+   "fieldtype": "Int",
+   "label": "Terminals Requested",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "bank_account_section",
+   "fieldtype": "Section Break",
+   "label": "Bank Account"
   },
   {
    "fieldname": "bank_name",
@@ -93,15 +180,9 @@
   },
   {
    "fieldname": "account_type",
-   "fieldtype": "Select",
-   "label": "Account Type",
-   "options": "Checking\nSavings"
-  },
-  {
-   "fieldname": "currency",
    "fieldtype": "Link",
-   "label": "Currency",
-   "options": "Currency"
+   "label": "Account Type",
+   "options": "Bank Account Type"
   },
   {
    "fieldname": "account_number",
@@ -109,35 +190,15 @@
    "label": "Account Number"
   },
   {
-   "fieldname": "id_document",
-   "fieldtype": "Attach",
-   "label": "Id Document"
-  },
-  {
-   "default": "Pending",
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "label": "Status",
-   "options": "Pending\nApproved\nRejected",
-   "read_only": 1
-  },
-  {
-   "fieldname": "approved_by",
+   "fieldname": "currency",
    "fieldtype": "Link",
-   "label": "Approved/Rejected By",
-   "options": "User",
-   "read_only": 1
-  },
-  {
-   "fieldname": "approval_date",
-   "fieldtype": "Datetime",
-   "label": "Approval/Rejection Date",
-   "read_only": 1
+   "label": "Currency",
+   "options": "Currency"
   }
  ],
+ "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-25 20:59:24.458971",
+ "modified": "2026-02-24 07:25:19.018064",
  "modified_by": "Administrator",
  "module": "Admin Panel",
  "name": "Account Upgrade Request",
@@ -168,6 +229,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": []

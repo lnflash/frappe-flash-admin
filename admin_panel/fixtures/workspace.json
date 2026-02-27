@@ -8,11 +8,13 @@
   "for_user": "",
   "hide_custom": 0,
   "icon": "tool",
+  "indicator_color": null,
   "is_hidden": 0,
   "label": "Admin Panel",
   "links": [
    {
     "dependencies": null,
+    "description": null,
     "hidden": 0,
     "icon": null,
     "is_query_report": 0,
@@ -25,10 +27,12 @@
     "parent": "Admin Panel",
     "parentfield": "links",
     "parenttype": "Workspace",
+    "report_ref_doctype": null,
     "type": "Card Break"
    },
    {
     "dependencies": null,
+    "description": null,
     "hidden": 0,
     "icon": "notification",
     "is_query_report": 0,
@@ -41,10 +45,12 @@
     "parent": "Admin Panel",
     "parentfield": "links",
     "parenttype": "Workspace",
+    "report_ref_doctype": null,
     "type": "Link"
    },
    {
     "dependencies": null,
+    "description": null,
     "hidden": 0,
     "icon": "users",
     "is_query_report": 0,
@@ -57,6 +63,7 @@
     "parent": "Admin Panel",
     "parentfield": "links",
     "parenttype": "Workspace",
+    "report_ref_doctype": null,
     "type": "Link"
    }
   ],
@@ -82,6 +89,7 @@
     "parent": "Admin Panel",
     "parentfield": "shortcuts",
     "parenttype": "Workspace",
+    "report_ref_doctype": null,
     "restrict_to_domain": null,
     "stats_filter": null,
     "type": "Page",
@@ -98,6 +106,7 @@
     "parent": "Admin Panel",
     "parentfield": "shortcuts",
     "parenttype": "Workspace",
+    "report_ref_doctype": null,
     "restrict_to_domain": null,
     "stats_filter": null,
     "type": "Page",

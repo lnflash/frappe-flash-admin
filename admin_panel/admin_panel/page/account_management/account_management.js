@@ -31,39 +31,95 @@ const AccountLevels = {
     PERSONAL: "ONE",
     PRO: "TWO",
     MERCHANT: "THREE"
-}
+};
 
 const AccountStatus = {
     PENDING: "Pending",
     REJECTED: "Rejected",
-    APPROVED: "Approved"
-}
+    APPROVED: "Approved",
+    CLOSED: "Closed"
+};
 
-const accountLevels = [
-    {label: 'Trial', value: AccountLevels.TRIAL},
-    {label: 'Personal', value: AccountLevels.PERSONAL},
-    {label: 'Pro', value: AccountLevels.PRO},
-    {label: 'Merchant', value: AccountLevels.MERCHANT}
-];
+const ACCOUNT_LEVEL_MAP = {
+    [AccountLevels.TRIAL]: 'Trial',
+    [AccountLevels.PERSONAL]: 'Personal',
+    [AccountLevels.PRO]: 'Pro',
+    [AccountLevels.MERCHANT]: 'Merchant'
+};
+
+const LEVEL_BADGE_MAP = {
+    [AccountLevels.TRIAL]: 'badge-trial',
+    [AccountLevels.PERSONAL]: 'badge-personal',
+    [AccountLevels.PRO]: 'badge-business',
+    [AccountLevels.MERCHANT]: 'badge-merchant'
+};
+
+const STATUS_BADGE_MAP = {
+    [AccountStatus.APPROVED]: 'badge-approved',
+    [AccountStatus.REJECTED]: 'badge-rejected',
+    [AccountStatus.PENDING]: 'badge-pending',
+    [AccountStatus.CLOSED]: 'badge-closed'
+};
 
 function getAccountLevelLabel(level) {
-    const levelObj = accountLevels.find(item => item.value === level);
-    return levelObj ? levelObj.label : level;
+    return ACCOUNT_LEVEL_MAP[level] || level;
+}
+
+function getLevelBadgeClass(level) {
+    return LEVEL_BADGE_MAP[level] || 'badge-trial';
+}
+
+function getStatusBadgeClass(status) {
+    return STATUS_BADGE_MAP[status] || 'badge-pending';
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
 }
 
 class FlashAccountManager {
     constructor(page) {
         this.page = page;
-        this.current_account_data = null;
         this.selected_request = null;
         this.upgrade_requests = [];
+        this.current_page = 1;
+        this.page_size = 10;
+        this.total_pages = 1;
+        this.total_count = 0;
+        this.$cache = {};
         this.setup_page();
     }
 
     setup_page() {
         this.create_layout();
+        this.cache_elements();
         this.bind_events();
         this.load_upgrade_requests();
+    }
+
+    cache_elements() {
+        const main = this.page.main;
+        this.$cache = {
+            searchInput: main.find('.search-input'),
+            requestsLoading: main.find('.requests-loading'),
+            requestsTable: main.find('.requests-list table'),
+            noRequests: main.find('.no-requests'),
+            requestDetails: main.find('.request-details'),
+            paginationControls: main.find('.pagination-controls'),
+            requestsTbody: main.find('.requests-tbody'),
+            searchLoading: main.find('.search-loading'),
+            searchError: main.find('.search-error'),
+            filterStatus: main.find('#filter-status'),
+            filterLevel: main.find('#filter-level')
+        };
     }
 
     create_layout() {
@@ -71,13 +127,11 @@ class FlashAccountManager {
             <style>
                 .flash-account-manager {
                     --color-primary: #007856;
-                    --color-accent: #E8D315;
                     --color-background: #F1F1F1;
                     --color-layer: #FFFFFF;
                     --color-text01: #212121;
                     --color-text02: #939998;
                     --color-border01: #DDE3E1;
-                    --color-button01: #002118;
                     --color-green: #00A700;
                     --color-error: #DC2626;
                     --color-warning: #F59E0B;
@@ -95,13 +149,6 @@ class FlashAccountManager {
                     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
                     border: 1px solid var(--color-border01);
                     margin-bottom: 24px;
-                }
-                
-                .search-title {
-                    font-size: 18px;
-                    font-weight: 600;
-                    color: var(--color-text01);
-                    margin-bottom: 16px;
                 }
                 
                 .modern-search-wrapper {
@@ -252,6 +299,11 @@ class FlashAccountManager {
                     letter-spacing: 0.5px;
                 }
                 
+                .badge-trial {
+                    background: rgba(148, 163, 159, 0.15);
+                    color: var(--color-text02);
+                }
+
                 .badge-personal {
                     background: rgba(0, 120, 86, 0.1);
                     color: var(--color-primary);
@@ -281,7 +333,12 @@ class FlashAccountManager {
                     background: #fde2e2;
                     color: #b91c1c;
                 }
-                
+
+                .badge-closed {
+                    background: rgba(100, 116, 139, 0.15);
+                    color: #475569;
+                }
+
                 .modern-icon-btn {
                     padding: 8px 12px;
                     border-radius: 8px;
@@ -343,11 +400,6 @@ class FlashAccountManager {
                 
                 @keyframes spin {
                     to { transform: rotate(360deg); }
-                }
-                
-                .modern-btn-icon {
-                    width: 16px;
-                    height: 16px;
                 }
                 
                 .section-header {
@@ -463,16 +515,17 @@ class FlashAccountManager {
                     <div class="modern-search-wrapper">
                         <select id="filter-status" class="modern-search-input modern-search-select">
                             <option value="">Status (All)</option>
-                            <option value=${AccountStatus.PENDING}>Pending</option>
-                            <option value=${AccountStatus.APPROVED}>Approved</option>
-                            <option value=${AccountStatus.REJECTED}>Rejected</option>
+                            <option value="${AccountStatus.PENDING}">Pending</option>
+                            <option value="${AccountStatus.APPROVED}">Approved</option>
+                            <option value="${AccountStatus.REJECTED}">Rejected</option>
+                            <option value="${AccountStatus.CLOSED}">Closed</option>
                         </select>
                         <select id="filter-level" class="modern-search-input modern-search-select">
                             <option value="">Requested Level (All)</option>
-                            <option value=${AccountLevels.TRIAL}>Trial</option>
-                            <option value=${AccountLevels.PERSONAL}>Personal</option>
-                            <option value=${AccountLevels.PRO}>Pro</option>
-                            <option value=${AccountLevels.MERCHANT}>Merchant</option>
+                            <option value="${AccountLevels.TRIAL}">Trial</option>
+                            <option value="${AccountLevels.PERSONAL}">Personal</option>
+                            <option value="${AccountLevels.PRO}">Pro</option>
+                            <option value="${AccountLevels.MERCHANT}">Merchant</option>
                         </select>
                     </div>
                 </div>
@@ -518,6 +571,29 @@ class FlashAccountManager {
                             </div>
                         </div>
                     </div>
+                    <!-- Pagination Controls -->
+                    <div class="pagination-controls" style="display: none; padding: 16px 24px; border-top: 1px solid var(--color-border01); justify-content: space-between; align-items: center;">
+                        <div class="pagination-info" style="color: var(--color-text02); font-size: 14px;">
+                            Showing <span class="page-start">1</span>-<span class="page-end">10</span> of <span class="total-count">0</span> requests
+                        </div>
+                        <div class="pagination-buttons" style="display: flex; gap: 8px; align-items: center;">
+                            <button class="modern-btn modern-btn-secondary btn-first-page" title="First page" style="padding: 8px 12px;">
+                                <i class="fa fa-angle-double-left"></i>
+                            </button>
+                            <button class="modern-btn modern-btn-secondary btn-prev-page" title="Previous page" style="padding: 8px 12px;">
+                                <i class="fa fa-angle-left"></i>
+                            </button>
+                            <span class="page-indicator" style="padding: 8px 16px; font-weight: 500; color: var(--color-text01);">
+                                Page <span class="current-page">1</span> of <span class="total-pages">1</span>
+                            </span>
+                            <button class="modern-btn modern-btn-secondary btn-next-page" title="Next page" style="padding: 8px 12px;">
+                                <i class="fa fa-angle-right"></i>
+                            </button>
+                            <button class="modern-btn modern-btn-secondary btn-last-page" title="Last page" style="padding: 8px 12px;">
+                                <i class="fa fa-angle-double-right"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Request Details Panel -->
@@ -546,18 +622,22 @@ class FlashAccountManager {
                                         <span class="detail-value detail-username"></span>
                                     </div>
                                     <div class="detail-item">
+                                        <span class="detail-label">Full Name</span>
+                                        <span class="detail-value detail-fullname"></span>
+                                    </div>
+                                    <div class="detail-item">
                                         <span class="detail-label">Phone</span>
                                         <span class="detail-value detail-phone"></span>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="detail-item">
-                                        <span class="detail-label">Full Name</span>
-                                        <span class="detail-value detail-fullname"></span>
-                                    </div>
-                                    <div class="detail-item">
                                         <span class="detail-label">Email</span>
                                         <span class="detail-value detail-email"></span>
+                                    </div>
+                                    <div class="detail-item id-document-item" style="display: none;">
+                                        <span class="detail-label">ID Document</span>
+                                        <span class="detail-value detail-id-document"></span>
                                     </div>
                                 </div>
                             </div>
@@ -576,21 +656,41 @@ class FlashAccountManager {
                                         <span class="detail-value detail-business-name"></span>
                                     </div>
                                     <div class="detail-item">
-                                        <span class="detail-label">Business Address</span>
-                                        <span class="detail-value detail-business-address"></span>
+                                        <span class="detail-label">Address Line 1</span>
+                                        <span class="detail-value detail-address-line1"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Address Line 2</span>
+                                        <span class="detail-value detail-address-line2"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">City</span>
+                                        <span class="detail-value detail-city"></span>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="detail-item">
-                                        <span class="detail-label">Terminal Requested</span>
+                                        <span class="detail-label">State</span>
+                                        <span class="detail-value detail-state"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Postal Code</span>
+                                        <span class="detail-value detail-pincode"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Country</span>
+                                        <span class="detail-value detail-country"></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Terminals Requested</span>
                                         <span class="detail-value detail-terminal-requested"></span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Bank Information -->
-                        <div class="detail-section mb-4">
+                        <!-- Bank Information (optional for PRO, required for MERCHANT) -->
+                        <div class="detail-section bank-info-section mb-4" style="display: none;">
                             <h6 class="section-header">
                                 <i class="fa fa-bank" style="margin-right: 8px; color: var(--color-primary);"></i>
                                 Bank Information
@@ -619,10 +719,6 @@ class FlashAccountManager {
                                         <span class="detail-label">Account Type</span>
                                         <span class="detail-value detail-account-type"></span>
                                     </div>
-                                    <div class="detail-item">
-                                        <span class="detail-label">ID Document</span>
-                                        <span class="detail-value detail-id-document"></span>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -642,27 +738,20 @@ class FlashAccountManager {
                                     <div class="detail-item">
                                         <span class="detail-label">Requested Level</span>
                                         <span class="detail-value detail-requested-level"></span>
-                                    </div><div class="detail-item">
-                                        <span class="detail-label">Status</span>
-                                        <span class="detail-value detail-status"></span>
                                     </div>
                                     <div class="detail-item">
-                                        <span class="detail-label">Approved/Rejected By</span>
-                                        <span class="detail-value detail-approved-by"></span>
+                                        <span class="detail-label">Status</span>
+                                        <span class="detail-value detail-status"></span>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="detail-item">
-                                        <span class="detail-label">Request ID</span>    
+                                        <span class="detail-label">Request ID</span>
                                         <span class="detail-value detail-request-id"></span>
                                     </div>
                                     <div class="detail-item">
                                         <span class="detail-label">Submitted</span>
                                         <span class="detail-value detail-submitted"></span>
-                                    </div>
-                                    <div class="detail-item">
-                                        <span class="detail-label">Approval/Rejection Date</span>
-                                        <span class="detail-value detail-approval-date"></span>
                                     </div>
                                 </div>
                             </div>
@@ -703,90 +792,220 @@ class FlashAccountManager {
         `);
     }
 
+    show_id_document(fileUrl) {
+        const d = new frappe.ui.Dialog({
+            title: 'ID Document',
+            size: 'large',
+            fields: [
+                {
+                    fieldtype: 'HTML',
+                    fieldname: 'preview',
+                }
+            ],
+            primary_action_label: 'Close',
+            primary_action() {
+                d.hide();
+            }
+        });
+
+        d.fields_dict.preview.$wrapper.html(`
+                <div style="text-align:center;">
+                    <img
+                        src="${fileUrl}"
+                        style="
+                            max-width: 100%;
+                            max-height: 70vh;
+                            border-radius: 10px;
+                            border: 1px solid #DDE3E1;
+                        "
+                    />
+                </div>
+            `);
+        d.show();
+    }
+
+    prefetch_id_document_url(fileKey, containerEl) {
+        frappe.call({
+            method: 'admin_panel.api.admin_api.get_id_document_url',
+            args: { file_key: fileKey },
+            callback: (response) => {
+                if (response.message && response.message.success) {
+                    const preSignedUrl = response.message.url;
+                    containerEl.html(`
+                        <button class="btn btn-sm btn-secondary btn-view-id-doc">
+                            <i class="fa fa-eye"></i> View document
+                        </button>
+                    `);
+                    containerEl.find('.btn-view-id-doc').on('click', () => {
+                        this.show_id_document(preSignedUrl);
+                    });
+                } else {
+                    containerEl.html(`
+                        <button class="btn btn-sm btn-danger btn-view-id-doc" disabled>
+                            <i class="fa fa-exclamation-triangle"></i> Failed to load
+                        </button>
+                    `);
+                }
+            },
+            error: () => {
+                containerEl.html(`
+                    <button class="btn btn-sm btn-danger btn-view-id-doc" disabled>
+                        <i class="fa fa-exclamation-triangle"></i> Failed to load
+                    </button>
+                `);
+            }
+        });
+    }
+
     bind_events() {
         const main = this.page.main;
+        const debouncedSearch = debounce(() => {
+            if (this.$cache.searchInput.val().trim()) {
+                this.search();
+            } else {
+                this.$cache.searchError.hide();
+                this.load_upgrade_requests();
+            }
+        }, 300);
 
         main.find('.btn-search').on('click', () => this.search());
-        main.find('.search-input').on('keypress', (e) => { if(e.which===13) this.search(); });
+        this.$cache.searchInput.on('keypress', (e) => { if (e.which === 13) this.search(); });
+        this.$cache.searchInput.on('input', debouncedSearch);
 
         main.find('.btn-refresh').on('click', () => this.load_upgrade_requests());
-        main.find('.btn-close-details').on('click', () => main.find('.request-details').hide());
+        main.find('.btn-close-details').on('click', () => this.$cache.requestDetails.hide());
         main.find('.btn-approve').on('click', () => this.approve_request(this.selected_request));
         main.find('.btn-reject').on('click', () => this.reject_request(this.selected_request));
-        
-        main.find('#filter-status').on('change', () => this.load_upgrade_requests());
-        main.find('#filter-level').on('change', () => this.load_upgrade_requests());
+
+        this.$cache.filterStatus.on('change', () => { this.current_page = 1; this.load_upgrade_requests(); });
+        this.$cache.filterLevel.on('change', () => { this.current_page = 1; this.load_upgrade_requests(); });
+
+        // Pagination events
+        main.find('.btn-first-page').on('click', () => this.go_to_page(1));
+        main.find('.btn-prev-page').on('click', () => this.go_to_page(this.current_page - 1));
+        main.find('.btn-next-page').on('click', () => this.go_to_page(this.current_page + 1));
+        main.find('.btn-last-page').on('click', () => this.go_to_page(this.total_pages));
+    }
+
+    create_request_row(req, showActions = true) {
+        const levelBadge = getLevelBadgeClass(req.requested_level);
+        const displayStatus = req.status || AccountStatus.PENDING;
+        const statusBadge = getStatusBadgeClass(displayStatus);
+        const isPending = req.status === AccountStatus.PENDING;
+
+        const actionsHtml = showActions && isPending
+            ? `<td style="text-align:center;">
+                <button class="modern-icon-btn modern-icon-btn-success btn-quick-approve" data-request-id="${req.name}" title="Approve"><i class="fa fa-check"></i></button>
+                <button class="modern-icon-btn modern-icon-btn-danger btn-quick-reject" data-request-id="${req.name}" title="Reject"><i class="fa fa-times"></i></button>
+               </td>`
+            : `<td style="text-align:center;"><span>-</span></td>`;
+
+        const row = $(`
+            <tr class="request-row" data-request-id="${req.name}">
+                <td><strong>${req.username || '-'}</strong></td>
+                <td>${this.formatPhone(req.phone_number)}</td>
+                <td><span class="modern-badge ${levelBadge}">${getAccountLevelLabel(req.requested_level)}</span></td>
+                <td>${this.formatDateTime(req.creation)}</td>
+                <td><span class="modern-badge ${statusBadge}">${displayStatus}</span></td>
+                ${actionsHtml}
+            </tr>
+        `);
+
+        row.on('click', (e) => {
+            if (!$(e.target).closest('button').length) {
+                this.page.main.find('.request-row').removeClass('selected');
+                row.addClass('selected');
+                this.show_request_details(req);
+            }
+        });
+
+        row.find('.btn-quick-approve').on('click', (e) => {
+            e.stopPropagation();
+            $(e.currentTarget).prop('disabled', true);
+            this.approve_request(req);
+        });
+        row.find('.btn-quick-reject').on('click', (e) => {
+            e.stopPropagation();
+            $(e.currentTarget).prop('disabled', true);
+            this.reject_request(req);
+        });
+        return row;
+    }
+
+    go_to_page(page) {
+        if (page < 1 || page > this.total_pages) return;
+        this.current_page = page;
+        this.load_upgrade_requests();
     }
 
     load_upgrade_requests() {
-        const main = this.page.main;
-        main.find('.requests-loading').show();
-        main.find('.requests-list table').hide();
-        main.find('.no-requests').hide();
-        main.find('.request-details').hide();
+        this.$cache.requestsLoading.show();
+        this.$cache.requestsTable.hide();
+        this.$cache.noRequests.hide();
+        this.$cache.requestDetails.hide();
+        this.$cache.paginationControls.hide();
 
         frappe.call({
             method: 'admin_panel.api.admin_api.get_upgrade_requests',
             args: {
-                status: this.page.main.find('#filter-status').val(),
-                requested_level: this.page.main.find('#filter-level').val(),
+                status: this.$cache.filterStatus.val(),
+                requested_level: this.$cache.filterLevel.val(),
+                page: this.current_page,
+                page_size: this.page_size
             },
             callback: (response) => {
-                main.find('.requests-loading').hide();
-                this.upgrade_requests = response.message || [];
+                this.$cache.requestsLoading.hide();
+                const result = response.message || {};
+                this.upgrade_requests = result.data || [];
+                this.total_count = result.total || 0;
+                this.total_pages = result.total_pages || 1;
+                this.current_page = result.page || 1;
                 this.render_requests();
+                this.update_pagination();
             },
             error: () => {
-                main.find('.requests-loading').hide();
+                this.$cache.requestsLoading.hide();
                 frappe.show_alert({ message: 'Failed to load upgrade requests', indicator: 'red' }, 5);
             }
         });
     }
 
-    render_requests() {
-        const tbody = this.page.main.find('.requests-tbody');
-        tbody.empty();
-
-        if (this.upgrade_requests.length === 0) {
-            this.page.main.find('.requests-list table').hide();
-            this.page.main.find('.no-requests').show();
+    update_pagination() {
+        if (this.total_count === 0) {
+            this.$cache.paginationControls.hide();
             return;
         }
 
-        this.page.main.find('.requests-list table').show();
-        this.page.main.find('.no-requests').hide();
+        this.$cache.paginationControls.css('display', 'flex');
+
+        const start = (this.current_page - 1) * this.page_size + 1;
+        const end = Math.min(this.current_page * this.page_size, this.total_count);
+        const main = this.page.main;
+
+        main.find('.page-start').text(start);
+        main.find('.page-end').text(end);
+        main.find('.total-count').text(this.total_count);
+        main.find('.current-page').text(this.current_page);
+        main.find('.total-pages').text(this.total_pages);
+
+        main.find('.btn-first-page, .btn-prev-page').prop('disabled', this.current_page <= 1);
+        main.find('.btn-next-page, .btn-last-page').prop('disabled', this.current_page >= this.total_pages);
+    }
+
+    render_requests() {
+        this.$cache.requestsTbody.empty();
+
+        if (this.upgrade_requests.length === 0) {
+            this.$cache.requestsTable.hide();
+            this.$cache.noRequests.show();
+            return;
+        }
+
+        this.$cache.requestsTable.show();
+        this.$cache.noRequests.hide();
 
         this.upgrade_requests.forEach((req) => {
-            const badgeClass = req.requested_level=== AccountLevels.PERSONAL?'badge-personal': req.requested_level===AccountLevels.PRO?'badge-business':'badge-merchant';
-            const statusBadge = req.status === AccountStatus.APPROVED ? "badge-approved" : req.status === AccountStatus.REJECTED ? "badge-rejected" : "badge-pending";
-            const row = $(`
-                <tr class="request-row" data-request-id="${req.name}">
-                    <td><strong>${req.username || '-'}</strong></td>
-                    <td>${this.formatPhone(req.phone_number)}</td>
-                    <td><span class="modern-badge ${badgeClass}">${getAccountLevelLabel(req.requested_level)}</span></td>
-                    <td>${this.formatDateTime(req.creation)}</td>
-                    <td><span class="modern-badge ${statusBadge}">${req.status || AccountStatus.PENDING}</span></td>
-                    ${ req.status === AccountStatus.PENDING ? 
-                        `<td style="text-align:center;">
-                            <button class="modern-icon-btn modern-icon-btn-success btn-quick-approve" data-request-id="${req.name}" title="Approve"><i class="fa fa-check"></i></button>
-                            <button class="modern-icon-btn modern-icon-btn-danger btn-quick-reject" data-request-id="${req.name}" title="Reject"><i class="fa fa-times"></i></button>
-                        </td>` :
-                        `<td style="text-align:center;"><span>-</span></td>`
-                    }
-                </tr>
-            `);
-
-            row.on('click', (e) => { 
-                if(!$(e.target).closest('button').length) {
-                    this.page.main.find('.request-row').removeClass('selected');
-                    row.addClass('selected');
-                    this.show_request_details(req); 
-                }
-            });
-            row.find('.btn-quick-approve').on('click', (e)=>{ e.stopPropagation(); this.approve_request(req); });
-            row.find('.btn-quick-reject').on('click', (e)=>{ e.stopPropagation(); this.reject_request(req); });
-
-            tbody.append(row);
+            this.$cache.requestsTbody.append(this.create_request_row(req));
         });
     }
 
@@ -796,6 +1015,8 @@ class FlashAccountManager {
 
         const approveBtn = panel.find('.btn-approve');
         const rejectBtn = panel.find('.btn-reject');
+
+        // Show buttons only for pending requests (not approved, rejected, or closed)
         if (req.status === AccountStatus.PENDING) {
             approveBtn.show();
             rejectBtn.show();
@@ -805,7 +1026,7 @@ class FlashAccountManager {
         }
 
         const rejectionResonContainer = panel.find(".rejection-reason") 
-        if(req.rejection_reason){
+        if(req.support_note){
             rejectionResonContainer.show()
         }else{
             rejectionResonContainer.hide()
@@ -820,35 +1041,62 @@ class FlashAccountManager {
         // Business info
         if (req.requested_level === AccountLevels.PRO || req.requested_level === AccountLevels.MERCHANT) {
             panel.find('.business-info').show();
-            panel.find('.detail-business-name').text(req.business_name || '-');
-            panel.find('.detail-business-address').text(req.business_address || '-');
-            panel.find('.detail-terminal-requested').text(req.terminal_requested ? 'Yes' : 'No');
+            panel.find('.detail-business-name').text(req.address_title || '-');
+            panel.find('.detail-address-line1').text(req.address_line1 || '-');
+            panel.find('.detail-address-line2').text(req.address_line2 || '-');
+            panel.find('.detail-city').text(req.city || '-');
+            panel.find('.detail-state').text(req.state || '-');
+            panel.find('.detail-pincode').text(req.pincode || '-');
+            panel.find('.detail-country').text(req.country || '-');
+            panel.find('.detail-terminal-requested').text(req.terminal_requested ?? '-');
         } else {
             panel.find('.business-info').hide();
         }
 
-        // Bank info
-        if (req.requested_level === AccountLevels.MERCHANT) {
+        // ID Document (PRO and MERCHANT)
+        const idDocItem = panel.find('.id-document-item');
+        if (req.requested_level === AccountLevels.PRO || req.requested_level === AccountLevels.MERCHANT) {
+            const idDocEl = panel.find('.detail-id-document');
+            idDocEl.empty();
+
+            if (req.id_document) {
+                idDocEl.html(`
+                    <button class="btn btn-sm btn-secondary btn-view-id-doc" disabled>
+                        <i class="fa fa-spinner fa-spin"></i> Loading...
+                    </button>
+                `);
+                this.prefetch_id_document_url(req.id_document, idDocEl);
+            } else {
+                idDocEl.text('-');
+            }
+            idDocItem.show();
+        } else {
+            idDocItem.hide();
+        }
+
+        // Bank info (required for MERCHANT, optional for PRO)
+        const hasBankInfo = req.bank_name || req.account_number || req.bank_branch;
+        const showBankInfo = req.requested_level === AccountLevels.MERCHANT ||
+                            (req.requested_level === AccountLevels.PRO && hasBankInfo);
+
+        if (showBankInfo) {
             panel.find('.detail-bank-name').text(req.bank_name || '-');
             panel.find('.detail-account-number').text(req.account_number || '-');
             panel.find('.detail-account-type').text(req.account_type || '-');
             panel.find('.detail-bank-branch').text(req.bank_branch || '-');
             panel.find('.detail-currency').text(req.currency || '-');
-            panel.find('.detail-id-document').text(req.id_document || '-');
-            panel.find('.detail-section:has(.fa-bank)').show();
+            panel.find('.bank-info-section').show();
         } else {
-            panel.find('.detail-section:has(.fa-bank)').hide();
+            panel.find('.bank-info-section').hide();
         }
 
         // Request info
         panel.find('.detail-current-level').text(getAccountLevelLabel(req.current_level) || '-');
         panel.find('.detail-requested-level').text(getAccountLevelLabel(req.requested_level) || '-');
-        panel.find('.detail-status').text(getAccountLevelLabel(req.status) || '-');
-        panel.find('.detail-approved-by').text(getAccountLevelLabel(req.approved_by) || '-');
+        panel.find('.detail-status').text(req.status || '-');
         panel.find('.detail-submitted').text(this.formatDateTime(req.creation));
-        panel.find('.detail-approval-date').text(this.formatDateTime(req.approval_date));
         panel.find('.detail-request-id').text(req.name);
-        panel.find('.detail-rejection-reason').text(req.rejection_reason);
+        panel.find('.detail-rejection-reason').text(req.support_note);
 
         panel.show();
 
@@ -858,30 +1106,47 @@ class FlashAccountManager {
         }
     }
 
-    approve_request(req){ 
-        if(!req) return; 
+    approve_request(req) {
+        if (!req) return;
+        const levelLabel = getAccountLevelLabel(req.requested_level);
         frappe.confirm(
-            `Are you sure you want to approve the upgrade request for ${req.username}?`,
+            `Are you sure you want to approve the upgrade request for ${req.username}? This will update the account level to ${levelLabel}.`,
             () => frappe.call({
                 method: 'admin_panel.api.admin_api.approve_upgrade_request',
                 args: { request_id: req.name },
                 freeze: true,
-                freeze_message: "Approving request...",
+                freeze_message: "Approving request and updating account level...",
                 callback: (r) => {
-                    if (!r.exc) {
-                        frappe.msgprint("Request approved successfully");
+                    const result = r.message || {};
+                    if (result.success) {
+                        frappe.msgprint({
+                            title: 'Success',
+                            indicator: 'green',
+                            message: result.message || "Request approved and account level updated."
+                        });
                         this.close_details();
                         this.load_upgrade_requests();
+                    } else if (result.error || result.errors) {
+                        const errorMsg = result.error || result.errors?.join(', ') || 'Unknown error';
+                        frappe.msgprint({
+                            title: 'Error',
+                            indicator: 'red',
+                            message: errorMsg
+                        });
                     }
+                },
+                error: (err) => {
+                    const msg = err?.responseJSON?.exception || err?.responseJSON?.message || 'Failed to approve request';
+                    frappe.msgprint({ title: 'Error', indicator: 'red', message: msg });
                 }
             })
-        )
+        );
     }
-    
-    reject_request(req){
-        if(!req) return;
 
-        let d = new frappe.ui.Dialog({
+    reject_request(req) {
+        if (!req) return;
+
+        const d = new frappe.ui.Dialog({
             title: "Reject Upgrade Request",
             fields: [
                 {
@@ -899,14 +1164,33 @@ class FlashAccountManager {
                     freeze: true,
                     freeze_message: "Rejecting request...",
                     callback: (r) => {
-                        if (!r.exc) {
-                            frappe.msgprint("Request rejected");
+                        const result = r.message || {};
+                        if (result.success) {
+                            d.hide();
+                            frappe.msgprint({
+                                title: 'Request Rejected',
+                                indicator: 'orange',
+                                message: result.message || "Request rejected."
+                            });
                             this.close_details();
                             this.load_upgrade_requests();
+                        } else if (result.error || result.errors) {
+                            const errorMsg = result.error || result.errors?.join(', ') || 'Unknown error';
+                            frappe.msgprint({
+                                title: 'Error',
+                                indicator: 'red',
+                                message: errorMsg
+                            });
                         }
+                    },
+                    error: (err) => {
+                        frappe.msgprint({
+                            title: 'Error',
+                            indicator: 'red',
+                            message: err.message || 'Failed to reject request'
+                        });
                     }
-                })
-                d.hide();
+                });
             }
         });
 
@@ -914,88 +1198,72 @@ class FlashAccountManager {
     }
 
     close_details() {
-        this.page.main.find('.request-details').hide();
+        this.$cache.requestDetails.hide();
         this.selected_request = null;
     }
 
     search() {
-        const input = this.page.main.find('.search-input').val().trim();
+        const input = this.$cache.searchInput.val().trim();
         if (!input) {
             frappe.show_alert({ message: 'Please enter a username or phone number', indicator: 'orange' }, 3);
             return;
         }
 
-        const main = this.page.main;
-        main.find('.search-loading').show();
-        main.find('.search-error').hide();
-        main.find('.request-details').hide();
+        this.$cache.searchLoading.show();
+        this.$cache.searchError.hide();
+        this.$cache.requestDetails.hide();
 
         frappe.call({
             method: 'admin_panel.api.admin_api.search_account',
             args: { id: input },
             callback: (res) => {
-                const results = res.message || [];
-                main.find('.search-loading').hide();
-                this.show_search_results(results);
+                this.$cache.searchLoading.hide();
+                const results = res.message;
+                if (!results || results.error) {
+                    this.show_search_error(results?.error || 'Account not found');
+                    return;
+                }
+                this.show_search_results(Array.isArray(results) ? results : []);
             },
             error: (e) => {
-                main.find('.search-loading').hide();
+                this.$cache.searchLoading.hide();
                 this.show_search_error(e.message || 'Account not found');
             }
         });
     }
 
     show_search_results(results) {
-        const main = this.page.main;
-        const tbody = main.find('.requests-tbody');
+        this.$cache.requestsTbody.empty();
+        this.$cache.searchError.hide();
+        this.$cache.paginationControls.hide();
 
-        tbody.empty();
-
-        if (!results.length) {
-            main.find('.no-requests').show();
-            main.find('.requests-list table').hide();
+        if (!results || !results.length) {
+            this.$cache.noRequests.show();
+            this.$cache.requestsTable.hide();
             this.show_search_error('No accounts found');
             return;
         }
 
-        main.find('.no-requests').hide();
-        main.find('.requests-list table').show();
+        this.$cache.noRequests.hide();
+        this.$cache.requestsTable.show();
 
         results.forEach(account => {
-            const badgeClass = account.requested_level === AccountLevels.PERSONAL ? 'badge-personal' : account.current_level === AccountLevels.PRO ? 'badge-business' : 'badge-merchant';
-            const statusBadge = account.status === AccountStatus.APPROVED ? "badge-approved" : account.status === AccountStatus.REJECTED ? "badge-rejected" : "badge-pending";
-            const row = $(`
-                <tr class="request-row" data-request-id="${account.name}">
-                    <td><strong>${account.username || '-'}</strong></td>
-                    <td>${this.formatPhone(account.phone_number)}</td>
-                    <td><span class="modern-badge ${badgeClass}">${getAccountLevelLabel(account.requested_level)}</span></td>
-                    <td>${this.formatDateTime(account.creation)}</td>
-                    <td><span class="modern-badge ${statusBadge}">${account.status || AccountStatus.PENDING}</span></td>
-                    <td style="text-align:center;">
-                        <button class="modern-icon-btn modern-icon-btn-success btn-quick-approve" data-request-id="${account.name}" title="Approve"><i class="fa fa-check"></i></button>
-                        <button class="modern-icon-btn modern-icon-btn-danger btn-quick-reject" data-request-id="${account.name}" title="Reject"><i class="fa fa-times"></i></button>
-                    </td>
-                </tr>
-            `);
-
-            // Clicking row shows details below
-            row.on('click', (e) => { 
-                if (!$(e.target).closest('button').length){
-                    this.page.main.find('.request-row').removeClass('selected');
-                    row.addClass('selected');
-                    this.show_request_details(account); 
-                }
-            });
-
-            row.find('.btn-quick-approve').on('click', (e) => { e.stopPropagation(); this.approve_request(account); });
-            row.find('.btn-quick-reject').on('click', (e) => { e.stopPropagation(); this.reject_request(account); });
-
-            tbody.append(row);
+            this.$cache.requestsTbody.append(this.create_request_row(account, true));
         });
     }
 
-    show_search_error(msg){ this.page.main.find('.search-loading').hide(); this.page.main.find('.search-error').show(); this.page.main.find('.error-message').text(msg); }
+    show_search_error(msg) {
+        this.$cache.searchLoading.hide();
+        this.$cache.searchError.show();
+        this.page.main.find('.error-message').text(msg);
+    }
 
-    formatPhone(phone){ return phone ? phone.replace(/^(\d{3})(\d{3})(\d{2})(\d{2})$/,'+$1 $2 $3 $4') : '-'; }
-    formatDateTime(dt){ return dt ? frappe.datetime.str_to_user(dt) : '-'; }
+    formatPhone(phone) {
+        if (!phone) return '-';
+        return phone.replace(/^(\d{3})(\d{3})(\d{2})(\d{2})$/, '+$1 $2 $3 $4');
+    }
+
+    formatDateTime(dt) {
+        return dt ? frappe.datetime.str_to_user(dt) : '-';
+    }
 }

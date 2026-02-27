@@ -338,7 +338,7 @@ class FlashAccountManager {
                     background: rgba(100, 116, 139, 0.15);
                     color: #475569;
                 }
-                
+
                 .modern-icon-btn {
                     padding: 8px 12px;
                     border-radius: 8px;
@@ -929,7 +929,6 @@ class FlashAccountManager {
             $(e.currentTarget).prop('disabled', true);
             this.reject_request(req);
         });
-
         return row;
     }
 
@@ -1027,7 +1026,7 @@ class FlashAccountManager {
         }
 
         const rejectionResonContainer = panel.find(".rejection-reason") 
-        if(req.rejection_reason){
+        if(req.support_note){
             rejectionResonContainer.show()
         }else{
             rejectionResonContainer.hide()
@@ -1097,7 +1096,7 @@ class FlashAccountManager {
         panel.find('.detail-status').text(req.status || '-');
         panel.find('.detail-submitted').text(this.formatDateTime(req.creation));
         panel.find('.detail-request-id').text(req.name);
-        panel.find('.detail-rejection-reason').text(req.rejection_reason);
+        panel.find('.detail-rejection-reason').text(req.support_note);
 
         panel.show();
 
@@ -1137,11 +1136,8 @@ class FlashAccountManager {
                     }
                 },
                 error: (err) => {
-                    frappe.msgprint({
-                        title: 'Error',
-                        indicator: 'red',
-                        message: err.message || 'Failed to approve request'
-                    });
+                    const msg = err?.responseJSON?.exception || err?.responseJSON?.message || 'Failed to approve request';
+                    frappe.msgprint({ title: 'Error', indicator: 'red', message: msg });
                 }
             })
         );

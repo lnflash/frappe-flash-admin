@@ -158,16 +158,14 @@ def search_account(id: str):
 	return results
 
 def _create_erp_records(req):
-	"""Create Customer, Address, and Bank Account from upgrade request data.
-	Returns a list of warning strings for any records that failed to create.
-	Failures are non-fatal — the approval itself is not rolled back.
+	"""Create Customer, Address, and Bank Account synchronously from upgrade request data.
+	Returns a list of error strings — empty list means full success.
 	"""
-	warnings = []
+	errors = []
 	customer_name = None
 
 	# 1. Create Customer
 	try:
-		# Avoid duplicates: check by phone number first
 		existing = frappe.db.get_value("Customer", {"mobile_no": req.phone_number}, "name")
 		if existing:
 			customer_name = existing
@@ -183,14 +181,12 @@ def _create_erp_records(req):
 			customer_name = customer.name
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), f"Customer creation failed for request {req.name}")
-		warnings.append(f"Customer: {e}")
-		# Address and Bank Account depend on Customer — skip them
-		return warnings
+		errors.append(f"Customer: {e}")
+		return errors  # Address and Bank Account depend on Customer — skip them
 
 	# 2. Create Address (requires at minimum address_line1, city, country)
 	if req.address_line1 and req.city and req.country:
 		try:
-			# Check if an identical address already exists for this customer
 			existing_addresses = frappe.get_all(
 				"Address",
 				filters=[
@@ -227,19 +223,17 @@ def _create_erp_records(req):
 				address.insert(ignore_permissions=True)
 		except Exception as e:
 			frappe.log_error(frappe.get_traceback(), f"Address creation failed for request {req.name}")
-			warnings.append(f"Address: {e}")
+			errors.append(f"Address: {e}")
 
 	# 3. Create Bank Account (requires bank_name and account_number)
 	if req.bank_name and req.account_number:
 		try:
-			# Get or create the Bank record (Bank autonames from bank_name)
 			if not frappe.db.exists("Bank", req.bank_name):
 				frappe.get_doc({
 					"doctype": "Bank",
 					"bank_name": req.bank_name,
 				}).insert(ignore_permissions=True)
 
-			# Avoid duplicate bank accounts for the same account number
 			if not frappe.db.exists("Bank Account", {"bank_account_no": req.account_number}):
 				bank_account = frappe.get_doc({
 					"doctype": "Bank Account",
@@ -256,9 +250,9 @@ def _create_erp_records(req):
 				bank_account.insert(ignore_permissions=True)
 		except Exception as e:
 			frappe.log_error(frappe.get_traceback(), f"Bank Account creation failed for request {req.name}")
-			warnings.append(f"Bank Account: {e}")
+			errors.append(f"Bank Account: {e}")
 
-	return warnings
+	return errors
 
 
 @frappe.whitelist()
@@ -268,15 +262,20 @@ def approve_upgrade_request(request_id):
 	req = frappe.get_doc("Account Upgrade Request", request_id, for_update=True)
 
 	if req.status != "Pending":
-		frappe.response['http_status_code'] = 400
 		return {"success": False, "error": f"Request has already been {req.status.lower()}"}
 
 	# Get account details to retrieve the UID
 	client = GraphQLClient()
 	account = client.get_account_by_phone(req.phone_number)
 	if not account:
-		frappe.response['http_status_code'] = 404
 		return {"success": False, "error": "Account not found in external system"}
+
+	# Create ERP records (Customer, Address, Bank Account) before mutation
+	erp_errors = []
+	if req.requested_level in ("TWO", "THREE"):
+		erp_errors = _create_erp_records(req)
+		if erp_errors:
+			return {"success": False, "error": f"ERP record creation failed: {'; '.join(erp_errors)}"}
 
 	# Update account level via GraphQL (ZERO, ONE, TWO, THREE)
 	result = client.update_account_level(
@@ -286,22 +285,12 @@ def approve_upgrade_request(request_id):
 
 	if result.get('errors'):
 		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
-		frappe.response['http_status_code'] = 400
 		return {"success": False, "errors": error_messages}
 
 	# Update local request record
 	req.status = "Approved"
 	req.save()
 	frappe.db.commit()
-
-	# Enqueue ERP record creation in the background — keeps the approve response fast
-	if req.requested_level in ("TWO", "THREE"):
-		frappe.enqueue(
-			"admin_panel.api.admin_api._create_erp_records",
-			req=req,
-			queue="short",
-			now=frappe.flags.in_test,
-		)
 
 	return {
 		"success": True,
@@ -316,12 +305,11 @@ def reject_upgrade_request(request_id, reason=None):
 	req = frappe.get_doc("Account Upgrade Request", request_id, for_update=True)
 
 	if req.status != "Pending":
-		frappe.response['http_status_code'] = 400
 		return {"success": False, "error": f"Request has already been {req.status.lower()}"}
 
 	# Update local request record only - rejection doesn't change account level
 	req.status = "Rejected"
-	req.rejection_reason = reason or "No reason provided"
+	req.support_note = reason or "No reason provided"
 	req.save()
 
 	frappe.db.commit()

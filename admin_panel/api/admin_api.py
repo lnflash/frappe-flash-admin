@@ -159,7 +159,7 @@ def search_account(id: str):
 
 def _create_erp_records(req):
 	"""Create Customer, Address, and Bank Account synchronously from upgrade request data.
-	Returns a list of error strings — empty list means full success.
+	Returns (errors, customer_name) — errors is empty list on full success.
 	"""
 	errors = []
 	customer_name = None
@@ -182,7 +182,7 @@ def _create_erp_records(req):
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), f"Customer creation failed for request {req.name}")
 		errors.append(f"Customer: {e}")
-		return errors  # Address and Bank Account depend on Customer — skip them
+		return errors, None  # Address and Bank Account depend on Customer — skip them
 
 	# 2. Create Address (requires at minimum address_line1, city, country)
 	if req.address_line1 and req.city and req.country:
@@ -252,7 +252,7 @@ def _create_erp_records(req):
 			frappe.log_error(frappe.get_traceback(), f"Bank Account creation failed for request {req.name}")
 			errors.append(f"Bank Account: {e}")
 
-	return errors
+	return errors, customer_name
 
 
 @frappe.whitelist()
@@ -271,16 +271,17 @@ def approve_upgrade_request(request_id):
 		return {"success": False, "error": "Account not found in external system"}
 
 	# Create ERP records (Customer, Address, Bank Account) before mutation
-	erp_errors = []
+	erp_party = None
 	if req.requested_level in ("TWO", "THREE"):
-		erp_errors = _create_erp_records(req)
+		erp_errors, erp_party = _create_erp_records(req)
 		if erp_errors:
 			return {"success": False, "error": f"ERP record creation failed: {'; '.join(erp_errors)}"}
 
 	# Update account level via GraphQL (ZERO, ONE, TWO, THREE)
 	result = client.update_account_level(
 		uid=account['id'],
-		level=req.requested_level
+		level=req.requested_level,
+		erp_party=erp_party,
 	)
 
 	if result.get('errors'):

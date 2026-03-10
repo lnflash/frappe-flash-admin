@@ -124,24 +124,36 @@ class GraphQLClient:
 	"""
 
 	UPDATE_LEVEL_MUTATION = """
-		mutation AccountUpdateLevel($input: AccountUpdateLevelInput!) {
+		mutation accountUpdateLevel($input: AccountUpdateLevelInput!) {
 			accountUpdateLevel(input: $input) {
-				accountDetails {
-					id
-					level
-					status
-					username
-					owner {
-						phone
-						email {
-							address
-						}
-					}
-				}
 				errors {
 					message
-					code
-					path
+				}
+				accountDetails {
+					id
+					username
+					level
+					status
+					title
+					owner {
+						id
+						language
+						phone
+						createdAt
+					}
+					coordinates {
+						latitude
+						longitude
+					}
+					wallets {
+						id
+						walletCurrency
+						accountId
+						balance
+						pendingIncomingBalance
+					}
+					createdAt
+					erpParty
 				}
 			}
 		}
@@ -178,11 +190,14 @@ class GraphQLClient:
 			allow_not_found=True
 		)
 	
-	def update_account_level(self, uid: str, level: str) -> dict:
+	def update_account_level(self, uid: str, level: str, erp_party: str = None) -> dict:
 		"""Update account level"""
+		variables = {"input": {"uid": uid, "level": level}}
+		if erp_party:
+			variables["input"]["erpParty"] = erp_party
 		return self.execute_and_extract(
 			self.UPDATE_LEVEL_MUTATION,
-			{"input": {"uid": uid, "level": level}},
+			variables,
 			"accountUpdateLevel"
 		) or {}
 	

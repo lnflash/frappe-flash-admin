@@ -5,6 +5,7 @@ REPO="brh28/frappe-flash"
 TAG="${1:?Usage: ./ci.sh <version>}"
 
 docker buildx build \
+  --no-cache \
   --platform linux/amd64,linux/arm64 \
   --push \
   -t "${REPO}:${TAG}" \

@@ -1067,7 +1067,46 @@ class FlashAccountManager {
                 `);
                 this.prefetch_id_document_url(req.id_document, idDocEl);
             } else {
-                idDocEl.text('-');
+                const uploadBtn = $(`<button class="btn btn-sm btn-primary btn-upload-id-doc">
+                    <i class="fa fa-upload"></i> Upload ID Document
+                </button>`);
+                const fileInput = $(`<input type="file" accept="image/*,.pdf" style="display:none">`);
+                idDocEl.append(uploadBtn);
+                idDocEl.append(fileInput);
+
+                uploadBtn.on('click', () => fileInput.click());
+
+                fileInput.on('change', function () {
+                    const file = this.files[0];
+                    if (!file) return;
+
+                    uploadBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Uploading...');
+
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', '/api/method/admin_panel.api.admin_api.upload_id_document?request_id=' + encodeURIComponent(req.name));
+                    xhr.setRequestHeader('X-Frappe-CSRF-Token', frappe.csrf_token);
+                    xhr.onload = function () {
+                        if (xhr.status === 200) {
+                            try {
+                                const resp = JSON.parse(xhr.responseText);
+                                if (resp.message && resp.message.success) {
+                                    self.prefetch_id_document_url(resp.message.id_document, idDocEl);
+                                    return;
+                                }
+                            } catch (e) {}
+                        }
+                        frappe.msgprint(__('Upload failed. Please try again.'));
+                        uploadBtn.prop('disabled', false).html('<i class="fa fa-upload"></i> Upload ID Document');
+                    };
+                    xhr.onerror = function () {
+                        frappe.msgprint(__('Upload failed. Please try again.'));
+                        uploadBtn.prop('disabled', false).html('<i class="fa fa-upload"></i> Upload ID Document');
+                    };
+                    xhr.send(formData);
+                });
             }
             idDocItem.show();
         } else {

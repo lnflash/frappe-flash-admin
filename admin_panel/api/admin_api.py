@@ -335,3 +335,34 @@ def get_id_document_url(file_key):
 		return {"success": False, "errors": error_messages}
 
 	return {"success": True, "url": result.get('readUrl')}
+
+
+@frappe.whitelist()
+@handle_api_errors
+def upload_id_document(request_id):
+	"""Upload ID document to an upgrade request via Frappe's file system"""
+	req = frappe.get_doc("Account Upgrade Request", request_id, for_update=True)
+
+	if not req.get("requested_level") in ("TWO", "THREE"):
+		frappe.response['http_status_code'] = 400
+		return {"success": False, "error": "ID documents only apply to PRO and MERCHANT requests"}
+
+	file = frappe.request.files.get('file')
+	if not file:
+		frappe.response['http_status_code'] = 400
+		return {"success": False, "error": "No file uploaded"}
+
+	file_doc = frappe.upload_file.save_file(
+		filedata=file,
+		doctype="Account Upgrade Request",
+		docname=request_id,
+		fieldname="id_document",
+		folder="Home/Attachments",
+	)
+
+	req.id_document = file_doc.file_url
+	req.save(ignore_permissions=True)
+	frappe.db.commit()
+
+	req = frappe.get_doc("Account Upgrade Request", request_id)
+	return {"success": True, "id_document": req.id_document}

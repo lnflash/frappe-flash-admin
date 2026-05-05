@@ -1,0 +1,24 @@
+# Local development infrastructure — start with: docker compose up -d
+services:
+  mariadb:
+    image: mariadb:10.6
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MARIADB_ROOT_PASSWORD: admin
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --skip-innodb-read-only-compressed
+    volumes:
+      - mariadb-data:/var/lib/mysql
+
+  redis:
+    image: redis:7.0.8
+    ports:
+      - "6379:6379"
+
+volumes:
+  mariadb-data:

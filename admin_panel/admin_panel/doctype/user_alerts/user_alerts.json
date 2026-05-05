@@ -33,7 +33,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Tag",
-   "options": "EMERGENCY\nATTENTION\nINFO\nMARKETING",
+   "options": "",
    "reqd": 1
   },
   {

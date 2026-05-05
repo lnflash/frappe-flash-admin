@@ -159,17 +159,6 @@ class GraphQLClient:
 		}
 	"""
 
-	BROADCAST_ALERT_MUTATION = """
-		mutation adminBroadcastSend($input: AdminBroadcastSendInput!) {
-			adminBroadcastSend(input: $input) {
-				success
-				errors {
-					message
-				}
-			}
-		}
-	"""
-
 	ID_DOCUMENT_URL_QUERY = """
 		query IdDocumentReadUrl($fileKey: String!) {
 			idDocumentReadUrl(fileKey: $fileKey) {
@@ -177,6 +166,23 @@ class GraphQLClient:
 				errors {
 					message
 				}
+			}
+		}
+	"""
+
+	NOTIFICATION_TOPICS_QUERY = """
+		query {
+			notificationTopics
+		}
+	"""
+
+	SEND_NOTIFICATION_MUTATION = """
+		mutation SendNotification($input: SendNotificationInput!) {
+			sendNotification(input: $input) {
+				errors {
+					message
+				}
+				success
 			}
 		}
 	"""
@@ -189,7 +195,7 @@ class GraphQLClient:
 			"accountDetailsByUserPhone",
 			allow_not_found=True
 		)
-	
+
 	def update_account_level(self, uid: str, level: str, erp_party: str = None) -> dict:
 		"""Update account level"""
 		variables = {"input": {"uid": uid, "level": level}}
@@ -200,14 +206,6 @@ class GraphQLClient:
 			variables,
 			"accountUpdateLevel"
 		) or {}
-	
-	def send_broadcast_alert(self, title: str, body: str, tag: str = "EMERGENCY") -> dict:
-		"""Send broadcast alert to all users"""
-		return self.execute_and_extract(
-			self.BROADCAST_ALERT_MUTATION,
-			{"input": {"title": title, "body": body, "tag": tag}},
-			"adminBroadcastSend"
-		)
 
 	def get_id_document_read_url(self, file_key: str) -> dict:
 		"""Get pre-signed URL for ID document from Digital Ocean Spaces"""
@@ -215,4 +213,18 @@ class GraphQLClient:
 			self.ID_DOCUMENT_URL_QUERY,
 			{"fileKey": file_key},
 			"idDocumentReadUrl"
+		)
+
+	def get_notification_topics(self) -> list:
+		"""Fetch available notification topics from Flash API"""
+		resp = self.execute_query(self.NOTIFICATION_TOPICS_QUERY)
+		self._check_errors(resp)
+		return resp.get("data", {}).get("notificationTopics", [])
+
+	def send_alert(self, topic: str, title: str, body: str) -> dict:
+		"""Send alert to Flash app users via topic"""
+		return self.execute_and_extract(
+			self.SEND_NOTIFICATION_MUTATION,
+			{"input": {"topic": topic, "title": title, "body": body}},
+			"sendNotification"
 		)

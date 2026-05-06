@@ -242,4 +242,5 @@ after_migrate = ["admin_panel.admin_panel.setup.after_migrate"]
 fixtures = [
     {"doctype": "Workspace", "filters": [["module", "=", "Admin Panel"]]},
     {"doctype": "Client Script", "filters": [["module", "=", "Admin Panel"]]},
+    {"doctype": "Custom Field", "filters": [["dt", "=", "Bank Account"], ["fieldname", "=", "currency"]]},
 ]

@@ -1059,15 +1059,63 @@ class FlashAccountManager {
             const idDocEl = panel.find('.detail-id-document');
             idDocEl.empty();
 
+            // View container — prefetch_id_document_url replaces its contents
+            const viewContainer = $(`<span class="view-doc-container"></span>`);
+            idDocEl.append(viewContainer);
+
+            // Always show the upload button (replaces existing doc on upload)
+            const uploadBtn = $(`<button class="btn btn-sm btn-primary btn-upload-id-doc">
+                <i class="fa fa-upload"></i> Upload ID Document
+            </button>`);
+            const fileInput = $(`<input type="file" accept="image/*,.pdf" style="display:none">`);
+            idDocEl.append(' ');
+            idDocEl.append(uploadBtn);
+            idDocEl.append(fileInput);
+
+            uploadBtn.on('click', () => fileInput.click());
+
+            fileInput.on('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const self = this;
+
+                uploadBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Uploading...');
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/method/admin_panel.api.admin_api.upload_id_document?request_id=' + encodeURIComponent(req.name));
+                xhr.setRequestHeader('X-Frappe-CSRF-Token', frappe.csrf_token);
+                xhr.onload = function () {
+                    if (xhr.status === 200) {
+                        try {
+                            const resp = JSON.parse(xhr.responseText);
+                            if (resp.message && resp.message.success) {
+                                // Replace the view container contents with the new doc
+                                self.prefetch_id_document_url(resp.message.id_document, viewContainer);
+                                // Reset upload button so it is available for re-upload
+                                uploadBtn.prop("disabled", false).html('<i class="fa fa-upload"></i> Upload Another');
+                                return;
+                            }
+                        } catch (e) {}
+                    }
+                    frappe.msgprint(__('Upload failed. Please try again.'));
+                    uploadBtn.prop('disabled', false).html('<i class="fa fa-upload"></i> Upload ID Document');
+                };
+                xhr.onerror = function () {
+                    frappe.msgprint(__('Upload failed. Please try again.'));
+                    uploadBtn.prop('disabled', false).html('<i class="fa fa-upload"></i> Upload ID Document');
+                };
+                xhr.send(formData);
+            });
+
+            // If a document already exists, show the view button alongside upload
             if (req.id_document) {
-                idDocEl.html(`
-                    <button class="btn btn-sm btn-secondary btn-view-id-doc" disabled>
-                        <i class="fa fa-spinner fa-spin"></i> Loading...
-                    </button>
-                `);
-                this.prefetch_id_document_url(req.id_document, idDocEl);
-            } else {
-                idDocEl.text('-');
+                viewContainer.html(`<button class="btn btn-sm btn-secondary btn-view-id-doc" disabled>
+                    <i class="fa fa-spinner fa-spin"></i> Loading...
+                </button>`);
+                this.prefetch_id_document_url(req.id_document, viewContainer);
             }
             idDocItem.show();
         } else {

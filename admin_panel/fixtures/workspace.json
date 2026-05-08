@@ -1,7 +1,7 @@
 [
  {
   "charts": [],
-  "content": "[{\"id\":\"_EYFml0tr6\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Admin Panel</b></span>\",\"col\":12}},{\"id\":\"_F4e1CqrUd\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Alert Users\",\"col\":3}},{\"id\":\"_F4e1CqrUe\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Account Management\",\"col\":3}},{\"id\":\"_EngHubShortcut\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Account Hub\",\"col\":3}},{\"id\":\"_Eng390Shortcut\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Allowed Country\",\"col\":3}},{\"id\":\"_bxWkoteNn\",\"type\":\"card\",\"data\":{\"card_name\":\"Tools\",\"col\":12}},{\"id\":\"_Eng390ComplianceCard\",\"type\":\"card\",\"data\":{\"card_name\":\"Compliance\",\"col\":12}}]",
+  "content": "[{\"id\":\"_EYFml0tr6\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Admin Panel</b></span>\",\"col\":12}},{\"id\":\"_AdminDashboardShortcut\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Admin Dashboard\",\"col\":3}},{\"id\":\"_F4e1CqrUd\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Alert Users\",\"col\":3}},{\"id\":\"_F4e1CqrUe\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Account Management\",\"col\":3}},{\"id\":\"_EngHubShortcut\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Account Hub\",\"col\":3}},{\"id\":\"_Eng390Shortcut\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Allowed Country\",\"col\":3}},{\"id\":\"_bxWkoteNn\",\"type\":\"card\",\"data\":{\"card_name\":\"Tools\",\"col\":12}},{\"id\":\"_Eng390ComplianceCard\",\"type\":\"card\",\"data\":{\"card_name\":\"Compliance\",\"col\":12}}]",
   "custom_blocks": [],
   "docstatus": 0,
   "doctype": "Workspace",
@@ -29,6 +29,24 @@
     "parenttype": "Workspace",
     "report_ref_doctype": null,
     "type": "Card Break"
+   },
+   {
+    "dependencies": null,
+    "description": "Admin overview and quick actions",
+    "hidden": 0,
+    "icon": "dashboard",
+    "is_query_report": 0,
+    "label": "Admin Dashboard",
+    "link_count": 0,
+    "link_to": "admin-dashboard",
+    "link_type": "Page",
+    "onboard": 0,
+    "only_for": null,
+    "parent": "Admin Panel",
+    "parentfield": "links",
+    "parenttype": "Workspace",
+    "report_ref_doctype": null,
+    "type": "Link"
    },
    {
     "dependencies": null,
@@ -121,7 +139,7 @@
     "type": "Link"
    }
   ],
-  "modified": "2026-05-11 12:22:00.000000",
+  "modified": "2026-05-11 12:30:00.000000",
   "module": "Admin Panel",
   "name": "Admin Panel",
   "number_cards": [],
@@ -132,6 +150,23 @@
   "roles": [],
   "sequence_id": 1.0,
   "shortcuts": [
+   {
+    "color": "#29CD42",
+    "doc_view": "",
+    "format": "",
+    "icon": "dashboard",
+    "kanban_board": null,
+    "label": "Admin Dashboard",
+    "link_to": "admin-dashboard",
+    "parent": "Admin Panel",
+    "parentfield": "shortcuts",
+    "parenttype": "Workspace",
+    "report_ref_doctype": null,
+    "restrict_to_domain": null,
+    "stats_filter": null,
+    "type": "Page",
+    "url": null
+   },
    {
     "color": "#E8D315",
     "doc_view": "",

@@ -1,5 +1,6 @@
 import functools
 import re
+import traceback
 import requests as requests_lib
 import frappe
 from .graphql_client import GraphQLClient, GraphQLError
@@ -22,8 +23,9 @@ def handle_api_errors(func):
 			frappe.logger().error(f"Configuration error in {func.__name__}: {e}")
 			return {"success": False, "error": str(e)}
 		except Exception as e:
-			frappe.logger().error(f"Unexpected error in {func.__name__}: {e}")
-			return {"success": False, "error": "An internal error occurred."}
+			frappe.logger().error(f"Unexpected error in {func.__name__}: {e}
+{traceback.format_exc()}")
+			return {"success": False, "error": f"Error: {str(e)}"}
 
 	return wrapper
 

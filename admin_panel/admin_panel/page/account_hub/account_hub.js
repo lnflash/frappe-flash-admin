@@ -1092,7 +1092,7 @@ class AccountHub {
             },
             error: () => {
                 this.$.searchLoading.hide();
-                this.show_search_error('Network error. Please try again.');
+                this.show_search_error('Could not reach the server. Check your connection and try again.');
             }
         });
     }

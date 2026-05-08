@@ -23,8 +23,7 @@ def handle_api_errors(func):
 			frappe.logger().error(f"Configuration error in {func.__name__}: {e}")
 			return {"success": False, "error": str(e)}
 		except Exception as e:
-			frappe.logger().error(f"Unexpected error in {func.__name__}: {e}
-{traceback.format_exc()}")
+			frappe.logger().error(f"Unexpected error in {func.__name__}: {e}\n{traceback.format_exc()}")
 			return {"success": False, "error": f"Error: {str(e)}"}
 
 	return wrapper

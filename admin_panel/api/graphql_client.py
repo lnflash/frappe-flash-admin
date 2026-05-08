@@ -124,8 +124,10 @@ class GraphQLClient:
 		merchants {
 			id
 			title
-			latitude
-			longitude
+			coordinates {
+				latitude
+				longitude
+			}
 			validated
 			username
 			createdAt
@@ -216,7 +218,7 @@ class GraphQLClient:
 
 	ACCOUNT_BY_EMAIL_QUERY = """
 		query accountDetailsByEmail($email: EmailAddress!) {
-			accountDetailsByUserEmail(email: $email) {
+			accountDetailsByEmail(email: $email) {
 				...AccountDetail
 			}
 		}
@@ -348,7 +350,7 @@ class GraphQLClient:
 		return self.execute_and_extract(
 			self.ACCOUNT_BY_EMAIL_QUERY,
 			{"email": email},
-			"accountDetailsByUserEmail",
+			"accountDetailsByEmail",
 			allow_not_found=True
 		)
 

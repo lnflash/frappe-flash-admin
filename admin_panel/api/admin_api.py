@@ -6,27 +6,25 @@ from .graphql_client import GraphQLClient, GraphQLError
 
 
 def handle_api_errors(func):
-	"""Decorator to handle common API errors consistently"""
+	"""Decorator to handle common API errors consistently.
+	Returns 200 with error message so the frontend callback always fires."""
 	@functools.wraps(func)
 	def wrapper(*args, **kwargs):
 		try:
 			return func(*args, **kwargs)
 		except GraphQLError as e:
 			frappe.logger().error(f"GraphQL error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
-			return {"success": False, "error": str(e)}
+			return {"success": False, "error": "Account not found on Flash API."}
 		except requests_lib.exceptions.RequestException as e:
 			frappe.logger().error(f"Request error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
-			return {"success": False, "error": str(e)}
+			return {"success": False, "error": "Flash API unreachable. Search could not be completed."}
 		except ValueError as e:
 			frappe.logger().error(f"Configuration error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
 			return {"success": False, "error": str(e)}
 		except Exception as e:
 			frappe.logger().error(f"Unexpected error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
-			return {"success": False, "error": "An internal error occurred"}
+			return {"success": False, "error": "An internal error occurred."}
+
 	return wrapper
 
 
@@ -361,15 +359,18 @@ def get_customer_bank_accounts(customer):
 @frappe.whitelist()
 @handle_api_errors
 def search_account_smart(query):
-	"""Smart search: auto-detect phone, email, username, or account ID."""
-	if not query or not query.strip():
-		frappe.response['http_status_code'] = 400
+	"""Smart search: auto-detect phone, email, username, or account ID.
+
+	Account Hub should show Flash account data from the GraphQL API only. Local
+	Account Upgrade Request rows can be stale and should not be returned as
+	account-shaped fallback data.
+	"""
+	if not query or not str(query).strip():
 		return {"error": "Search query is required"}
 
-	query = query.strip()
+	query = str(query).strip()
 	client = GraphQLClient()
 
-	# Detect input type
 	if query.startswith('+') or re.match(r'^\d{7,}$', query):
 		account = client.get_account_by_phone(query)
 	elif '@' in query:
@@ -381,11 +382,10 @@ def search_account_smart(query):
 	else:
 		account = client.get_account_by_id(query)
 
-	if account is None:
-		frappe.response['http_status_code'] = 404
-		return {"error": "Account not found. Try searching by phone (+123...), email, username, or account ID."}
+	if account is not None:
+		return account
 
-	return account
+	return {"error": "Account not found in Flash. Try searching by phone (+1...), email, username, or account ID."}
 
 
 @frappe.whitelist()

@@ -437,3 +437,39 @@ def get_upgrade_requests_by_account(username):
 	)
 
 	return {"data": records, "total": len(records)}
+
+
+
+# ── Dashboard ────────────────────────────────────────────────────
+
+@frappe.whitelist()
+def get_dashboard_stats():
+	"""Get summary stats for the admin dashboard"""
+	pending = frappe.db.count("Account Upgrade Request", {"status": "Pending"})
+	approved = frappe.db.count("Account Upgrade Request", {"status": "Approved"})
+	rejected = frappe.db.count("Account Upgrade Request", {"status": "Rejected"})
+
+	today = frappe.utils.nowdate()
+	approved_today = frappe.db.count("Account Upgrade Request", {
+		"status": "Approved",
+		"modified": [">=", today],
+	})
+
+	recent_records = frappe.get_all(
+		"Account Upgrade Request",
+		fields=["name", "username", "full_name", "phone_number", "email",
+				"requested_level", "current_level", "status", "creation"],
+		order_by="creation desc",
+		limit_page_length=8,
+	)
+
+	return {
+		"upgrade_requests": {
+			"pending": pending,
+			"approved": approved,
+			"rejected": rejected,
+			"approved_today": approved_today,
+		},
+		"recent_requests": recent_records,
+		"total_requests": pending + approved + rejected,
+	}

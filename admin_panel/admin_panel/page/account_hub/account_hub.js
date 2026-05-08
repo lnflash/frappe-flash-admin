@@ -1346,8 +1346,9 @@ class AccountHub {
                 : '<span class="ah-badge badge-pending"><i class="fa fa-clock-o"></i> Not Validated</span>';
 
             let mapLink = '-';
-            if (m.latitude != null && m.longitude != null) {
-                mapLink = `<a href="https://www.google.com/maps?q=${m.latitude},${m.longitude}" target="_blank" style="color:var(--color-primary);text-decoration:none;">${m.latitude.toFixed(4)}, ${m.longitude.toFixed(4)}</a>`;
+            const coords = m.coordinates || {};
+            if (coords.latitude != null && coords.longitude != null) {
+                mapLink = `<a href="https://www.google.com/maps?q=${coords.latitude},${coords.longitude}" target="_blank" style="color:var(--color-primary);text-decoration:none;">${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}</a>`;
             }
 
             const card = $(`

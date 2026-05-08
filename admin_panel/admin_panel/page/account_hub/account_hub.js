@@ -1015,51 +1015,48 @@ class AccountHub {
         this.$.searchResultsList.find('.ah-result-item').removeClass('active');
         itemEl.addClass('active');
 
-        const username = account.username;
-        if (username) {
-            // Fetch full details from Flash API without touching the result list
-            this.fetch_account_details(username);
+        // Build a fallback object from local data in case Flash API doesn't have this account
+        const fallback = {
+            uuid: account.name,
+            username: account.username || account.phone || account.email_id || account.name,
+            level: account.requested_level || 'ZERO',
+            status: account.status || 'ACTIVE',
+            owner: {
+                phone: account.phone,
+                email: { address: account.email_id, verified: false }
+            },
+            wallets: [],
+            merchants: [],
+            createdAt: null
+        };
+
+        if (account.username) {
+            this.fetch_account_details(account.username, fallback);
         } else {
-            // Build a minimal account object from local data
-            this.show_account({
-                uuid: account.name,
-                username: account.username || account.phone || account.email_id || account.name,
-                level: account.requested_level || 'ZERO',
-                status: account.status || 'ACTIVE',
-                owner: {
-                    phone: account.phone,
-                    email: { address: account.email_id, verified: false }
-                },
-                wallets: [],
-                merchants: [],
-                createdAt: null
-            });
+            this.show_account(fallback);
         }
     }
 
-    fetch_account_details(username) {
-        /* Fetch full account details without modifying the result list */
+    fetch_account_details(username, fallback) {
+        /* Fetch full account details without modifying the result list.
+           Falls back to local data if the Flash API can't find the account. */
         frappe.call({
             method: 'admin_panel.api.admin_api.search_account_smart',
             args: { query: username },
             callback: (res) => {
                 const result = res.message;
                 if (!result || result.error) {
-                    frappe.msgprint({
-                        title: 'Account Lookup',
-                        indicator: 'orange',
-                        message: result?.error || 'Could not load account details.'
-                    });
+                    if (fallback) {
+                        this.show_account(fallback);
+                    }
                     return;
                 }
                 this.show_account(result);
             },
             error: () => {
-                frappe.msgprint({
-                    title: 'Error',
-                    indicator: 'red',
-                    message: 'Network error while fetching account details.'
-                });
+                if (fallback) {
+                    this.show_account(fallback);
+                }
             }
         });
     }

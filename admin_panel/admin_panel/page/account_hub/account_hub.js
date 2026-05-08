@@ -901,7 +901,8 @@ class AccountHub {
         const debouncedSearch = debounce(() => {
             const val = this.$.searchInput.val().trim();
             if (val) {
-                this.perform_search();
+                // Keep fuzzy local results visible while remote exact search runs.
+                this.perform_search_with_query(val, false);
             }
         }, 600);
 
@@ -1532,14 +1533,14 @@ class AccountHub {
                 frappe.call({
                     method: 'admin_panel.api.admin_api.update_account_level',
                     args: {
-                        uid: account.uuid,
+                        uid: account.id || account.uuid,
                         level: selectedOption.value
                     },
                     freeze: true,
                     freeze_message: 'Updating account level...',
                     callback: (res) => {
                         const result = res.message || {};
-                        if (result.errors) {
+                        if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
                             frappe.msgprint({
                                 title: 'Error',
                                 indicator: 'red',
@@ -1587,7 +1588,9 @@ class AccountHub {
                 frappe.call({
                     method: 'admin_panel.api.admin_api.update_account_status_api',
                     args: {
+                        uid: account.id || account.uuid,
                         account_uuid: account.uuid,
+                        username: account.username,
                         status: newStatus,
                         comment: values.comment || ''
                     },
@@ -1595,7 +1598,7 @@ class AccountHub {
                     freeze_message: isLock ? 'Locking account...' : 'Activating account...',
                     callback: (res) => {
                         const result = res.message || {};
-                        if (result.errors) {
+                        if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
                             frappe.msgprint({
                                 title: 'Error',
                                 indicator: 'red',
@@ -1648,13 +1651,14 @@ class AccountHub {
                     method: 'admin_panel.api.admin_api.update_user_phone_api',
                     args: {
                         account_uuid: account.uuid,
+                        username: account.username,
                         phone: values.phone
                     },
                     freeze: true,
                     freeze_message: 'Updating phone number...',
                     callback: (res) => {
                         const result = res.message || {};
-                        if (result.errors) {
+                        if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
                             frappe.msgprint({
                                 title: 'Error',
                                 indicator: 'red',
@@ -1692,7 +1696,7 @@ class AccountHub {
                     freeze_message: 'Validating merchant...',
                     callback: (res) => {
                         const result = res.message || {};
-                        if (result.errors) {
+                        if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
                             frappe.msgprint({
                                 title: 'Error',
                                 indicator: 'red',
@@ -1726,7 +1730,7 @@ class AccountHub {
                     freeze_message: 'Deleting merchant...',
                     callback: (res) => {
                         const result = res.message || {};
-                        if (result.errors) {
+                        if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
                             frappe.msgprint({
                                 title: 'Error',
                                 indicator: 'red',

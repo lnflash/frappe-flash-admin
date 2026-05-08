@@ -347,12 +347,92 @@ def get_id_document_url(file_key):
 
 
 @frappe.whitelist()
-def get_customer_bank_accounts(customer):                                                               
-		accounts = frappe.get_all(                                                                          
-				"Bank Account",
-				filters={"party_type": "Customer", "party": customer},                                          
-				fields=["name", "account_name", "bank", "bank_account_no", "account"],                          
-		)
-		for acct in accounts:                                                                               
-				acct["currency"] = frappe.get_value("Account", acct["account"], "account_currency")             
-		return accounts
+def get_customer_bank_accounts(customer):
+	accounts = frappe.get_all(
+		"Bank Account",
+		filters={"party_type": "Customer", "party": customer},
+		fields=["name", "account_name", "bank", "bank_account_no", "account"],
+	)
+	for acct in accounts:
+		acct["currency"] = frappe.get_value("Account", acct["account"], "account_currency")
+	return accounts
+
+
+@frappe.whitelist()
+@handle_api_errors
+def search_account_smart(query):
+	"""Smart search: auto-detect phone, email, username, or account ID."""
+	if not query or not query.strip():
+		frappe.response['http_status_code'] = 400
+		return {"error": "Search query is required"}
+
+	query = query.strip()
+	client = GraphQLClient()
+
+	# Detect input type
+	if query.startswith('+') or re.match(r'^\d{7,}$', query):
+		account = client.get_account_by_phone(query)
+	elif '@' in query:
+		account = client.get_account_by_email(query)
+	elif re.match(r'^[a-zA-Z0-9_-]{3,}$', query):
+		account = client.get_account_by_username(query)
+		if account is None:
+			account = client.get_account_by_id(query)
+	else:
+		account = client.get_account_by_id(query)
+
+	if account is None:
+		frappe.response['http_status_code'] = 404
+		return {"error": "Account not found. Try searching by phone (+123...), email, username, or account ID."}
+
+	return account
+
+
+@frappe.whitelist()
+@handle_api_errors
+def update_account_status_api(uid, status, comment=None):
+	"""Change account status via Flash admin mutation"""
+	client = GraphQLClient()
+	return client.update_account_status(uid, status, comment)
+
+
+@frappe.whitelist()
+@handle_api_errors
+def update_user_phone_api(account_uuid, phone):
+	"""Update phone number for a user"""
+	client = GraphQLClient()
+	return client.update_user_phone(account_uuid, phone)
+
+
+@frappe.whitelist()
+@handle_api_errors
+def validate_merchant_api(merchant_id):
+	"""Approve a merchant map entry"""
+	client = GraphQLClient()
+	return client.validate_merchant(merchant_id)
+
+
+@frappe.whitelist()
+@handle_api_errors
+def delete_merchant_api(merchant_id):
+	"""Delete a merchant map entry"""
+	client = GraphQLClient()
+	return client.delete_merchant(merchant_id)
+
+
+@frappe.whitelist()
+@handle_api_errors
+def get_upgrade_requests_by_account(username):
+	"""Get upgrade request records for a specific account by username"""
+	if not username:
+		return {"data": [], "total": 0}
+
+	records = frappe.get_all(
+		"Account Upgrade Request",
+		filters={"username": username},
+		fields=["*"],
+		order_by="creation desc",
+		limit_page_length=50,
+	)
+
+	return {"data": records, "total": len(records)}

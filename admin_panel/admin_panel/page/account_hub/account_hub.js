@@ -1039,14 +1039,10 @@ class AccountHub {
 
     fetch_account_details(username) {
         /* Fetch full account details without modifying the result list */
-        this.$.detailPanel.hide();
-        this.$.detailLoading.show();
-
         frappe.call({
             method: 'admin_panel.api.admin_api.search_account_smart',
             args: { query: username },
             callback: (res) => {
-                this.$.detailLoading.hide();
                 const result = res.message;
                 if (!result || result.error) {
                     frappe.msgprint({
@@ -1059,7 +1055,6 @@ class AccountHub {
                 this.show_account(result);
             },
             error: () => {
-                this.$.detailLoading.hide();
                 frappe.msgprint({
                     title: 'Error',
                     indicator: 'red',

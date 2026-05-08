@@ -967,15 +967,15 @@ class AccountHub {
 
         items.forEach(account => {
             // Use username if available, fallback to phone/email/name
-            const displayName = account.username || account.phone || account.email_id || account.name || 'Unknown';
-            const subInfo = [account.phone, account.email_id].filter(Boolean).join(' · ') || '—';
+            const displayName = account.username || account.phone_number || account.email || account.name || 'Unknown';
+            const subInfo = [account.phone_number, account.email].filter(Boolean).join(' · ') || '—';
             const level = account.requested_level || 'ZERO';
             const initial = (displayName || '?')[0].toUpperCase();
             const levelLabel = getLevelLabel(level);
             const levelBadge = getLevelBadge(level);
 
             const item = $(`
-                <div class="ah-result-item" data-id="${frappe.utils.escape_html(account.name)}" data-username="${frappe.utils.escape_html(account.username || '')}" data-phone="${frappe.utils.escape_html(account.phone || '')}" data-email="${frappe.utils.escape_html(account.email_id || '')}">
+                <div class="ah-result-item" data-id="${frappe.utils.escape_html(account.name)}" data-username="${frappe.utils.escape_html(account.username || '')}" data-phone="${frappe.utils.escape_html(account.phone_number || '')}" data-email="${frappe.utils.escape_html(account.email || '')}">
                     <div class="ah-result-avatar">${initial}</div>
                     <div class="ah-result-info">
                         <div class="ah-result-name">${frappe.utils.escape_html(displayName)}</div>
@@ -1003,8 +1003,8 @@ class AccountHub {
         const q = query.toLowerCase();
         const filtered = this.default_results.filter(r => {
             return (r.username && r.username.toLowerCase().includes(q)) ||
-                   (r.phone && r.phone.toLowerCase().includes(q)) ||
-                   (r.email_id && r.email_id.toLowerCase().includes(q)) ||
+                   (r.phone_number && r.phone_number.toLowerCase().includes(q)) ||
+                   (r.email && r.email.toLowerCase().includes(q)) ||
                    (r.name && r.name.toLowerCase().includes(q));
         });
 
@@ -1018,12 +1018,12 @@ class AccountHub {
         // Build a fallback object from local data in case Flash API doesn't have this account
         const fallback = {
             uuid: account.name,
-            username: account.username || account.phone || account.email_id || account.name,
+            username: account.username || account.phone_number || account.email || account.name,
             level: account.requested_level || 'ZERO',
             status: account.status || 'ACTIVE',
             owner: {
-                phone: account.phone,
-                email: { address: account.email_id, verified: false }
+                phone: account.phone_number,
+                email: { address: account.email, verified: false }
             },
             wallets: [],
             merchants: [],

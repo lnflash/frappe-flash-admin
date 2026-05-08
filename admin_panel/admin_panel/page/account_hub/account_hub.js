@@ -1017,8 +1017,8 @@ class AccountHub {
 
         const username = account.username;
         if (username) {
-            // Fetch full details from Flash API
-            this.perform_search_with_query(username, false);
+            // Fetch full details from Flash API without touching the result list
+            this.fetch_account_details(username);
         } else {
             // Build a minimal account object from local data
             this.show_account({
@@ -1035,6 +1035,38 @@ class AccountHub {
                 createdAt: null
             });
         }
+    }
+
+    fetch_account_details(username) {
+        /* Fetch full account details without modifying the result list */
+        this.$.detailPanel.hide();
+        this.$.detailLoading.show();
+
+        frappe.call({
+            method: 'admin_panel.api.admin_api.search_account_smart',
+            args: { query: username },
+            callback: (res) => {
+                this.$.detailLoading.hide();
+                const result = res.message;
+                if (!result || result.error) {
+                    frappe.msgprint({
+                        title: 'Account Lookup',
+                        indicator: 'orange',
+                        message: result?.error || 'Could not load account details.'
+                    });
+                    return;
+                }
+                this.show_account(result);
+            },
+            error: () => {
+                this.$.detailLoading.hide();
+                frappe.msgprint({
+                    title: 'Error',
+                    indicator: 'red',
+                    message: 'Network error while fetching account details.'
+                });
+            }
+        });
     }
 
     /* ── Search ─────────────────────────────────────── */
@@ -1304,8 +1336,9 @@ class AccountHub {
                         </div>
                     `);
 
+                    const requestName = r.name;
                     item.find('.btn-view-doc').on('click', () => {
-                        this.view_document(r.id_document);
+                        window.open('/app/account-upgrade-request/' + encodeURIComponent(requestName), '_blank');
                     });
 
                     container.append(item);
@@ -1728,60 +1761,9 @@ class AccountHub {
 
     view_document(fileKey) {
         if (!fileKey) return;
-        const d = new frappe.ui.Dialog({
-            title: 'ID Document',
-            size: 'large',
-            fields: [
-                {
-                    fieldtype: 'HTML',
-                    fieldname: 'preview',
-                    label: 'Document Preview'
-                }
-            ],
-            primary_action_label: 'Close',
-            primary_action() {
-                d.hide();
-            }
-        });
-
-        d.fields_dict.preview.$wrapper.html(`
-            <div style="text-align:center;padding:20px;">
-                <div class="ah-spinner"></div>
-                <p style="color:var(--color-text02);">Loading document...</p>
-            </div>
-        `);
-        d.show();
-
-        frappe.call({
-            method: 'admin_panel.api.admin_api.get_id_document_url',
-            args: { file_key: fileKey },
-            callback: (res) => {
-                const result = res.message;
-                if (result && result.success && result.url) {
-                    d.fields_dict.preview.$wrapper.html(`
-                        <div style="text-align:center;">
-                            <img src="${result.url}" style="max-width:100%;max-height:70vh;border-radius:10px;border:1px solid #DDE3E1;" />
-                        </div>
-                    `);
-                } else {
-                    d.fields_dict.preview.$wrapper.html(`
-                        <div class="ah-empty">
-                            <div class="ah-empty-icon">⚠️</div>
-                            <div class="ah-empty-text">Failed to load document</div>
-                            <div class="ah-empty-sub">Could not retrieve the document URL</div>
-                        </div>
-                    `);
-                }
-            },
-            error: () => {
-                d.fields_dict.preview.$wrapper.html(`
-                    <div class="ah-empty">
-                        <div class="ah-empty-icon">⚠️</div>
-                        <div class="ah-empty-text">Failed to load document</div>
-                        <div class="ah-empty-sub">Network error while retrieving document</div>
-                    </div>
-                `);
-            }
-        });
+        frappe.show_alert({
+            message: __('Open the Account Upgrade Request form to view the document.'),
+            indicator: 'blue'
+        }, 5);
     }
 }

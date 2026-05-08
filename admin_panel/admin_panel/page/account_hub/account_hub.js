@@ -126,6 +126,7 @@ class AccountHub {
     constructor(page) {
         this.page = page;
         this.current_account = null;
+        this.default_results = [];
         this.$ = {};
         this.setup_page();
     }
@@ -135,6 +136,7 @@ class AccountHub {
         this.create_layout();
         this.cache_elements();
         this.bind_events();
+        this.load_default_list();
     }
 
     create_layout() {
@@ -720,8 +722,8 @@ class AccountHub {
                                 </div>
                                 <div class="ah-empty search-empty" style="display:none;">
                                     <div class="ah-empty-icon">🔍</div>
-                                    <div class="ah-empty-text">Search for an account</div>
-                                    <div class="ah-empty-sub">Enter a phone number, email, username, or account ID above</div>
+                                    <div class="ah-empty-text">No accounts found</div>
+                                    <div class="ah-empty-sub">Recent upgrade requests will appear here. Use the search bar to find specific accounts.</div>
                                 </div>
                             </div>
                         </div>
@@ -888,14 +890,14 @@ class AccountHub {
     bind_events() {
         const main = this.page.main;
 
-        // Search: Enter key
+        // Search: Enter key — calls API
         this.$.searchInput.on('keypress', (e) => {
             if (e.which === 13) {
                 this.perform_search();
             }
         });
 
-        // Search: debounced input
+        // Search: input — filter local list, debounce API call for longer queries
         const debouncedSearch = debounce(() => {
             const val = this.$.searchInput.val().trim();
             if (val) {
@@ -903,7 +905,15 @@ class AccountHub {
             }
         }, 600);
 
-        this.$.searchInput.on('input', debouncedSearch);
+        this.$.searchInput.on('input', () => {
+            const val = this.$.searchInput.val().trim();
+            // Filter local default list in real-time
+            this.filter_local_list(val);
+            // Debounce remote search if there's a query
+            if (val) {
+                debouncedSearch();
+            }
+        });
 
         // Tab switching
         this.$.tabs.on('click', function() {
@@ -921,16 +931,128 @@ class AccountHub {
         this.$.btnUpdatePhone.on('click', () => this.update_phone());
     }
 
+    /* ── Default User List ────────────────────────────── */
+
+    load_default_list() {
+        this.$.searchLoading.show();
+        this.$.searchError.hide();
+
+        frappe.call({
+            method: 'admin_panel.api.admin_api.get_upgrade_requests',
+            args: { page: 1, page_size: 50 },
+            callback: (res) => {
+                this.$.searchLoading.hide();
+                const result = res.message;
+                const requests = (result && result.data) || [];
+
+                if (requests.length === 0) {
+                    this.$.searchEmpty.show();
+                    return;
+                }
+
+                this.default_results = requests;
+                this.$.searchEmpty.hide();
+                this.render_result_list(requests);
+            },
+            error: () => {
+                this.$.searchLoading.hide();
+                this.$.searchEmpty.show();
+            }
+        });
+    }
+
+    render_result_list(items) {
+        this.$.searchError.hide();
+        this.$.searchResultsList.empty();
+
+        items.forEach(account => {
+            // Use username if available, fallback to phone/email/name
+            const displayName = account.username || account.phone || account.email_id || account.name || 'Unknown';
+            const subInfo = [account.phone, account.email_id].filter(Boolean).join(' · ') || '—';
+            const level = account.requested_level || 'ZERO';
+            const initial = (displayName || '?')[0].toUpperCase();
+            const levelLabel = getLevelLabel(level);
+            const levelBadge = getLevelBadge(level);
+
+            const item = $(`
+                <div class="ah-result-item" data-id="${frappe.utils.escape_html(account.name)}" data-username="${frappe.utils.escape_html(account.username || '')}" data-phone="${frappe.utils.escape_html(account.phone || '')}" data-email="${frappe.utils.escape_html(account.email_id || '')}">
+                    <div class="ah-result-avatar">${initial}</div>
+                    <div class="ah-result-info">
+                        <div class="ah-result-name">${frappe.utils.escape_html(displayName)}</div>
+                        <div class="ah-result-sub">${frappe.utils.escape_html(subInfo)}</div>
+                    </div>
+                    <span class="ah-badge ${levelBadge}">${levelLabel}</span>
+                </div>
+            `);
+
+            item.on('click', () => this.on_result_click(account, item));
+            this.$.searchResultsList.append(item);
+        });
+
+        if (items.length === 0) {
+            this.$.searchEmpty.show();
+        }
+    }
+
+    filter_local_list(query) {
+        if (!query) {
+            this.render_result_list(this.default_results);
+            return;
+        }
+
+        const q = query.toLowerCase();
+        const filtered = this.default_results.filter(r => {
+            return (r.username && r.username.toLowerCase().includes(q)) ||
+                   (r.phone && r.phone.toLowerCase().includes(q)) ||
+                   (r.email_id && r.email_id.toLowerCase().includes(q)) ||
+                   (r.name && r.name.toLowerCase().includes(q));
+        });
+
+        this.render_result_list(filtered);
+    }
+
+    on_result_click(account, itemEl) {
+        this.$.searchResultsList.find('.ah-result-item').removeClass('active');
+        itemEl.addClass('active');
+
+        const username = account.username;
+        if (username) {
+            // Fetch full details from Flash API
+            this.perform_search_with_query(username, false);
+        } else {
+            // Build a minimal account object from local data
+            this.show_account({
+                uuid: account.name,
+                username: account.username || account.phone || account.email_id || account.name,
+                level: account.requested_level || 'ZERO',
+                status: account.status || 'ACTIVE',
+                owner: {
+                    phone: account.phone,
+                    email: { address: account.email_id, verified: false }
+                },
+                wallets: [],
+                merchants: [],
+                createdAt: null
+            });
+        }
+    }
+
     /* ── Search ─────────────────────────────────────── */
 
     perform_search() {
         const query = this.$.searchInput.val().trim();
         if (!query) return;
+        this.perform_search_with_query(query, true);
+    }
+
+    perform_search_with_query(query, clearLocal) {
+        if (!query) return;
 
         this.$.searchLoading.show();
         this.$.searchError.hide();
-        this.$.searchEmpty.hide();
-        this.$.searchResultsList.empty();
+        if (clearLocal) {
+            this.$.searchResultsList.empty();
+        }
 
         frappe.call({
             method: 'admin_panel.api.admin_api.search_account_smart',
@@ -954,12 +1076,13 @@ class AccountHub {
     show_search_error(msg) {
         this.$.searchError.show();
         this.$.searchErrorText.text(msg);
-        this.$.searchResultsList.empty();
+        // Don't clear the search results list — keep the last result visible
     }
 
     show_search_result(account) {
         this.$.searchError.hide();
         this.$.searchResultsList.empty();
+        this.$.searchEmpty.hide();
 
         const initial = (account.username || '?')[0].toUpperCase();
         const subInfo = account.owner?.phone || account.owner?.email?.address || account.username || account.id;
@@ -984,6 +1107,7 @@ class AccountHub {
         });
 
         this.$.searchResultsList.append(item);
+        item.click(); // Auto-select search result
     }
 
     /* ── Show Account ────────────────────────────────── */
@@ -1034,10 +1158,8 @@ class AccountHub {
             callback: (res) => {
                 const result = res.message;
                 if (result && !result.error) {
-                    // Update the search result item
                     this.$.searchResultsList.find('.ah-result-item').remove();
                     this.show_search_result(result);
-                    this.show_account(result);
                 }
             },
             error: () => {}

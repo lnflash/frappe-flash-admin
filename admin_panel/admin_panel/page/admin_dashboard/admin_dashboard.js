@@ -105,6 +105,44 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             color: var(--text-color);
             margin: 0 0 14px 0;
         }
+        .ad-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin: 0 0 14px 0;
+        }
+        .ad-section-header .ad-section-title {
+            margin: 0;
+        }
+        .ad-search-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            max-width: 440px;
+            margin-left: auto;
+        }
+        .ad-smart-search {
+            width: 100%;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 9px 12px;
+            font-size: 13px;
+            color: var(--text-color);
+            background: var(--bg);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .ad-smart-search:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 120, 86, 0.1);
+        }
+        .ad-request-count {
+            white-space: nowrap;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
 
         .ad-table-scroll {
             overflow-x: auto;
@@ -207,6 +245,8 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             .ad-tool-icon { width: 40px; height: 40px; font-size: 20px; margin-bottom: 0; }
             .ad-tool-content { min-width: 0; }
             .ad-section-title { font-size: 15px; }
+            .ad-section-header { align-items: stretch; flex-direction: column; gap: 10px; }
+            .ad-search-box { max-width: none; margin-left: 0; }
         }
         @media (max-width: 480px) {
             .ad-wrap { padding: 12px 14px; }
@@ -260,7 +300,7 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
 
     function render(data) {
         const rq = data.upgrade_requests || {};
-        const recent = data.recent_requests || [];
+        const requests = data.all_requests || data.recent_requests || [];
 
         const levelLabel = (lvl) => {
             const labels = { ZERO: 'Zero', ONE: 'One', TWO: 'Two', THREE: 'Three' };
@@ -286,6 +326,67 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
             if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
             return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        };
+
+
+        const normalizeSearch = (value) => String(value || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '');
+
+        const fuzzyIncludes = (value, rawNeedle) => {
+            const haystack = String(value || '').toLowerCase();
+            const needle = String(rawNeedle || '').toLowerCase();
+            if (!needle) return true;
+            if (haystack.includes(needle)) return true;
+
+            const normalizedHaystack = normalizeSearch(haystack);
+            const normalizedNeedle = normalizeSearch(needle);
+            if (!normalizedNeedle) return true;
+            if (normalizedHaystack.includes(normalizedNeedle)) return true;
+
+            // Lightweight fuzzy fallback: ordered-character subsequence match.
+            let j = 0;
+            for (const ch of normalizedHaystack) {
+                if (ch === normalizedNeedle[j]) j += 1;
+                if (j === normalizedNeedle.length) return true;
+            }
+            return false;
+        };
+
+        const requestMatchesQuery = (request, query) => {
+            const tokens = String(query || '').trim().split(/\s+/).filter(Boolean);
+            if (!tokens.length) return true;
+
+            const fields = [
+                request.username,
+                request.full_name,
+                request.phone_number,
+                request.email,
+                request.name,
+                request.status,
+                request.requested_level,
+                request.current_level,
+                levelLabel(request.requested_level),
+                levelLabel(request.current_level),
+            ];
+
+            return tokens.every(token => fields.some(field => fuzzyIncludes(field, token)));
+        };
+
+        const renderRequestRows = (items) => {
+            if (!items.length) {
+                return '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No upgrade requests match that search.</td></tr>';
+            }
+
+            return items.map(r => `
+                <tr style="cursor:pointer;" data-username="${frappe.utils.escape_html(r.username || '')}" data-query="${frappe.utils.escape_html(r.username || r.phone_number || r.email || r.name || '')}" class="ad-req-row">
+                    <td><strong>${frappe.utils.escape_html(r.username || '—')}</strong></td>
+                    <td>${frappe.utils.escape_html(r.full_name || '—')}</td>
+                    <td>${levelLabel(r.requested_level)}</td>
+                    <td>${statusBadge(r.status)}</td>
+                    <td>${formatDate(r.creation)}</td>
+                </tr>
+            `).join('');
         };
 
         $wrap.html(`
@@ -342,7 +443,13 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
                 </div>
             </div>
 
-            <h3 class="ad-section-title">Recent Upgrade Requests</h3>
+            <div class="ad-section-header">
+                <h3 class="ad-section-title">Upgrade Requests</h3>
+                <div class="ad-search-box">
+                    <input type="search" class="ad-smart-search" placeholder="Search username, name, phone, email, level, status..." autocomplete="off">
+                    <span class="ad-request-count"></span>
+                </div>
+            </div>
             <div class="ad-table-wrap">
                 <div class="ad-table-scroll">
                 <table class="ad-table">
@@ -355,26 +462,13 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
                             <th>Submitted</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        ${recent.length === 0
+                    <tbody class="ad-requests-body">
+                        ${requests.length === 0
                             ? '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No upgrade requests yet.</td></tr>'
-                            : recent.map(r => `
-                                <tr style="cursor:pointer;" data-name="${frappe.utils.escape_html(r.name)}" class="ad-req-row">
-                                    <td><strong>${frappe.utils.escape_html(r.username || '—')}</strong></td>
-                                    <td>${frappe.utils.escape_html(r.full_name || '—')}</td>
-                                    <td>${levelLabel(r.requested_level)}</td>
-                                    <td>${statusBadge(r.status)}</td>
-                                    <td>${formatDate(r.creation)}</td>
-                                </tr>
-                            `).join('')}
+                            : renderRequestRows(requests)}
                     </tbody>
                 </table>
-                ${recent.length > 0 ? `
-                    </div>
-                    <div class="ad-link-row">
-                        <a href="/app/account-management">View all requests →</a>
-                    </div>
-                ` : '</div>'}
+                </div>
             </div>
         `);
 
@@ -385,12 +479,24 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             frappe.set_route($(this).data('route').replace('/app/', ''));
         });
 
-        // Recent request rows → open the request form
-        $wrap.find('.ad-req-row').on('click', function () {
-            const name = $(this).data('name');
-            if (name) {
-                frappe.set_route('Form', 'Account Upgrade Request', name);
+        const updateRequestList = () => {
+            const query = $wrap.find('.ad-smart-search').val() || '';
+            const filtered = requests.filter(r => requestMatchesQuery(r, query));
+            $wrap.find('.ad-requests-body').html(renderRequestRows(filtered));
+            $wrap.find('.ad-request-count').text(`${filtered.length} of ${requests.length}`);
+        };
+
+        $wrap.on('input', '.ad-smart-search', updateRequestList);
+
+        // Upgrade request rows → open Account Hub with the username selected
+        $wrap.on('click', '.ad-req-row', function () {
+            const query = $(this).data('username') || $(this).data('query');
+            if (query) {
+                frappe.route_options = { account_hub_query: query };
+                frappe.set_route('account-hub');
             }
         });
+
+        updateRequestList();
     }
 };

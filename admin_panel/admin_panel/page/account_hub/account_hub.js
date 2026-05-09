@@ -23,7 +23,13 @@ frappe.pages['account-hub'].on_page_load = function(wrapper) {
         single_column: true
     });
 
-    new AccountHub(page);
+    wrapper.account_hub = new AccountHub(page);
+};
+
+frappe.pages['account-hub'].on_page_show = function(wrapper) {
+    if (wrapper.account_hub) {
+        wrapper.account_hub.handle_route_options();
+    }
 };
 
 /* ─────────────────────────────────────────────
@@ -127,6 +133,8 @@ class AccountHub {
         this.page = page;
         this.current_account = null;
         this.default_results = [];
+        this.default_list_loaded = false;
+        this.pending_route_query = null;
         this.$ = {};
         this.setup_page();
     }
@@ -935,6 +943,7 @@ class AccountHub {
     /* ── Default User List ────────────────────────────── */
 
     load_default_list() {
+        this.default_list_loaded = false;
         this.$.searchLoading.show();
         this.$.searchError.hide();
 
@@ -952,12 +961,16 @@ class AccountHub {
                 }
 
                 this.default_results = requests;
+                this.default_list_loaded = true;
                 this.$.searchEmpty.hide();
                 this.render_result_list(requests);
+                this.apply_pending_route_query();
             },
             error: () => {
+                this.default_list_loaded = true;
                 this.$.searchLoading.hide();
                 this.$.searchEmpty.show();
+                this.apply_pending_route_query();
             }
         });
     }
@@ -1060,6 +1073,39 @@ class AccountHub {
                 }
             }
         });
+    }
+
+    /* ── Route Selection ───────────────────────────── */
+
+    consume_route_query() {
+        const opts = frappe.route_options || {};
+        const query = opts.account_hub_query || opts.account_username || opts.username;
+        if (!query) return null;
+
+        delete opts.account_hub_query;
+        delete opts.account_username;
+        delete opts.username;
+        frappe.route_options = Object.keys(opts).length ? opts : null;
+
+        return String(query).trim();
+    }
+
+    handle_route_options() {
+        const query = this.consume_route_query();
+        if (!query) return;
+
+        this.pending_route_query = query;
+        this.apply_pending_route_query();
+    }
+
+    apply_pending_route_query() {
+        if (!this.pending_route_query || !this.default_list_loaded) return;
+
+        const query = this.pending_route_query;
+        this.pending_route_query = null;
+        this.$.searchInput.val(query);
+        this.filter_local_list(query);
+        this.perform_search_with_query(query, false);
     }
 
     /* ── Search ─────────────────────────────────────── */

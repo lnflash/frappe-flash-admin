@@ -419,7 +419,7 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             </div>
 
             <h3 class="ad-section-title">Quick Actions</h3>
-            <div class="ad-grid-row ad-grid-3">
+            <div class="ad-grid-row ad-grid-4">
                 <div class="ad-tool-card" data-route="/app/account-hub">
                     <div class="ad-tool-icon" style="background:#e6f0ff;color:#2563eb;">🔍</div>
                     <div class="ad-tool-content">
@@ -432,6 +432,13 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
                     <div class="ad-tool-content">
                         <div class="ad-tool-title">Account Management</div>
                         <div class="ad-tool-desc">Review ID documents, approve or reject upgrade requests, update user details.</div>
+                    </div>
+                </div>
+                <div class="ad-tool-card" data-route="/app/cashout-requests">
+                    <div class="ad-tool-icon" style="background:#e6f9ed;color:#1a7d36;">💸</div>
+                    <div class="ad-tool-content">
+                        <div class="ad-tool-title">Transfer Requests</div>
+                        <div class="ad-tool-desc">Placeholder for reviewing and processing cashout transfer requests.</div>
                     </div>
                 </div>
                 <div class="ad-tool-card" data-route="/app/alert-users">

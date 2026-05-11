@@ -89,39 +89,60 @@ class GraphQLClient:
 		return resp.get("data", {}).get(data_key)
 	
 	# GraphQL query constants
+	# Reusable fragment for account detail fields
+	ACCOUNT_DETAIL_FRAGMENT = """
+	fragment AccountDetail on AuditedAccount {
+		id
+		uuid
+		username
+		npub
+		level
+		status
+		title
+		erpParty
+		owner {
+			id
+			phone
+			language
+			email {
+				address
+				verified
+			}
+			createdAt
+		}
+		coordinates {
+			latitude
+			longitude
+		}
+		wallets {
+			id
+			walletCurrency
+			accountId
+			balance
+			pendingIncomingBalance
+		}
+		merchants {
+			id
+			title
+			coordinates {
+				latitude
+				longitude
+			}
+			validated
+			username
+			createdAt
+		}
+		createdAt
+	}
+	"""
+
 	ACCOUNT_BY_PHONE_QUERY = """
 		query accountDetailsByUserPhone($phone: Phone!) {
 			accountDetailsByUserPhone(phone: $phone) {
-				id
-				username
-				level
-				status
-				title
-				owner {
-					id
-					language
-					phone
-					email {
-						address
-						verified
-					}
-					createdAt
-				}
-				coordinates {
-					latitude
-					longitude
-				}
-				wallets {
-					id
-					walletCurrency
-					accountId
-					balance
-					pendingIncomingBalance
-				}
-				createdAt
+				...AccountDetail
 			}
 		}
-	"""
+	""" + ACCOUNT_DETAIL_FRAGMENT
 
 	UPDATE_LEVEL_MUTATION = """
 		mutation accountUpdateLevel($input: AccountUpdateLevelInput!) {
@@ -187,6 +208,92 @@ class GraphQLClient:
 		}
 	"""
 
+	ACCOUNT_BY_USERNAME_QUERY = """
+		query accountDetailsByUsername($username: Username!) {
+			accountDetailsByUsername(username: $username) {
+				...AccountDetail
+			}
+		}
+	""" + ACCOUNT_DETAIL_FRAGMENT
+
+	ACCOUNT_BY_EMAIL_QUERY = """
+		query accountDetailsByEmail($email: EmailAddress!) {
+			accountDetailsByEmail(email: $email) {
+				...AccountDetail
+			}
+		}
+	""" + ACCOUNT_DETAIL_FRAGMENT
+
+	ACCOUNT_BY_ID_QUERY = """
+		query accountDetailsByAccountId($accountId: ID!) {
+			accountDetailsByAccountId(accountId: $accountId) {
+				...AccountDetail
+			}
+		}
+	""" + ACCOUNT_DETAIL_FRAGMENT
+
+	UPDATE_STATUS_MUTATION = """
+		mutation accountUpdateStatus($input: AccountUpdateStatusInput!) {
+			accountUpdateStatus(input: $input) {
+				errors {
+					message
+				}
+				accountDetails {
+					...AccountDetail
+				}
+			}
+		}
+	""" + ACCOUNT_DETAIL_FRAGMENT
+
+	USER_UPDATE_PHONE_MUTATION = """
+		mutation userUpdatePhone($input: UserUpdatePhoneInput!) {
+			userUpdatePhone(input: $input) {
+				errors {
+					message
+				}
+				accountDetails {
+					...AccountDetail
+				}
+			}
+		}
+	""" + ACCOUNT_DETAIL_FRAGMENT
+
+	MERCHANT_MAP_VALIDATE_MUTATION = """
+		mutation merchantMapValidate($input: MerchantMapValidateInput!) {
+			merchantMapValidate(input: $input) {
+				errors {
+					message
+				}
+				merchant {
+					id
+					title
+					latitude
+					longitude
+					validated
+					username
+				}
+			}
+		}
+	"""
+
+	MERCHANT_MAP_DELETE_MUTATION = """
+		mutation merchantMapDelete($input: MerchantMapDeleteInput!) {
+			merchantMapDelete(input: $input) {
+				errors {
+					message
+				}
+				merchant {
+					id
+					title
+					latitude
+					longitude
+					validated
+					username
+				}
+			}
+		}
+	"""
+
 	def get_account_by_phone(self, phone: str) -> dict | None:
 		"""Get account details by phone number"""
 		return self.execute_and_extract(
@@ -228,3 +335,65 @@ class GraphQLClient:
 			{"input": {"topic": topic, "title": title, "body": body}},
 			"sendNotification"
 		)
+
+	def get_account_by_username(self, username: str) -> dict | None:
+		"""Get account details by username"""
+		return self.execute_and_extract(
+			self.ACCOUNT_BY_USERNAME_QUERY,
+			{"username": username},
+			"accountDetailsByUsername",
+			allow_not_found=True
+		)
+
+	def get_account_by_email(self, email: str) -> dict | None:
+		"""Get account details by email address"""
+		return self.execute_and_extract(
+			self.ACCOUNT_BY_EMAIL_QUERY,
+			{"email": email},
+			"accountDetailsByEmail",
+			allow_not_found=True
+		)
+
+	def get_account_by_id(self, account_id: str) -> dict | None:
+		"""Get account details by account ID"""
+		return self.execute_and_extract(
+			self.ACCOUNT_BY_ID_QUERY,
+			{"accountId": account_id},
+			"accountDetailsByAccountId",
+			allow_not_found=True
+		)
+
+	def update_account_status(self, uid: str, status: str, comment: str = None) -> dict:
+		"""Change account status via admin mutation"""
+		variables = {"input": {"uid": uid, "status": status}}
+		if comment:
+			variables["input"]["comment"] = comment
+		return self.execute_and_extract(
+			self.UPDATE_STATUS_MUTATION,
+			variables,
+			"accountUpdateStatus"
+		) or {}
+
+	def update_user_phone(self, account_uuid: str, phone: str) -> dict:
+		"""Update phone number for a user"""
+		return self.execute_and_extract(
+			self.USER_UPDATE_PHONE_MUTATION,
+			{"input": {"accountUuid": account_uuid, "phone": phone}},
+			"userUpdatePhone"
+		) or {}
+
+	def validate_merchant(self, merchant_id: str) -> dict:
+		"""Approve a merchant map entry"""
+		return self.execute_and_extract(
+			self.MERCHANT_MAP_VALIDATE_MUTATION,
+			{"input": {"id": merchant_id}},
+			"merchantMapValidate"
+		) or {}
+
+	def delete_merchant(self, merchant_id: str) -> dict:
+		"""Delete a merchant map entry"""
+		return self.execute_and_extract(
+			self.MERCHANT_MAP_DELETE_MUTATION,
+			{"input": {"id": merchant_id}},
+			"merchantMapDelete"
+		) or {}

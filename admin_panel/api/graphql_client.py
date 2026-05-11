@@ -170,17 +170,8 @@ class GraphQLClient:
 		}
 	"""
 
-	ID_DOCUMENT_URL_QUERY = """
-		query IdDocumentReadUrl($fileKey: String!) {
-			idDocumentReadUrl(fileKey: $fileKey) {
-				readUrl
-				errors {
-					message
-				}
-			}
-		}
-	"""
-
+	
+	
 	def get_account_by_phone(self, phone: str) -> dict | None:
 		"""Get account details by phone number"""
 		return self.execute_and_extract(
@@ -209,10 +200,4 @@ class GraphQLClient:
 			"adminBroadcastSend"
 		)
 
-	def get_id_document_read_url(self, file_key: str) -> dict:
-		"""Get pre-signed URL for ID document from Digital Ocean Spaces"""
-		return self.execute_and_extract(
-			self.ID_DOCUMENT_URL_QUERY,
-			{"fileKey": file_key},
-			"idDocumentReadUrl"
-		)
+	

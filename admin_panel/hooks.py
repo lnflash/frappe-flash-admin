@@ -239,6 +239,10 @@ app_license = "mit"
 
 after_migrate = ["admin_panel.admin_panel.setup.after_migrate"]
 
+doctype_dashboards = {
+    "Allowed Country": "admin_panel.admin_panel.doctype.allowed_country.allowed_country_dashboard",
+}
+
 fixtures = [
     {"doctype": "Workspace", "filters": [["module", "=", "Admin Panel"]]},
     {"doctype": "Client Script", "filters": [["module", "=", "Admin Panel"]]},

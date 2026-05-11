@@ -191,7 +191,7 @@ SUPPORTED_COUNTRIES = [
 def seed_allowed_countries():
     """Seed/update Allowed Country records. Idempotent — upserts by iso_code."""
 
-    existing = {d.iso_code for d in frappe.get_all("Allowed Country", pluck="iso_code")}
+    existing = set(frappe.get_all("Allowed Country", pluck="iso_code"))
     created = 0
     updated = 0
 

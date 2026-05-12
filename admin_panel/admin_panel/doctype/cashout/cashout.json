@@ -1,0 +1,164 @@
+{
+ "actions": [],
+ "creation": "2026-05-04 00:00:00.000000",
+ "custom": 0,
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "customer",
+  "bank_account",
+  "status",
+  "transaction_id",
+  "offer_section",
+  "user_pays",
+  "flash_fee",
+  "exchange_rate",
+  "offer_col_break",
+  "user_receives",
+  "currency",
+  "accounting_section",
+  "journal_entry",
+  "wallet_id",
+  "flash_wallet",
+  "payment_journal_entry",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Customer",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "fieldname": "bank_account",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Bank Account",
+   "options": "Bank Account",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Draft\nIn Progress\nCompleted"
+  },
+  {
+   "description": "The transaction ID that initiated this cashout",
+   "fieldname": "transaction_id",
+   "fieldtype": "Data",
+   "label": "Transaction ID"
+  },
+  {
+   "collapsible": 1,
+   "collapsed": 1,
+   "fieldname": "offer_section",
+   "fieldtype": "Section Break",
+   "label": "Offer Details"
+  },
+  {
+   "description": "Total USD paid by the user (payout + service fee)",
+   "fieldname": "user_pays",
+   "fieldtype": "Float",
+   "label": "User Paid (USD)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "flash_fee",
+   "fieldtype": "Float",
+   "label": "Flash Fee (USD)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "offer_col_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "user_receives",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "User Receives",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Select",
+   "label": "Currency",
+   "options": "USD\nJMD",
+   "read_only": 1
+  },
+  {
+   "fieldname": "exchange_rate",
+   "fieldtype": "Float",
+   "label": "Exchange Rate (to USD)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "accounting_section",
+   "fieldtype": "Section Break",
+   "label": "Accounting"
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Payable Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "wallet_id",
+   "fieldtype": "Data",
+   "label": "User Wallet ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "flash_wallet",
+   "fieldtype": "Data",
+   "label": "Flash Wallet",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payment_journal_entry",
+   "fieldtype": "Link",
+   "label": "Payment Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-05-06 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Admin Panel",
+ "name": "Cashout",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "cancel": 1,
+   "create": 1,
+   "read": 1,
+   "role": "Accounts Manager",
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

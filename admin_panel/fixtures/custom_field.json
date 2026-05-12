@@ -1,0 +1,14 @@
+[
+  {
+    "doctype": "Custom Field",
+    "name": "Bank Account-currency",
+    "dt": "Bank Account",
+    "fieldname": "currency",
+    "fieldtype": "Link",
+    "options": "Currency",
+    "label": "Currency",
+    "insert_after": "bank_account_no",
+    "in_list_view": 0,
+    "reqd": 1
+  }
+]

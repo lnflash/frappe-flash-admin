@@ -54,40 +54,6 @@ def update_account_level(uid, level):
 
 @frappe.whitelist()
 @handle_api_errors
-def send_alert(title, message, tag="EMERGENCY"):
-	"""Send broadcast alert to all users via admin API"""
-	if not title or not message:
-		frappe.response['http_status_code'] = 400
-		return {"success": False, "error": "Title and message are required"}
-
-	client = GraphQLClient()
-	result = client.send_broadcast_alert(title, message, tag)
-
-	if result.get('errors'):
-		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
-		frappe.logger().error(f"Broadcast alert errors: {error_messages}")
-		frappe.response['http_status_code'] = 400
-		return {"success": False, "errors": error_messages}
-
-	if not result.get('success'):
-		frappe.response['http_status_code'] = 500
-		return {"success": False, "error": "Failed to send alert"}
-
-	frappe.get_doc({
-		"doctype": "User Alerts",
-		"title": title,
-		"message": message,
-		"tag": tag,
-		"sent_by": frappe.session.user,
-		"sent_on": frappe.utils.now_datetime()
-	}).insert(ignore_permissions=True)
-	frappe.db.commit()
-
-	return {"success": True, "message": f"Alert sent successfully: {title}"}
-
-
-@frappe.whitelist()
-@handle_api_errors
 def get_user_alerts(limit=10):
 	"""Return latest User Alerts"""
 	logs = frappe.get_all(
@@ -97,6 +63,49 @@ def get_user_alerts(limit=10):
 		limit_page_length=int(limit)
 	)
 	return {"logs": logs}
+
+
+@frappe.whitelist()
+@handle_api_errors
+def get_alert_types():
+	"""Fetch available notification topics from Flash API"""
+	client = GraphQLClient()
+	topics = client.get_notification_topics()
+	return {"topics": topics}
+
+
+@frappe.whitelist()
+@handle_api_errors
+def send_alert(alert_type, title, message):
+	"""Send push notification via Flash sendNotification API"""
+	if not title or not message or not alert_type:
+		frappe.response['http_status_code'] = 400
+		return {"success": False, "error": "Alert type, title, and message are required"}
+
+	client = GraphQLClient()
+	result = client.send_alert(alert_type, title, message)
+
+	if result.get('errors'):
+		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
+		frappe.logger().error(f"Send alert errors: {error_messages}")
+		frappe.response['http_status_code'] = 400
+		return {"success": False, "errors": error_messages}
+
+	if not result.get('success'):
+		frappe.response['http_status_code'] = 500
+		return {"success": False, "error": "Failed to send notification"}
+
+	frappe.get_doc({
+		"doctype": "User Alerts",
+		"title": title,
+		"message": message,
+		"tag": alert_type,
+		"sent_by": frappe.session.user,
+		"sent_on": frappe.utils.now_datetime()
+	}).insert(ignore_permissions=True)
+	frappe.db.commit()
+
+	return {"success": True, "message": f"Notification sent successfully: {title}"}
 
 
 @frappe.whitelist()
@@ -510,3 +519,15 @@ def get_id_document_url(file_key):
 		return {"success": False, "errors": error_messages}
 
 	return {"success": True, "url": result.get('readUrl')}
+
+
+@frappe.whitelist()
+def get_customer_bank_accounts(customer):                                                               
+		accounts = frappe.get_all(                                                                          
+				"Bank Account",
+				filters={"party_type": "Customer", "party": customer},                                          
+				fields=["name", "account_name", "bank", "bank_account_no", "account"],                          
+		)
+		for acct in accounts:                                                                               
+				acct["currency"] = frappe.get_value("Account", acct["account"], "account_currency")             
+		return accounts

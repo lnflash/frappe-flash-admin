@@ -1,8 +1,11 @@
 import frappe
 
+from admin_panel.admin_panel.doctype.allowed_country.seed import seed_allowed_countries
+
 
 def after_migrate():
 	sync_pages()
+	seed_allowed_countries()
 
 
 def sync_pages():

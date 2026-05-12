@@ -15,29 +15,29 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                 border-radius: 8px;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
-            
+
             .alert-form-header {
                 margin-bottom: 30px;
                 padding-bottom: 20px;
                 border-bottom: 2px solid #DDE3E1;
             }
-            
+
             .alert-form-header h3 {
                 color: #212121;
                 font-weight: 600;
                 margin: 0;
             }
-            
+
             .alert-form-header p {
                 color: #939998;
                 margin: 8px 0 0 0;
                 font-size: 14px;
             }
-            
+
             .form-group {
                 margin-bottom: 24px;
             }
-            
+
             .form-group label {
                 display: block;
                 font-weight: 600;
@@ -45,12 +45,12 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                 margin-bottom: 8px;
                 font-size: 14px;
             }
-            
+
             .form-group label .required {
                 color: #DC2626;
                 margin-left: 2px;
             }
-            
+
             .form-control {
                 width: 100%;
                 padding: 12px 16px;
@@ -62,17 +62,17 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                 background: #FFFFFF;
                 color: #212121;
             }
-            
+
             .form-control:focus {
                 outline: none;
                 border-color: #007856;
                 box-shadow: 0 0 0 3px rgba(0, 120, 86, 0.1);
             }
-            
+
             .form-control::placeholder {
                 color: #939998;
             }
-            
+
             textarea.form-control {
                 resize: vertical;
                 min-height: 120px;
@@ -85,20 +85,20 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                 border: 1px solid #DDE3E1;
                 border-radius: 6px;
                 font-size: 14px;
-                line-height: 1.5;           /* Add this */
+                line-height: 1.5;
                 background: #FFFFFF;
                 color: #212121;
                 cursor: pointer;
-                height: auto;               /* Add this */
-                min-height: 42px;           /* Add this */
-                appearance: none;           /* Add this for custom styling */
+                height: auto;
+                min-height: 42px;
+                appearance: none;
                 background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23212121' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
                 background-repeat: no-repeat;
                 background-position: right 12px center;
                 background-size: 16px;
-                padding-right: 40px;        /* Add space for the arrow */
+                padding-right: 40px;
             }
-            
+
             .btn-send-alert {
                 background: linear-gradient(135deg, #E8D315 0%, #007856 100%);
                 color: #002118;
@@ -113,23 +113,23 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                 width: 100%;
                 margin-top: 10px;
             }
-            
+
             .btn-send-alert:hover {
                 transform: translateY(-2px);
                 box-shadow: 0 6px 16px rgba(232, 211, 21, 0.4);
                 background: linear-gradient(135deg, #E8D315 20%, #007856 100%);
             }
-            
+
             .btn-send-alert:active {
                 transform: translateY(0);
             }
-            
+
             .btn-send-alert:disabled {
                 opacity: 0.6;
                 cursor: not-allowed;
                 transform: none;
             }
-            
+
             .alert-preview {
                 margin-top: 30px;
                 padding: 20px;
@@ -137,19 +137,19 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                 border-radius: 6px;
                 border-left: 4px solid #007856;
             }
-            
+
             .alert-preview h4 {
                 color: #212121;
                 margin: 0 0 10px 0;
                 font-size: 16px;
             }
-            
+
             .alert-preview p {
                 color: #939998;
                 margin: 0;
                 font-size: 14px;
             }
-            
+
             .char-count {
                 font-size: 12px;
                 color: #939998;
@@ -174,6 +174,11 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                 margin-bottom: 14px;
             }
 
+            .alert-item.severity-emergency { border-left-color: #DC2626; }
+            .alert-item.severity-attention  { border-left-color: #D97706; }
+            .alert-item.severity-info       { border-left-color: #2563EB; }
+            .alert-item.severity-marketing  { border-left-color: #059669; }
+
             .alert-item h4 {
                 margin: 0 0 6px 0;
                 color: #002118;
@@ -190,22 +195,22 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                 margin-top: 6px;
             }
         </style>
-        
+
         <div class="alert-form-container">
             <div class="alert-form-header">
                 <h3>📢 Send Alert to All Users</h3>
                 <p>Create and send an alert message that will be displayed to all users in the system</p>
             </div>
-            
+
             <div class="form-group">
                 <label for="alert-title">
                     Alert Title
                     <span class="required">*</span>
                 </label>
-                <input 
-                    type="text" 
-                    class="form-control" 
-                    id="alert-title" 
+                <input
+                    type="text"
+                    class="form-control"
+                    id="alert-title"
                     placeholder="Enter a short, attention-grabbing title"
                     maxlength="100"
                 >
@@ -213,15 +218,15 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                     <span id="title-count">0</span>/100 characters
                 </div>
             </div>
-            
+
             <div class="form-group">
                 <label for="alert-description">
                     Alert Message
                     <span class="required">*</span>
                 </label>
-                <textarea 
-                    class="form-control" 
-                    id="alert-description" 
+                <textarea
+                    class="form-control"
+                    id="alert-description"
                     placeholder="Provide detailed information about the alert..."
                     maxlength="500"
                 ></textarea>
@@ -235,18 +240,15 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                     Alert Type
                     <span class="required">*</span>
                 </label>
-                <select class="form-control" id="alert-tag">
-                    <option value="EMERGENCY">Emergency</option>
-                    <option value="ATTENTION">Attention</option>
-                    <option value="INFO">Information</option>
-                    <option value="MARKETING">Marketing</option>
+                <select class="form-control" id="alert-tag" disabled>
+                    <option value="">Loading alert types...</option>
                 </select>
             </div>
-            
-            <button class="btn-send-alert" id="send-alert-btn">
+
+            <button class="btn-send-alert" id="send-alert-btn" disabled>
                 <span class="btn-text">Send Alert to All Users</span>
             </button>
-            
+
             <div id="alert-preview" style="display: none;">
                 <div class="alert-preview">
                     <h4>Preview:</h4>
@@ -293,7 +295,37 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
         }
     }
 
-    function sendAlert(title, description, tag) {
+    function loadAlertTypes() {
+        frappe.call({
+            method: 'admin_panel.api.admin_api.get_alert_types',
+            callback: function(r) {
+                const topics = r.message && r.message.topics;
+                $tagSelect.empty();
+
+                if (!topics || topics.length === 0) {
+                    $tagSelect.append('<option value="">No alert types available</option>');
+                    return;
+                }
+
+                topics.forEach(function(topic) {
+                    $tagSelect.append(`<option value="${topic}">${topic}</option>`);
+                });
+
+                $tagSelect.prop('disabled', false);
+                $sendButton.prop('disabled', false);
+                updatePreview();
+            },
+            error: function() {
+                $tagSelect.empty().append('<option value="">Failed to load types</option>');
+                frappe.show_alert({
+                    message: 'Could not load alert types from API.',
+                    indicator: 'red'
+                }, 5);
+            }
+        });
+    }
+
+    function sendAlert(title, description, alertType) {
         $sendButton.prop('disabled', true);
         $sendButton.html('<span class="btn-text">Sending...</span>');
 
@@ -302,7 +334,7 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
             args: {
                 title: title,
                 message: description,
-                tag: tag
+                alert_type: alertType
             },
             callback: function(response) {
                 if (response.message && response.message.success) {
@@ -311,18 +343,16 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                         indicator: 'green'
                     }, 5);
 
-                    // Clear form
                     $titleInput.val('');
                     $descriptionInput.val('');
-                    $tagSelect.val('EMERGENCY');
                     $titleCount.text('0');
                     $descriptionCount.text('0');
                     $previewContainer.fadeOut();
-                    
+
                     loadAlertHistory();
                 } else {
-                    const errorMsg = response.message?.error || 
-                                   (response.message?.errors ? response.message.errors.join(', ') : '') || 
+                    const errorMsg = response.message?.error ||
+                                   (response.message?.errors ? response.message.errors.join(', ') : '') ||
                                    'Unknown error';
 
                     frappe.msgprint({
@@ -332,7 +362,7 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                     });
                 }
             },
-            error: function(error) {
+            error: function() {
                 frappe.msgprint({
                     title: 'Error',
                     message: 'Failed to send alert. Please try again.',
@@ -344,6 +374,15 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                 $sendButton.html('<span class="btn-text">Send Alert to All Users</span>');
             }
         });
+    }
+
+    function getSeverityClass(tag) {
+        const t = (tag || '').toUpperCase();
+        if (t.includes('EMERGENCY')) return 'severity-emergency';
+        if (t.includes('ATTENTION'))  return 'severity-attention';
+        if (t.includes('INFO'))       return 'severity-info';
+        if (t.includes('MARKETING'))  return 'severity-marketing';
+        return '';
     }
 
     function loadAlertHistory() {
@@ -359,10 +398,10 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                     return;
                 }
 
-                r.message.logs.forEach(log => {
+                const html = r.message.logs.map(log => {
                     const date = frappe.datetime.str_to_user(log.sent_on);
-                    const item = `
-                        <div class="alert-item">
+                    return `
+                        <div class="alert-item ${getSeverityClass(log.tag)}">
                             <h4>${frappe.utils.escape_html(log.title)}</h4>
                             <p>${frappe.utils.escape_html(log.message)}</p>
                             <small>
@@ -370,8 +409,8 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                             </small>
                         </div>
                     `;
-                    $historyList.append(item);
-                });
+                }).join('');
+                $historyList.html(html);
             }
         });
     }
@@ -392,7 +431,7 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
     $sendButton.on('click', function() {
         const title = $titleInput.val().trim();
         const description = $descriptionInput.val().trim();
-        const tag = $tagSelect.val();
+        const alertType = $tagSelect.val();
 
         if (!title) {
             frappe.msgprint({
@@ -415,15 +454,16 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
         }
 
         frappe.confirm(
-            `Are you sure you want to send this ${tag.toLowerCase()} alert to all users?<br><br>
+            `Are you sure you want to send this ${alertType} alert to all users?<br><br>
             <strong>Title:</strong> ${title}<br>
             <strong>Message:</strong> ${description}<br>
-            <strong>Type:</strong> ${tag}`,
+            <strong>Type:</strong> ${alertType}`,
             function() {
-                sendAlert(title, description, tag);
+                sendAlert(title, description, alertType);
             }
         );
     });
 
+    loadAlertTypes();
     loadAlertHistory();
 }

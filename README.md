@@ -76,6 +76,25 @@ bench --site {site} export-fixtures --app admin_panel
 
 This updates `admin_panel/fixtures/workspace.json` and `admin_panel/fixtures/client_script.json`.
 
+### Releasing
+
+Releases are versioned with git tags and published as a multi-arch Docker image (`brh28/frappe-flash`).
+
+**Local release flow:**
+```bash
+./release.sh <major|minor|patch>
+```
+This bumps the version from the last git tag, creates a new tag, pushes it to the remote, and builds and pushes the Docker image.
+
+**CI flow:**
+
+A push of a version tag (e.g. `v1.2.0`) triggers CI, which runs `ci.sh` directly to build and push the image. `release.sh` is not involved.
+
+**Version bump guide:**
+- `patch` — bug fixes
+- `minor` — new features
+- `major` — breaking changes
+
 ### Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:

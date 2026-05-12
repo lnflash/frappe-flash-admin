@@ -1,7 +1,7 @@
 [
  {
   "charts": [],
-  "content": "[{\"id\":\"_EYFml0tr6\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Admin Panel</b></span>\",\"col\":12}},{\"id\":\"_F4e1CqrUd\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Alert Users\",\"col\":3}},{\"id\":\"_F4e1CqrUe\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Account Management\",\"col\":3}},{\"id\":\"_Eng390Shortcut\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Allowed Country\",\"col\":3}},{\"id\":\"_bxWkoteNn\",\"type\":\"card\",\"data\":{\"card_name\":\"Tools\",\"col\":12}},{\"id\":\"_Eng390ComplianceCard\",\"type\":\"card\",\"data\":{\"card_name\":\"Compliance\",\"col\":12}}]",
+  "content": "[{\"id\":\"_EYFml0tr6\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Admin Panel</b></span>\",\"col\":12}},{\"id\":\"_F4e1CqrUd\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Alert Users\",\"col\":3}},{\"id\":\"_F4e1CqrUe\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Account Management\",\"col\":3}},{\"id\":\"_Eng390Shortcut\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Allowed Country\",\"col\":3}},{\"id\":\"_F4e1CqrUf\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Cashout Requests\",\"col\":3}},{\"id\":\"_bxWkoteNn\",\"type\":\"card\",\"data\":{\"card_name\":\"Tools\",\"col\":12}},{\"id\":\"_Eng390ComplianceCard\",\"type\":\"card\",\"data\":{\"card_name\":\"Compliance\",\"col\":12}}]",
   "custom_blocks": [],
   "docstatus": 0,
   "doctype": "Workspace",
@@ -101,6 +101,24 @@
     "parenttype": "Workspace",
     "report_ref_doctype": null,
     "type": "Link"
+   },
+   {
+    "dependencies": null,
+    "description": null,
+    "hidden": 0,
+    "icon": "currency",
+    "is_query_report": 0,
+    "label": "Cashout Requests",
+    "link_count": 0,
+    "link_to": "cashout-requests",
+    "link_type": "Page",
+    "onboard": 0,
+    "only_for": null,
+    "parent": "Admin Panel",
+    "parentfield": "links",
+    "parenttype": "Workspace",
+    "report_ref_doctype": null,
+    "type": "Link"
    }
   ],
   "modified": "2026-05-08 11:55:00.000000",
@@ -163,6 +181,23 @@
     "restrict_to_domain": null,
     "stats_filter": null,
     "type": "DocType",
+    "url": null
+   },
+   {
+    "color": "#F59E0B",
+    "doc_view": "",
+    "format": "",
+    "icon": "currency",
+    "kanban_board": null,
+    "label": "Cashout Requests",
+    "link_to": "cashout-requests",
+    "parent": "Admin Panel",
+    "parentfield": "shortcuts",
+    "parenttype": "Workspace",
+    "report_ref_doctype": null,
+    "restrict_to_domain": null,
+    "stats_filter": null,
+    "type": "Page",
     "url": null
    }
   ],

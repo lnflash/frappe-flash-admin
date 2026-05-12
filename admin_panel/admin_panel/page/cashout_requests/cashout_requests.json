@@ -1,19 +1,19 @@
 {
  "content": null,
- "creation": "2026-04-03 11:38:18.350514",
+ "creation": "2026-04-03 12:00:00",
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2025-10-29 18:46:51.633558",
+ "modified": "2026-04-03 12:29:03.124676",
  "modified_by": "Administrator",
  "module": "Admin Panel",
- "name": "alert-users",
+ "name": "cashout-requests",
  "owner": "Administrator",
- "page_name": "alert-users",
+ "page_name": "cashout-requests",
  "roles": [],
  "script": null,
  "standard": "Yes",
  "style": null,
  "system_page": 0,
- "title": "Alert Users"
+ "title": "Cashout Requests"
 }

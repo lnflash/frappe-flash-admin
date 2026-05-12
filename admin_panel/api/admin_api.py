@@ -326,6 +326,181 @@ def reject_upgrade_request(request_id, reason=None):
 	return {"success": True, "message": "Request rejected."}
 
 
+DUMMY_CASHOUT_REQUESTS = [
+	{
+		"name": "CO-2026-00001", "username": "john_doe", "full_name": "John Doe",
+		"phone_number": "12345678901", "email": "john@example.com",
+		"offer_id": "OFFER-8821", "wallet_id": "WALLET-44301",
+		"send": 500.00, "flash_fee": 5.00, "exchange_rate": 156.2500,
+		"receive_jmd": 77625.00, "receive_usd": 495.00,
+		"bank_account": "BA-00001", "bank_name": "First National Bank",
+		"account_number": "****1234", "account_type": "Savings",
+		"journal_entry": "JE-2026-00001", "status": "Pending", "payment_entry": None,
+		"creation": "2026-04-01 10:00:00", "modified": "2026-04-01 10:00:00",
+	},
+	{
+		"name": "CO-2026-00002", "username": "jane_smith", "full_name": "Jane Smith",
+		"phone_number": "98765432101", "email": "jane@example.com",
+		"offer_id": "OFFER-7734", "wallet_id": "WALLET-88102",
+		"send": 1200.50, "flash_fee": 12.00, "exchange_rate": 156.5000,
+		"receive_jmd": 185714.25, "receive_usd": 1188.50,
+		"bank_account": "BA-00002", "bank_name": "City Bank",
+		"account_number": "****5678", "account_type": "Chequing",
+		"journal_entry": "JE-2026-00002", "status": "Paid",
+		"payment_entry": "PE-2026-00001",
+		"pe_paid_amount": 1200.50, "pe_currency": "USD",
+		"pe_posting_date": "2026-04-01", "pe_mode_of_payment": "Bank Transfer",
+		"creation": "2026-04-01 11:30:00", "modified": "2026-04-01 12:00:00",
+	},
+	{
+		"name": "CO-2026-00003", "username": "ali_hassan", "full_name": "Ali Hassan",
+		"phone_number": "55544433301", "email": "ali@example.com",
+		"offer_id": "OFFER-5591", "wallet_id": "WALLET-22987",
+		"send": 350.00, "flash_fee": 3.50, "exchange_rate": 157.0000,
+		"receive_jmd": 53812.50, "receive_usd": 346.50,
+		"bank_account": "BA-00003", "bank_name": "Metro Bank",
+		"account_number": "****9012", "account_type": "Savings",
+		"journal_entry": "JE-2026-00003", "status": "Pending", "payment_entry": None,
+		"creation": "2026-04-02 09:15:00", "modified": "2026-04-02 09:15:00",
+	},
+	{
+		"name": "CO-2026-00004", "username": "maria_lopez", "full_name": "Maria Lopez",
+		"phone_number": "11122233401", "email": "maria@example.com",
+		"offer_id": "OFFER-3302", "wallet_id": "WALLET-67541",
+		"send": 75.00, "flash_fee": 0.75, "exchange_rate": 156.0000,
+		"receive_jmd": 11566.25, "receive_usd": 74.25,
+		"bank_account": "BA-00004", "bank_name": "Global Bank",
+		"account_number": "****3456", "account_type": "Current",
+		"journal_entry": "JE-2026-00004", "status": "Failed", "payment_entry": None,
+		"creation": "2026-04-02 14:00:00", "modified": "2026-04-02 14:30:00",
+	},
+	{
+		"name": "CO-2026-00005", "username": "chen_wei", "full_name": "Chen Wei",
+		"phone_number": "66677788901", "email": "chen@example.com",
+		"offer_id": "OFFER-9918", "wallet_id": "WALLET-11234",
+		"send": 2500.00, "flash_fee": 25.00, "exchange_rate": 156.7500,
+		"receive_jmd": 385312.50, "receive_usd": 2475.00,
+		"bank_account": "BA-00005", "bank_name": "Pacific Bank",
+		"account_number": "****7890", "account_type": "Savings",
+		"journal_entry": "JE-2026-00005", "status": "Cancelled", "payment_entry": None,
+		"creation": "2026-04-03 08:00:00", "modified": "2026-04-03 08:45:00",
+	},
+	{
+		"name": "CO-2026-00006", "username": "anna_k", "full_name": "Anna Kowalski",
+		"phone_number": "44433322201", "email": "anna@example.com",
+		"offer_id": "OFFER-6647", "wallet_id": "WALLET-33890",
+		"send": 890.75, "flash_fee": 8.90, "exchange_rate": 156.2500,
+		"receive_jmd": 137316.56, "receive_usd": 881.85,
+		"bank_account": "BA-00006", "bank_name": "Northern Bank",
+		"account_number": "****2345", "account_type": "Savings",
+		"journal_entry": "JE-2026-00006", "status": "Pending", "payment_entry": None,
+		"creation": "2026-04-03 09:30:00", "modified": "2026-04-03 09:30:00",
+	},
+	{
+		"name": "CO-2026-00007", "username": "omar_s", "full_name": "Omar Said",
+		"phone_number": "99988877701", "email": "omar@example.com",
+		"offer_id": "OFFER-2283", "wallet_id": "WALLET-55612",
+		"send": 150.00, "flash_fee": 1.50, "exchange_rate": 157.2500,
+		"receive_jmd": 23250.00, "receive_usd": 148.50,
+		"bank_account": "BA-00007", "bank_name": "Eastern Bank",
+		"account_number": "****6789", "account_type": "Chequing",
+		"journal_entry": "JE-2026-00007", "status": "Paid",
+		"payment_entry": "PE-2026-00002",
+		"pe_paid_amount": 150.00, "pe_currency": "USD",
+		"pe_posting_date": "2026-04-03", "pe_mode_of_payment": "Bank Transfer",
+		"creation": "2026-04-03 10:00:00", "modified": "2026-04-03 10:20:00",
+	},
+]
+
+
+@frappe.whitelist()
+@handle_api_errors
+def get_cashout_requests(status=None, page=1, page_size=10):
+	"""Get paginated cashout requests (dummy data until doctype is implemented)"""
+	page = int(page)
+	page_size = min(int(page_size), 100)
+
+	data = DUMMY_CASHOUT_REQUESTS
+	if status:
+		data = [r for r in data if r["status"] == status]
+
+	total_count = len(data)
+	offset = (page - 1) * page_size
+	page_data = data[offset:offset + page_size]
+
+	return {
+		"data": page_data,
+		"total": total_count,
+		"page": page,
+		"page_size": page_size,
+		"total_pages": max(1, (total_count + page_size - 1) // page_size),
+	}
+
+
+@frappe.whitelist()
+@handle_api_errors
+def search_cashout_account(id: str):
+	"""Search cashout requests by username or phone (dummy data)"""
+	if not id:
+		frappe.response['http_status_code'] = 400
+		return {"error": "Phone number or Username is required"}
+
+	import re as _re
+	search_by_phone = len(_re.sub(r'\D', '', id)) >= 10
+	id_lower = id.lower()
+
+	if search_by_phone:
+		results = [r for r in DUMMY_CASHOUT_REQUESTS if id_lower in _re.sub(r'\D', '', r.get("phone_number", ""))]
+	else:
+		results = [r for r in DUMMY_CASHOUT_REQUESTS if id_lower in r.get("username", "").lower()]
+
+	if not results:
+		frappe.response['http_status_code'] = 404
+		return {"error": "Account not found"}
+
+	return results
+
+
+@frappe.whitelist()
+@handle_api_errors
+def record_cashout_payment(cashout_id):
+	"""Record a Payment Entry for a cashout request (stub — real impl awaits doctype)"""
+	if not cashout_id:
+		frappe.response['http_status_code'] = 400
+		return {"success": False, "error": "Cashout ID is required"}
+
+	# Find in dummy data
+	req = next((r for r in DUMMY_CASHOUT_REQUESTS if r["name"] == cashout_id), None)
+	if not req:
+		frappe.response['http_status_code'] = 404
+		return {"success": False, "error": "Cashout request not found"}
+
+	if req["status"] != "Pending":
+		return {"success": False, "error": f"Cashout request has already been {req['status'].lower()}"}
+
+	if req["payment_entry"]:
+		return {"success": False, "error": "Payment Entry already exists for this cashout"}
+
+	# Stub: generate a dummy payment entry name.
+	# When the Cashout doctype is implemented, this will create a real Payment Entry
+	# linked to the cashout, submit it, and update the cashout status and payment_entry field.
+	import random
+	from frappe.utils import today
+	dummy_pe_name = f"PE-2026-{random.randint(10000, 99999):05d}"
+	req["status"] = "Paid"
+	req["payment_entry"] = dummy_pe_name
+	req["pe_paid_amount"] = req.get("send")
+	req["pe_currency"] = "USD"
+	req["pe_posting_date"] = today()
+	req["pe_mode_of_payment"] = "Bank Transfer"
+
+	return {
+		"success": True,
+		"payment_entry": dummy_pe_name,
+		"message": f"Payment Entry {dummy_pe_name} created and cashout marked as Paid.",
+	}
+
+
 @frappe.whitelist()
 @handle_api_errors
 def get_id_document_url(file_key):

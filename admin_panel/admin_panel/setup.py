@@ -24,6 +24,13 @@ def sync_pages():
 			"standard": "Yes",
 			"roles": [],
 		},
+		{
+			"name": "cashout-requests",
+			"title": "Cashout Requests",
+			"module": "Admin Panel",
+			"standard": "Yes",
+			"roles": [],
+		},
 	]
 
 	for page_data in pages:

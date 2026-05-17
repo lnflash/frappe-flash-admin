@@ -1,8 +1,11 @@
-import requests
+import time
+from typing import TypeVar, cast
+
 import frappe
 import jwt
-import time
-from typing import Any
+import requests
+
+ExtractedData = TypeVar("ExtractedData")
 
 
 class GraphQLError(Exception):
@@ -80,13 +83,15 @@ class GraphQLClient:
 		response.raise_for_status()
 		return response.json()
 
-	def execute_and_extract(self, query: str, variables: dict, data_key: str, allow_not_found: bool = False) -> Any:
+	def execute_and_extract(
+		self, query: str, variables: dict, data_key: str, allow_not_found: bool = False
+	) -> ExtractedData | None:
 		"""Execute query, check errors, and extract data by key"""
 		resp = self.execute_query(query, variables)
 		self._check_errors(resp, allow_not_found)
 		if allow_not_found and resp.get('errors'):
 			return None
-		return resp.get("data", {}).get(data_key)
+		return cast(ExtractedData | None, resp.get("data", {}).get(data_key))
 	
 	# GraphQL query constants
 	ACCOUNT_BY_PHONE_QUERY = """

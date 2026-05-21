@@ -31,8 +31,16 @@ class Cashout(Document):
 
 	def create_payable_journal_entry(self):
 		company = frappe.defaults.get_user_default("Company")
-
+		settings = frappe.get_single("Cashout Settings")
 		is_jmd = self.currency == "JMD"
+		payables_account = settings.payables_account_jmd if is_jmd else settings.payables_account_usd
+
+		frappe.logger().info(
+			f"Cashout {self.name} payable JE accounts — "
+			f"operating: {settings.operating_account}, "
+			f"payables: {payables_account}, "
+			f"service_fees: {settings.service_fees_account}"
+		)
 
 		je = frappe.get_doc({
 			"doctype": "Journal Entry",
@@ -43,14 +51,14 @@ class Cashout(Document):
 			"user_remark": f'{{"transactionId": "{self.transaction_id}", "walletId": "{self.wallet_id}"}}',
 			"accounts": [
 				{
-					"account": "Ibex Operating - F",
+					"account": settings.operating_account,
 					"account_currency": "USD",
 					"debit_in_account_currency": self.user_pays,
 					"debit": self.user_pays,
 					"exchange_rate": 1,
 				},
 				{
-					"account": f"Cashout Payables ({self.currency}) - F",
+					"account": payables_account,
 					"account_currency": self.currency,
 					"credit_in_account_currency": self.user_receives,
 					"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
@@ -59,7 +67,7 @@ class Cashout(Document):
 					# "party": self.customer,
 				},
 				{
-					"account": "Service Fees - F",
+					"account": settings.service_fees_account,
 					"account_currency": "USD",
 					"credit_in_account_currency": self.flash_fee,
 					"credit": self.flash_fee,
@@ -80,7 +88,15 @@ class Cashout(Document):
 			frappe.throw("Cashout must be In Progress before marking as Completed.")
 
 		company = frappe.defaults.get_user_default("Company")
+		settings = frappe.get_single("Cashout Settings")
 		is_jmd = self.currency == "JMD"
+		payables_account = settings.payables_account_jmd if is_jmd else settings.payables_account_usd
+
+		frappe.logger().info(
+			f"Cashout {self.name} payment JE accounts — "
+			f"payables: {payables_account}, "
+			f"company_bank: resolved from Bank Account (currency: {self.currency})"
+		)
 
 		bank_accounts = frappe.get_all(
 			"Bank Account",
@@ -113,7 +129,7 @@ class Cashout(Document):
 			"accounts": [
 				{
 					**payout_entry,
-					"account": f"Cashout Payables ({self.currency}) - F",
+					"account": payables_account,
 					# "party_type": "Customer",
 					# "party": self.customer,
 				},

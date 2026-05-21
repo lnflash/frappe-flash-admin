@@ -41,7 +41,7 @@ bench set-config -gp db_port 3307
 bench set-config -g redis_cache "redis://127.0.0.1:6379/1"
 bench set-config -g redis_queue "redis://127.0.0.1:6379/2"
 bench set-config -g redis_socketio "redis://127.0.0.1:6379/2"
-bench set-config -g flash_admin_api_url "http://localhost:4002/admin/graphql"
+bench set-config -g flash_admin_api_url "http://localhost:4001/graphql"
 bench set-config -g admin_api_key "not-so-secret"
 bench set-config -gp developer_mode 1
 

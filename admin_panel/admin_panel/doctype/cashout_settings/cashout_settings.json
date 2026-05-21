@@ -1,0 +1,68 @@
+{
+ "actions": [],
+ "creation": "2026-05-21 00:00:00.000000",
+ "custom": 0,
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "operating_account",
+  "service_fees_account",
+  "payables_section",
+  "payables_account_usd",
+  "payables_account_jmd"
+ ],
+ "fields": [
+  {
+   "fieldname": "operating_account",
+   "fieldtype": "Link",
+   "label": "Operating Account",
+   "options": "Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "service_fees_account",
+   "fieldtype": "Link",
+   "label": "Service Fees Account",
+   "options": "Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "payables_section",
+   "fieldtype": "Section Break",
+   "label": "Payables Accounts"
+  },
+  {
+   "fieldname": "payables_account_usd",
+   "fieldtype": "Link",
+   "label": "Payables Account (USD)",
+   "options": "Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "payables_account_jmd",
+   "fieldtype": "Link",
+   "label": "Payables Account (JMD)",
+   "options": "Account",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-05-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Admin Panel",
+ "name": "Cashout Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

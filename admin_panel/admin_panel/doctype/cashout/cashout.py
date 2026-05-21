@@ -35,13 +35,6 @@ class Cashout(Document):
 		is_jmd = self.currency == "JMD"
 		payables_account = settings.payables_account_jmd if is_jmd else settings.payables_account_usd
 
-		frappe.logger().info(
-			f"Cashout {self.name} payable JE accounts — "
-			f"operating: {settings.operating_account}, "
-			f"payables: {payables_account}, "
-			f"service_fees: {settings.service_fees_account}"
-		)
-
 		je = frappe.get_doc({
 			"doctype": "Journal Entry",
 			"voucher_type": "Journal Entry",

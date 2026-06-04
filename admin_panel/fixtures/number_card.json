@@ -1,0 +1,26 @@
+[
+ {
+  "doctype": "Number Card",
+  "name": "Bridge Failed Audits",
+  "owner": "Administrator",
+  "label": "Failed Audits",
+  "document_type": "Bridge Transfer Request",
+  "function": "Count",
+  "stats_time_interval": "Daily",
+  "filters_json": "[[\"failure_reason\", \"!=\", \"\"]]",
+  "module": "Admin Panel",
+  "modified": "2026-06-04 02:10:00.000000"
+ },
+ {
+  "doctype": "Number Card",
+  "name": "Bridge Total",
+  "owner": "Administrator",
+  "label": "Total Requests",
+  "document_type": "Bridge Transfer Request",
+  "function": "Count",
+  "stats_time_interval": "Daily",
+  "filters_json": "[]",
+  "module": "Admin Panel",
+  "modified": "2026-06-04 02:10:00.000000"
+ }
+]

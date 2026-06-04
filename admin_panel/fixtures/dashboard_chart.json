@@ -1,0 +1,32 @@
+[
+ {
+  "doctype": "Dashboard Chart",
+  "name": "Bridge Volume",
+  "owner": "Administrator",
+  "label": "Bridge Transfer Volume (7d)",
+  "chart_type": "Timeseries",
+  "document_type": "Bridge Transfer Request",
+  "group_by_type": "Count",
+  "time_interval": "Daily",
+  "timespan": "Last 7 Days",
+  "type": "Line",
+  "filters_json": "[]",
+  "module": "Admin Panel",
+  "modified": "2026-06-04 02:10:00.000000"
+ },
+ {
+  "doctype": "Dashboard Chart",
+  "name": "Bridge Failure Rate",
+  "owner": "Administrator",
+  "label": "Bridge Audit Failures (7d)",
+  "chart_type": "Timeseries",
+  "document_type": "Bridge Transfer Request",
+  "group_by_type": "Count",
+  "time_interval": "Daily",
+  "timespan": "Last 7 Days",
+  "type": "Line",
+  "filters_json": "[[\"failure_reason\", \"!=\", \"\"]]",
+  "module": "Admin Panel",
+  "modified": "2026-06-04 02:10:00.000000"
+ }
+]

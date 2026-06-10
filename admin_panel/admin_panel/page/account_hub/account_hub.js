@@ -1,11 +1,11 @@
 frappe.pages['account-hub'].on_page_load = function(wrapper) {
-    if (!frappe.user_roles.includes('Accounts Manager')) {
-        var page = frappe.ui.make_app_page({
-            parent: wrapper,
-            title: 'Account Hub',
-            single_column: true
-        });
+    var page = frappe.ui.make_app_page({
+        parent: wrapper,
+        title: 'Account Hub',
+        single_column: true
+    });
 
+    if (!frappe.user_roles.includes('Accounts Manager')) {
         page.main.html(`
             <div class="text-center mt-5">
                 <div class="alert alert-warning">
@@ -16,12 +16,6 @@ frappe.pages['account-hub'].on_page_load = function(wrapper) {
         `);
         return;
     }
-
-    var page = frappe.ui.make_app_page({
-        parent: wrapper,
-        title: 'Account Hub',
-        single_column: true
-    });
 
     wrapper.account_hub = new AccountHub(page);
 };

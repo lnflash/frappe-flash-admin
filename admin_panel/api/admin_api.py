@@ -529,6 +529,7 @@ def delete_merchant_api(merchant_id=None):
 # ── Dashboard ────────────────────────────────────────────────────
 
 @frappe.whitelist()
+@handle_api_errors
 def get_dashboard_stats():
     """Get summary stats for the admin dashboard."""
     pending = frappe.db.count("Account Upgrade Request", {"status": "Pending"})

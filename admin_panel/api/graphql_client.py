@@ -267,8 +267,10 @@ class GraphQLClient:
 				merchant {
 					id
 					title
-					latitude
-					longitude
+					coordinates {
+						latitude
+						longitude
+					}
 					validated
 					username
 				}
@@ -281,14 +283,6 @@ class GraphQLClient:
 			merchantMapDelete(input: $input) {
 				errors {
 					message
-				}
-				merchant {
-					id
-					title
-					latitude
-					longitude
-					validated
-					username
 				}
 			}
 		}

@@ -25,6 +25,13 @@ def sync_pages():
 			"roles": [],
 		},
 		{
+			"name": "account-hub",
+			"title": "Account Hub",
+			"module": "Admin Panel",
+			"standard": "Yes",
+			"roles": [],
+		},
+		{
 			"name": "admin-dashboard",
 			"title": "Dashboard",
 			"module": "Admin Panel",

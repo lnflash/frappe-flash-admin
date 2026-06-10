@@ -32,7 +32,6 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             margin-bottom: 24px;
         }
         .ad-grid-4 { grid-template-columns: repeat(4, 1fr); }
-        .ad-grid-3 { grid-template-columns: repeat(3, 1fr); }
 
         .ad-stat-card {
             background: var(--bg);
@@ -206,22 +205,6 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             color: #666;
         }
 
-        .ad-link-row {
-            text-align: right;
-            padding: 12px 16px;
-            background: var(--bg);
-            border-top: 1px solid var(--border-color);
-        }
-        .ad-link-row a {
-            font-size: 13px;
-            color: var(--primary-color);
-            text-decoration: none;
-            font-weight: 500;
-            padding: 6px 0;
-            display: inline-block;
-        }
-        .ad-link-row a:hover { text-decoration: underline; }
-
         .ad-loading {
             display: flex;
             align-items: center;
@@ -240,7 +223,6 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             .ad-stat-card { padding: 16px 18px; }
             .ad-stat-value { font-size: 24px; }
             .ad-stat-icon { width: 32px; height: 32px; font-size: 16px; margin-bottom: 10px; }
-            .ad-grid-3 { grid-template-columns: 1fr; }
             .ad-tool-card { padding: 20px; flex-direction: row; align-items: center; gap: 16px; }
             .ad-tool-icon { width: 40px; height: 40px; font-size: 20px; margin-bottom: 0; }
             .ad-tool-content { min-width: 0; }
@@ -264,8 +246,6 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             .ad-tool-title { font-size: 14px; }
             .ad-tool-desc { font-size: 12px; }
             .ad-table td, .ad-table th { padding: 10px 12px; font-size: 12px; }
-            .ad-link-row { padding: 10px 12px; }
-            .ad-link-row a { font-size: 12px; }
         }
     `).appendTo(page.main);
     // ── ── ── ──

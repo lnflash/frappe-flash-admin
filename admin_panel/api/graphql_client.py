@@ -151,34 +151,11 @@ class GraphQLClient:
 					message
 				}
 				accountDetails {
-					id
-					username
-					level
-					status
-					title
-					owner {
-						id
-						language
-						phone
-						createdAt
-					}
-					coordinates {
-						latitude
-						longitude
-					}
-					wallets {
-						id
-						walletCurrency
-						accountId
-						balance
-						pendingIncomingBalance
-					}
-					createdAt
-					erpParty
+					...AccountDetail
 				}
 			}
 		}
-	"""
+	""" + ACCOUNT_DETAIL_FRAGMENT
 
 	ID_DOCUMENT_URL_QUERY = """
 		query IdDocumentReadUrl($fileKey: String!) {

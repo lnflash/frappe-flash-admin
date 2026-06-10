@@ -247,4 +247,6 @@ fixtures = [
     {"doctype": "Workspace", "filters": [["module", "=", "Admin Panel"]]},
     {"doctype": "Client Script", "filters": [["module", "=", "Admin Panel"]]},
     {"doctype": "Custom Field", "filters": [["dt", "=", "Bank Account"], ["fieldname", "=", "currency"]]},
+    {"doctype": "Number Card", "filters": [["module", "=", "Admin Panel"]]},
+    {"doctype": "Dashboard Chart", "filters": [["module", "=", "Admin Panel"]]},
 ]

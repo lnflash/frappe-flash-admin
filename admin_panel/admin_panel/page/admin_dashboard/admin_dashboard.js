@@ -391,7 +391,7 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
 
         $wrap.html(`
             <div class="ad-header">
-                <h1>🔥 Admin Dashboard</h1>
+                <h1>Admin Dashboard</h1>
                 <p>Welcome, support team. Here's what's happening.</p>
             </div>
 
@@ -434,11 +434,11 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
                         <div class="ad-tool-desc">Review ID documents, approve or reject upgrade requests, update user details.</div>
                     </div>
                 </div>
-                <div class="ad-tool-card" data-route="/app/cashout-requests">
+                <div class="ad-tool-card" data-route="/app/bridge-transfer-request">
                     <div class="ad-tool-icon" style="background:#e6f9ed;color:#1a7d36;">💸</div>
                     <div class="ad-tool-content">
                         <div class="ad-tool-title">Transfer Requests</div>
-                        <div class="ad-tool-desc">Placeholder for reviewing and processing cashout transfer requests.</div>
+                        <div class="ad-tool-desc">Review Bridge transfer audit records and investigate failed requests.</div>
                     </div>
                 </div>
                 <div class="ad-tool-card" data-route="/app/alert-users">

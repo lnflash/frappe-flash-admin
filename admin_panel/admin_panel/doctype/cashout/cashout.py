@@ -56,8 +56,8 @@ class Cashout(Document):
 					"credit_in_account_currency": self.user_receives,
 					"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
 					"exchange_rate": 1 / self.exchange_rate if is_jmd else 1,
-					# "party_type": "Customer",
-					# "party": self.customer,
+					"party_type": "Customer",
+					"party": self.customer,
 				},
 				{
 					"account": settings.service_fees_account,
@@ -123,8 +123,8 @@ class Cashout(Document):
 				{
 					**payout_entry,
 					"account": payables_account,
-					# "party_type": "Customer",
-					# "party": self.customer,
+					"party_type": "Customer",
+					"party": self.customer,
 				},
 				{
 					**payout_entry,

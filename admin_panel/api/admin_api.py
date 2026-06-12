@@ -819,33 +819,135 @@ def get_bridge_transfer_requests(status=None, transaction_type=None, query=None,
     }
 
 
-@frappe.whitelist()
-@handle_api_errors
-def record_cashout_payment(cashout_id):
-    """Record payment for a cashout by calling create_payment_journal_entry."""
+def _get_cashout_for_action(cashout_id):
     if not cashout_id:
         frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Cashout ID is required"}
+        return None, {"success": False, "error": "Cashout ID is required"}
 
     try:
-        doc = frappe.get_doc("Cashout", cashout_id)
+        return frappe.get_doc("Cashout", cashout_id), None
     except frappe.DoesNotExistError:
         frappe.response['http_status_code'] = 404
-        return {"success": False, "error": "Cashout request not found"}
+        return None, {"success": False, "error": "Cashout request not found"}
 
-    if doc.status not in ("Pending", "Draft", "In Progress"):
-        return {"success": False, "error": f"Cashout request status is '{doc.status}'; cannot record payment"}
 
-    # If still in draft, submit first
+def _submit_cashout_if_needed(doc):
+    if doc.docstatus == 2 or doc.status == "Canceled":
+        return {"success": False, "error": "Canceled cashout requests cannot be modified"}
+
+    if doc.status == "Completed":
+        return {"success": False, "error": "Completed cashout requests cannot be modified"}
+
     if doc.docstatus == 0:
         doc.submit()
         doc.reload()
 
-    # Create payment journal entry
+    return None
+
+
+def _append_cashout_confirmation_code(doc, confirmation_code):
+    code = (confirmation_code or "").strip()
+    if not code:
+        return
+
+    timestamp = frappe.utils.now_datetime().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"Bank confirmation code: {code} ({frappe.session.user}, {timestamp})"
+    remarks = (doc.remarks or "").strip()
+    updated_remarks = f"{remarks}\n{line}" if remarks else line
+    doc.db_set("remarks", updated_remarks, update_modified=True)
+    doc.remarks = updated_remarks
+
+
+def _settle_cashout(doc, confirmation_code=None):
+    submit_error = _submit_cashout_if_needed(doc)
+    if submit_error:
+        return submit_error
+
+    _append_cashout_confirmation_code(doc, confirmation_code)
+
+    if doc.payment_journal_entry:
+        if doc.status != "Completed":
+            doc.db_set("status", "Completed", update_modified=True)
+            doc.status = "Completed"
+        return {
+            "success": True,
+            "status": doc.status,
+            "payment_entry": doc.payment_journal_entry,
+            "message": f"Cashout already has payment journal entry {doc.payment_journal_entry}.",
+        }
+
     doc.create_payment_journal_entry()
+    doc.reload()
 
     return {
         "success": True,
+        "status": doc.status,
         "payment_entry": doc.payment_journal_entry,
         "message": f"Payment recorded successfully. Journal Entry {doc.payment_journal_entry} created.",
     }
+
+
+@frappe.whitelist()
+@handle_api_errors
+def create_cashout_request(cashout_id):
+    """Submit a draft cashout so it is ready for out-of-band bank settlement."""
+    doc, error = _get_cashout_for_action(cashout_id)
+    if error:
+        return error
+
+    if doc.status in ("Completed", "Canceled") or doc.docstatus == 2:
+        return {"success": False, "error": f"Cashout request status is '{doc.status}'; cannot create"}
+
+    if doc.docstatus == 0:
+        doc.submit()
+        doc.reload()
+
+    return {
+        "success": True,
+        "status": doc.status,
+        "journal_entry": doc.journal_entry,
+        "message": f"Cashout request {doc.name} is ready for settlement.",
+    }
+
+
+@frappe.whitelist()
+@handle_api_errors
+def confirm_cashout_payment(cashout_id, confirmation_code=None):
+    """Record a bank confirmation code and settle the cashout payment."""
+    confirmation_code = (confirmation_code or "").strip()
+    if not confirmation_code:
+        frappe.response['http_status_code'] = 400
+        return {"success": False, "error": "Confirmation code is required"}
+
+    doc, error = _get_cashout_for_action(cashout_id)
+    if error:
+        return error
+
+    result = _settle_cashout(doc, confirmation_code=confirmation_code)
+    if result.get("success"):
+        result["message"] = (
+            f"Payment confirmed with code {confirmation_code}. "
+            f"Journal Entry {result.get('payment_entry')} recorded."
+        )
+    return result
+
+
+@frappe.whitelist()
+@handle_api_errors
+def complete_cashout(cashout_id):
+    """Settle a cashout without requiring a bank confirmation code."""
+    doc, error = _get_cashout_for_action(cashout_id)
+    if error:
+        return error
+
+    result = _settle_cashout(doc)
+    if result.get("success"):
+        result["message"] = f"Cashout marked complete. Journal Entry {result.get('payment_entry')} recorded."
+    return result
+
+
+@frappe.whitelist()
+@handle_api_errors
+def record_cashout_payment(cashout_id):
+    """Record payment for a cashout by calling create_payment_journal_entry."""
+    return complete_cashout(cashout_id)

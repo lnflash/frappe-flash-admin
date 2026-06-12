@@ -83,3 +83,37 @@ def test_admin_api_exposes_bridge_transfer_requests_read_only_endpoint():
     assert '"Bridge Transfer Request"' in api_py
     assert "transaction_type" in api_py
     assert "failure_reason" in api_py
+
+
+def test_transfer_requests_cashout_tab_has_account_management_style_action_buttons():
+    js = read_text(PAGE_DIR / "transfer_requests.js")
+
+    assert "create_request_row(req, showActions = true)" in js
+    assert "'Actions'" in js
+    assert "modern-icon-btn" in js
+    assert "btn-quick-create" in js
+    assert "btn-quick-confirm" in js
+    assert "btn-quick-complete" in js
+    assert "e.stopPropagation()" in js
+    assert "closest('button')" in js
+    assert "create_cashout_request(req)" in js
+    assert "confirm_cashout_payment(req)" in js
+    assert "complete_cashout(req)" in js
+
+
+def test_transfer_requests_bridge_tab_stays_read_only_without_actions_column():
+    js = read_text(PAGE_DIR / "transfer_requests.js")
+
+    assert "const cashoutHeaders" in js
+    assert "const bridgeHeaders" in js
+    assert "const headers = this.active_type === 'bridge' ? bridgeHeaders : cashoutHeaders" in js
+    assert "const bridgeHeaders = ['Request ID', 'Type', 'Amount', 'Status', 'Failure', 'Last Seen']" in js
+
+
+def test_admin_api_exposes_cashout_action_endpoints():
+    api_py = read_text(ADMIN_PANEL / "api" / "admin_api.py")
+
+    assert "def create_cashout_request" in api_py
+    assert "def confirm_cashout_payment" in api_py
+    assert "def complete_cashout" in api_py
+    assert "confirmation_code" in api_py

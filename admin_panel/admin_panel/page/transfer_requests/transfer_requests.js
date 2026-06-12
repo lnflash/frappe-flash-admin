@@ -28,18 +28,24 @@ frappe.pages['transfer-requests'].on_page_load = function(wrapper) {
 
 const CashoutStatus = {
     PENDING: "Pending",
+    DRAFT: "Draft",
+    IN_PROGRESS: "In Progress",
     PAID: "Paid",
+    COMPLETED: "Completed",
     CANCELLED: "Cancelled",
+    CANCELED: "Canceled",
     FAILED: "Failed"
 };
 
 const CASHOUT_STATUS_BADGE_MAP = {
     [CashoutStatus.PENDING]: 'cashout-badge-pending',
+    [CashoutStatus.DRAFT]: 'cashout-badge-pending',
+    [CashoutStatus.IN_PROGRESS]: 'cashout-badge-pending',
     [CashoutStatus.PAID]: 'cashout-badge-paid',
+    [CashoutStatus.COMPLETED]: 'cashout-badge-paid',
     [CashoutStatus.CANCELLED]: 'cashout-badge-cancelled',
+    [CashoutStatus.CANCELED]: 'cashout-badge-cancelled',
     [CashoutStatus.FAILED]: 'cashout-badge-failed',
-    'In Progress': 'cashout-badge-pending',
-    'Canceled': 'cashout-badge-cancelled'
 };
 
 const BridgeStatus = {
@@ -244,6 +250,42 @@ class TransferRequestsManager {
                 .flash-cashout-manager .modern-btn-secondary:hover {
                     background: var(--color-background);
                     border-color: var(--color-text02);
+                }
+
+                .flash-cashout-manager .modern-icon-btn {
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    border: none;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    margin: 0 2px;
+                    font-size: 14px;
+                    line-height: 1;
+                }
+
+                .flash-cashout-manager .modern-icon-btn:disabled {
+                    cursor: not-allowed;
+                    opacity: 0.6;
+                }
+
+                .flash-cashout-manager .modern-icon-btn-primary {
+                    background: rgba(0, 120, 86, 0.1);
+                    color: var(--color-primary);
+                }
+
+                .flash-cashout-manager .modern-icon-btn-primary:hover:not(:disabled) {
+                    background: var(--color-primary);
+                    color: white;
+                }
+
+                .flash-cashout-manager .modern-icon-btn-success {
+                    background: rgba(0, 167, 0, 0.1);
+                    color: var(--color-green);
+                }
+
+                .flash-cashout-manager .modern-icon-btn-success:hover:not(:disabled) {
+                    background: var(--color-green);
+                    color: white;
                 }
 
                 .flash-cashout-manager .modern-requests-card {
@@ -685,16 +727,16 @@ class TransferRequestsManager {
                             </div>
                         </div>
 
-                        <!-- Payment Entry (shown only when recorded) -->
+                        <!-- Payment Journal Entry (shown only when recorded) -->
                         <div class="detail-section detail-payment-entry-section mb-4" style="display: none;">
                             <h6 class="section-header">
                                 <i class="fa fa-credit-card" style="margin-right: 8px; color: var(--color-green);"></i>
-                                Payment Entry
+                                Payment Journal Entry
                             </h6>
                             <div class="row">
                                 <div class="col-md-6">
                                     <div class="detail-item">
-                                        <span class="detail-label">Payment Entry</span>
+                                        <span class="detail-label">Payment Journal Entry</span>
                                         <span class="detail-value detail-payment-entry"></span>
                                     </div>
                                     <div class="detail-item">
@@ -746,9 +788,17 @@ class TransferRequestsManager {
                         </div>
 
                         <div class="d-flex gap-2 justify-content-end" style="gap: 12px;">
-                            <button class="modern-btn modern-btn-primary btn-record-payment" style="background: var(--color-green);">
-                                <i class="fa fa-credit-card"></i>
-                                Record Payment Entry
+                            <button class="modern-btn modern-btn-secondary btn-create-cashout">
+                                <i class="fa fa-plus"></i>
+                                Create
+                            </button>
+                            <button class="modern-btn modern-btn-primary btn-confirm-payment">
+                                <i class="fa fa-key"></i>
+                                Confirm
+                            </button>
+                            <button class="modern-btn modern-btn-primary btn-complete-cashout" style="background: var(--color-green);">
+                                <i class="fa fa-check"></i>
+                                Mark as Complete
                             </button>
                         </div>
                     </div>
@@ -792,7 +842,9 @@ class TransferRequestsManager {
 
         main.find('.btn-refresh').on('click', () => this.load_requests());
         main.find('.btn-close-details').on('click', () => this.close_details());
-        main.on('click', '.btn-record-payment', () => this.record_payment_entry(this.selected_request));
+        main.on('click', '.btn-create-cashout', () => this.create_cashout_request(this.selected_request));
+        main.on('click', '.btn-confirm-payment', () => this.confirm_cashout_payment(this.selected_request));
+        main.on('click', '.btn-complete-cashout', () => this.complete_cashout(this.selected_request));
 
         this.$cache.filterStatus.on('change', () => { this.current_page = 1; this.load_requests(); });
         this.$cache.filterTransactionType.on('change', () => { this.current_page = 1; this.load_requests(); });
@@ -850,9 +902,9 @@ class TransferRequestsManager {
     }
 
     render_table_header() {
-        const headers = this.active_type === 'bridge'
-            ? ['Request ID', 'Type', 'Amount', 'Status', 'Failure', 'Last Seen']
-            : ['Username', 'Phone', 'Send (USD)', 'Receive (JMD)', 'Status', 'Submitted'];
+        const cashoutHeaders = ['Username', 'Phone', 'Send (USD)', 'Receive (JMD)', 'Status', 'Submitted', 'Actions'];
+        const bridgeHeaders = ['Request ID', 'Type', 'Amount', 'Status', 'Failure', 'Last Seen'];
+        const headers = this.active_type === 'bridge' ? bridgeHeaders : cashoutHeaders;
 
         this.$cache.tableHead.html(`
             <tr>${headers.map((header) => `<th>${header}</th>`).join('')}</tr>
@@ -867,7 +919,54 @@ class TransferRequestsManager {
         }
     }
 
-    create_request_row(req) {
+    canCreateCashout(req) {
+        const status = req.status || '';
+        const displayStatus = req.display_status || status;
+        return !req.payment_entry && (
+            req.docstatus === 0 ||
+            status === CashoutStatus.PENDING ||
+            status === CashoutStatus.DRAFT ||
+            displayStatus === CashoutStatus.PENDING
+        );
+    }
+
+    canSettleCashout(req) {
+        const status = req.status || '';
+        const displayStatus = req.display_status || status;
+        return !req.payment_entry && (
+            status === CashoutStatus.IN_PROGRESS ||
+            displayStatus === CashoutStatus.IN_PROGRESS
+        );
+    }
+
+    render_cashout_actions(req, showActions = true) {
+        const actions = [];
+        if (showActions && this.canCreateCashout(req)) {
+            actions.push(`
+                <button class="modern-icon-btn modern-icon-btn-primary btn-quick-create" data-request-id="${req.name}" title="Create">
+                    <i class="fa fa-plus"></i>
+                </button>
+            `);
+        }
+        if (showActions && this.canSettleCashout(req)) {
+            actions.push(`
+                <button class="modern-icon-btn modern-icon-btn-primary btn-quick-confirm" data-request-id="${req.name}" title="Confirm">
+                    <i class="fa fa-key"></i>
+                </button>
+            `);
+            actions.push(`
+                <button class="modern-icon-btn modern-icon-btn-success btn-quick-complete" data-request-id="${req.name}" title="Mark as Complete">
+                    <i class="fa fa-check"></i>
+                </button>
+            `);
+        }
+
+        return actions.length
+            ? `<td style="text-align:center;">${actions.join('')}</td>`
+            : `<td style="text-align:center;"><span>-</span></td>`;
+    }
+
+    create_request_row(req, showActions = true) {
         const statusVal = req.display_status || req.status || CashoutStatus.PENDING;
         const statusBadge = getCashoutStatusBadgeClass(statusVal);
         const displayStatus = statusVal;
@@ -877,6 +976,7 @@ class TransferRequestsManager {
         const receiveJmdDisplay = req.receive_jmd != null
             ? `JMD ${parseFloat(req.receive_jmd).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
             : '-';
+        const actionsHtml = this.render_cashout_actions(req, showActions);
 
         const row = $(`
             <tr class="cashout-row" data-request-id="${req.name}">
@@ -886,13 +986,29 @@ class TransferRequestsManager {
                 <td>${receiveJmdDisplay}</td>
                 <td><span class="modern-badge ${statusBadge}">${displayStatus}</span></td>
                 <td>${this.formatDateTime(req.creation)}</td>
+                ${actionsHtml}
             </tr>
         `);
 
-        row.on('click', () => {
-            this.page.main.find('.cashout-row').removeClass('selected');
-            row.addClass('selected');
-            this.show_request_details(req);
+        row.on('click', (e) => {
+            if (!$(e.target).closest('button').length) {
+                this.page.main.find('.cashout-row').removeClass('selected');
+                row.addClass('selected');
+                this.show_request_details(req);
+            }
+        });
+
+        row.find('.btn-quick-create').on('click', (e) => {
+            e.stopPropagation();
+            this.create_cashout_request(req);
+        });
+        row.find('.btn-quick-confirm').on('click', (e) => {
+            e.stopPropagation();
+            this.confirm_cashout_payment(req);
+        });
+        row.find('.btn-quick-complete').on('click', (e) => {
+            e.stopPropagation();
+            this.complete_cashout(req);
         });
 
         return row;
@@ -1096,11 +1212,11 @@ class TransferRequestsManager {
         panel.find('.detail-account-number').text(req.account_number || '-');
         panel.find('.detail-account-type').text(req.account_type || '-');
 
-        // Payment Entry section (shown only when recorded)
+        // Payment Journal Entry section (shown only when recorded)
         const paymentSection = panel.find('.detail-payment-entry-section');
         if (req.payment_entry) {
             panel.find('.detail-payment-entry').html(
-                `<a class="detail-link" href="/app/payment-entry/${req.payment_entry}" target="_blank">${req.payment_entry}</a>`
+                `<a class="detail-link" href="/app/journal-entry/${req.payment_entry}" target="_blank">${req.payment_entry}</a>`
             );
             panel.find('.detail-pe-amount').text(
                 req.pe_paid_amount != null
@@ -1122,13 +1238,12 @@ class TransferRequestsManager {
         panel.find('.detail-submitted').text(this.formatDateTime(req.creation));
         panel.find('.detail-modified').text(this.formatDateTime(req.modified));
 
-        // Record Payment Entry button — only for Pending without a payment entry
-        const recordBtn = panel.find('.btn-record-payment');
-        if ((req.display_status || req.status) === CashoutStatus.PENDING && !req.payment_entry) {
-            recordBtn.show();
-        } else {
-            recordBtn.hide();
-        }
+        const createBtn = panel.find('.btn-create-cashout');
+        const confirmBtn = panel.find('.btn-confirm-payment');
+        const completeBtn = panel.find('.btn-complete-cashout');
+        createBtn.toggle(this.canCreateCashout(req));
+        confirmBtn.toggle(this.canSettleCashout(req));
+        completeBtn.toggle(this.canSettleCashout(req));
 
         panel.show();
 
@@ -1138,7 +1253,31 @@ class TransferRequestsManager {
         }
     }
 
-    record_payment_entry(req) {
+    set_cashout_action_buttons_disabled(disabled) {
+        this.page.main
+            .find('.btn-create-cashout, .btn-confirm-payment, .btn-complete-cashout, .btn-quick-create, .btn-quick-confirm, .btn-quick-complete')
+            .prop('disabled', disabled);
+    }
+
+    show_cashout_action_result(result, successTitle, fallbackSuccessMessage, fallbackErrorMessage) {
+        if (result.success) {
+            frappe.msgprint({
+                title: successTitle,
+                indicator: 'green',
+                message: result.message || fallbackSuccessMessage
+            });
+            this.load_requests();
+        } else {
+            frappe.msgprint({
+                title: 'Error',
+                indicator: 'red',
+                message: result.error || fallbackErrorMessage
+            });
+            this.set_cashout_action_buttons_disabled(false);
+        }
+    }
+
+    create_cashout_request(req) {
         if (!req) return;
 
         const sendDisplay = req.send != null
@@ -1146,47 +1285,130 @@ class TransferRequestsManager {
             : 'this cashout';
 
         frappe.confirm(
-            `Are you sure you want to record a payment of <strong>${sendDisplay}</strong> for <strong>${req.username}</strong>?<br><br>This will create a Payment Entry linked to ${req.journal_entry || 'the cashout request'}.`,
+            `Create cashout request for <strong>${req.username}</strong> worth <strong>${sendDisplay}</strong>?<br><br>This submits the Cashout and payable Journal Entry so the bank transfer can be settled.`,
             () => {
-                const btn = this.page.main.find('.btn-record-payment');
-                btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Processing...');
+                this.set_cashout_action_buttons_disabled(true);
 
                 frappe.call({
-                    method: 'admin_panel.api.admin_api.record_cashout_payment',
+                    method: 'admin_panel.api.admin_api.create_cashout_request',
                     args: { cashout_id: req.name },
                     freeze: true,
-                    freeze_message: 'Creating Payment Entry...',
+                    freeze_message: 'Creating cashout request...',
                     callback: (r) => {
-                        btn.prop('disabled', false).html('<i class="fa fa-credit-card"></i> Record Payment Entry');
                         const result = r.message || {};
-                        if (result.success) {
-                            frappe.msgprint({
-                                title: 'Payment Recorded',
-                                indicator: 'green',
-                                message: result.message || 'Payment Entry created successfully.'
-                            });
-                            // Update local data and refresh
-                            req.status = 'Completed';
-                            req.display_status = CashoutStatus.PAID;
-                            req.payment_entry = result.payment_entry;
-                            this.show_request_details(req);
-                            this.load_requests();
-                        } else {
-                            frappe.msgprint({
-                                title: 'Error',
-                                indicator: 'red',
-                                message: result.error || 'Failed to create Payment Entry.'
-                            });
-                        }
+                        this.show_cashout_action_result(
+                            result,
+                            'Cashout Created',
+                            'Cashout request is ready for settlement.',
+                            'Failed to create cashout request.'
+                        );
                     },
                     error: (err) => {
-                        btn.prop('disabled', false).html('<i class="fa fa-credit-card"></i> Record Payment Entry');
-                        const msg = err?.responseJSON?.exception || err?.responseJSON?.message || 'Failed to create Payment Entry';
+                        this.set_cashout_action_buttons_disabled(false);
+                        const msg = err?.responseJSON?.exception || err?.responseJSON?.message || 'Failed to create cashout request';
                         frappe.msgprint({ title: 'Error', indicator: 'red', message: msg });
                     }
                 });
             }
         );
+    }
+
+    confirm_cashout_payment(req) {
+        if (!req) return;
+
+        const dialog = new frappe.ui.Dialog({
+            title: 'Confirm Cashout Payment',
+            fields: [
+                {
+                    fieldname: 'confirmation_code',
+                    fieldtype: 'Data',
+                    label: 'Bank Confirmation Code',
+                    reqd: 1
+                }
+            ],
+            primary_action_label: 'Confirm Payment',
+            primary_action: (values) => {
+                const code = (values.confirmation_code || '').trim();
+                if (!code) {
+                    frappe.msgprint({
+                        title: 'Confirmation Code Required',
+                        indicator: 'red',
+                        message: 'Enter the bank confirmation code before confirming the payment.'
+                    });
+                    return;
+                }
+
+                dialog.get_primary_btn().prop('disabled', true);
+                this.set_cashout_action_buttons_disabled(true);
+
+                frappe.call({
+                    method: 'admin_panel.api.admin_api.confirm_cashout_payment',
+                    args: {
+                        cashout_id: req.name,
+                        confirmation_code: code
+                    },
+                    freeze: true,
+                    freeze_message: 'Confirming payment...',
+                    callback: (r) => {
+                        dialog.hide();
+                        const result = r.message || {};
+                        this.show_cashout_action_result(
+                            result,
+                            'Payment Confirmed',
+                            'Cashout payment confirmed successfully.',
+                            'Failed to confirm cashout payment.'
+                        );
+                    },
+                    error: (err) => {
+                        dialog.get_primary_btn().prop('disabled', false);
+                        this.set_cashout_action_buttons_disabled(false);
+                        const msg = err?.responseJSON?.exception || err?.responseJSON?.message || 'Failed to confirm cashout payment';
+                        frappe.msgprint({ title: 'Error', indicator: 'red', message: msg });
+                    }
+                });
+            }
+        });
+        dialog.show();
+    }
+
+    complete_cashout(req) {
+        if (!req) return;
+
+        const sendDisplay = req.send != null
+            ? `USD ${parseFloat(req.send).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+            : 'this cashout';
+
+        frappe.confirm(
+            `Mark <strong>${req.username}</strong>'s <strong>${sendDisplay}</strong> cashout as complete?<br><br>This creates the payment Journal Entry if one does not already exist.`,
+            () => {
+                this.set_cashout_action_buttons_disabled(true);
+
+                frappe.call({
+                    method: 'admin_panel.api.admin_api.complete_cashout',
+                    args: { cashout_id: req.name },
+                    freeze: true,
+                    freeze_message: 'Completing cashout...',
+                    callback: (r) => {
+                        const result = r.message || {};
+                        this.show_cashout_action_result(
+                            result,
+                            'Cashout Completed',
+                            'Cashout marked complete successfully.',
+                            'Failed to complete cashout.'
+                        );
+                    },
+                    error: (err) => {
+                        this.set_cashout_action_buttons_disabled(false);
+                        const msg = err?.responseJSON?.exception || err?.responseJSON?.message || 'Failed to complete cashout';
+                        frappe.msgprint({ title: 'Error', indicator: 'red', message: msg });
+                    }
+                });
+            }
+        );
+    }
+
+    record_payment_entry(req) {
+        this.complete_cashout(req);
     }
 
     show_bridge_details(req) {

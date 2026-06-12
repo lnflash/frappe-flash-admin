@@ -864,6 +864,10 @@ def _cashout_notification_amount_cents(doc):
     return int(amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
+def _is_flash_username_candidate(value):
+    return bool(value and re.match(r"^[a-zA-Z0-9_-]{3,}$", str(value).strip()))
+
+
 def _first_cashout_account_match(client, doc):
     customer_info = {}
     if doc.customer:
@@ -880,6 +884,8 @@ def _first_cashout_account_match(client, doc):
             username_candidates.append(value)
 
     for username in username_candidates:
+        if not _is_flash_username_candidate(username):
+            continue
         account = client.get_account_by_username(username)
         if account:
             return account

@@ -61,7 +61,7 @@ class GraphQLClient:
 		errors = response.get('errors')
 		if not errors:
 			return
-		if allow_not_found and any(e.get('code') == 'NOT_FOUND' for e in errors):
+		if allow_not_found and any(e.get('code') in ("NOT_FOUND", "INVALID_INPUT") for e in errors):
 			return
 		raise GraphQLError(f"GraphQL errors: {errors}")
 

@@ -129,3 +129,12 @@ def test_cashout_completion_calls_flash_notification_mutation():
     assert "_send_cashout_completion_notification" in api_py
     assert "send_cashout_notification(" in api_py
     assert "_cashout_notification_amount_cents" in api_py
+
+
+def test_cashout_completion_lookup_ignores_invalid_flash_identifiers():
+    api_py = read_text(ADMIN_PANEL / "api" / "admin_api.py")
+    graphql_client_py = read_text(ADMIN_PANEL / "api" / "graphql_client.py")
+
+    assert '"INVALID_INPUT"' in graphql_client_py
+    assert "def _is_flash_username_candidate" in api_py
+    assert "_is_flash_username_candidate(username)" in api_py

@@ -703,9 +703,10 @@ def search_cashout_account(id: str):
     import re as _re
     has_digits = len(_re.sub(r'\D', '', id)) >= 3
 
+    digits_only = _re.sub(r'\D', '', id) if has_digits else ""
     customer_filters = []
     if has_digits:
-        customer_filters.append(["mobile_no", "like", f"%{_re.sub(r'\D', '', id)}%"])
+        customer_filters.append(["mobile_no", "like", f"%{digits_only}%"])
     customer_filters.append(["customer_name", "like", f"%{id}%"])
 
     matching_customers = frappe.get_all(

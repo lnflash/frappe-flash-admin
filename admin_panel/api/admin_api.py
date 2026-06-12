@@ -532,6 +532,8 @@ def delete_merchant_api(merchant_id=None):
 @handle_api_errors
 def get_dashboard_stats():
     """Get summary stats for the admin dashboard."""
+    from datetime import datetime, timedelta
+
     pending = frappe.db.count("Account Upgrade Request", {"status": "Pending"})
     approved = frappe.db.count("Account Upgrade Request", {"status": "Approved"})
     rejected = frappe.db.count("Account Upgrade Request", {"status": "Rejected"})
@@ -550,6 +552,39 @@ def get_dashboard_stats():
         limit_page_length=500,
     )
 
+    # ── Bridge chart data ──
+    # Daily counts for the last 7 days (use raw SQL for date range queries)
+    from datetime import datetime, timedelta
+
+    today_dt = frappe.utils.getdate(today)
+    labels = []
+    for i in range(6, -1, -1):
+        d = today_dt - timedelta(days=i)
+        labels.append(d)
+
+    bridge_volume_data = []
+    bridge_failure_data = []
+    for day in labels:
+        day_start = day.strftime("%Y-%m-%d")
+        day_end = (day + timedelta(days=1)).strftime("%Y-%m-%d")
+        sql = """
+            SELECT COUNT(*) as cnt FROM `tabBridge Transfer Request`
+            WHERE creation >= %s AND creation < %s
+        """
+        result = frappe.db.sql(sql, values=[day_start, day_end], as_dict=True)
+        bridge_volume_data.append(result[0]["cnt"] if result else 0)
+
+        sql_fail = """
+            SELECT COUNT(*) as cnt FROM `tabBridge Transfer Request`
+            WHERE creation >= %s AND creation < %s
+            AND IFNULL(failure_reason, '') != ''
+        """
+        result_fail = frappe.db.sql(sql_fail, values=[day_start, day_end], as_dict=True)
+        bridge_failure_data.append(result_fail[0]["cnt"] if result_fail else 0)
+
+    # Format labels for JS display
+    date_labels = [frappe.utils.format_date(d.strftime("%Y-%m-%d"), "MMM d") for d in labels]
+
     return {
         "upgrade_requests": {
             "pending": pending,
@@ -560,6 +595,18 @@ def get_dashboard_stats():
         "recent_requests": all_records[:8],
         "all_requests": all_records,
         "total_requests": pending + approved + rejected,
+        "bridge_charts": {
+            "volume": {
+                "title": "Bridge Volume",
+                "labels": date_labels,
+                "datasets": [{"name": "Volume", "values": bridge_volume_data}],
+            },
+            "failures": {
+                "title": "Bridge Audit Failures",
+                "labels": date_labels,
+                "datasets": [{"name": "Failures", "values": bridge_failure_data}],
+            },
+        },
     }
 
 

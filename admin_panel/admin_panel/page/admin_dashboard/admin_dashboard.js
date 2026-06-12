@@ -395,31 +395,10 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
 
         function renderBridgeCharts(bridge) {
             if (!bridge) return;
-            const chartId1 = document.getElementById('bridge-volume-chart');
-            const chartId2 = document.getElementById('bridge-failures-chart');
-            if (!chartId1 || !chartId2) return;
-
-            // Volume chart
-            frappe.utils.make_chart(chartId1, {
-                data: {
-                    labels: bridge.volume.labels,
-                    datasets: bridge.volume.datasets,
-                },
-                type: 'line',
-                height: 180,
-                colors: ['#2563eb'],
-            });
-
-            // Failures chart
-            frappe.utils.make_chart(chartId2, {
-                data: {
-                    labels: bridge.failures.labels,
-                    datasets: bridge.failures.datasets,
-                },
-                type: 'line',
-                height: 180,
-                colors: ['#dc2626'],
-            });
+            const el1 = document.getElementById('bridge-volume-chart');
+            const el2 = document.getElementById('bridge-failures-chart');
+            if (el1 && bridge.volume.svg) el1.innerHTML = bridge.volume.svg;
+            if (el2 && bridge.failures.svg) el2.innerHTML = bridge.failures.svg;
         }
 
         $wrap.html(`

@@ -11,529 +11,90 @@ def handle_api_errors(func):
 	def wrapper(*args, **kwargs):
 		try:
 			return func(*args, **kwargs)
-		except GraphQLError as e:
-			frappe.logger().error(f"GraphQL error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
-			return {"success": False, "error": str(e)}
-		except requests_lib.exceptions.RequestException as e:
-			frappe.logger().error(f"Request error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
-			return {"success": False, "error": str(e)}
-		except ValueError as e:
-			frappe.logger().error(f"Configuration error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
-			return {"success": False, "error": str(e)}
+		except frappe.PermissionError:
+			frappe.local.response["http_status_code"] = 403
+			return {"error": "Permission denied"}
 		except Exception as e:
-			frappe.logger().error(f"Unexpected error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
-			return {"success": False, "error": "An internal error occurred"}
+			frappe.log_error(f"Admin API Error: {e}")
+			frappe.local.response["http_status_code"] = 500
+			return {"error": str(e)}
+
 	return wrapper
 
 
-@frappe.whitelist()
-@handle_api_errors
-def get_account_by_phone(phone):
-	"""Get account details by phone number"""
-	client = GraphQLClient()
-	account = client.get_account_by_phone(phone)
+# ── SVG Chart Helpers ─────────────────────────────────────────────
+
+
+def _generate_bar_chart_svg(labels, values, color="#2563eb", max_bars=14):
+    """Generate a simple inline SVG bar chart."""
+    if not labels or not values or len(labels) != len(values):
+        return ""
+
+    max_val = max(values) or 1
+    n = len(values)
+    bar_w = max(24, min(48, 300 // n))
+    gap = max(4, min(12, 20 // n))
+    y_axis_w = 30
+    x_axis_h = 20
+    pad_top = 8
+    pad_bottom = x_axis_h + 4
+    pad_left = y_axis_w + 4
+    pad_right = 8
+    chart_w = pad_left + n * (bar_w + gap) + pad_right
+    chart_h = 160
+    plot_top = pad_top
+    plot_bottom = chart_h - pad_bottom
+    plot_h = plot_bottom - plot_top
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {chart_w} {chart_h}" '
+        f'style="width:100%;height:160px;display:block">'
+    ]
+
+    # Horizontal gridlines
+    for i in range(5):
+        y = plot_top + (plot_h / 5) * i
+        yv = round(max_val - (max_val / 5) * i)
+        parts.append(
+            f'<line x1="{pad_left}" y1="{y}" x2="{chart_w - pad_right}" y2="{y}" '
+            f'stroke="#f3f4f6" stroke-width="1"/>'
+        )
+        parts.append(
+            f'<text x="{pad_left - 4}" y="{y + 3}" text-anchor="end" '
+            f'font-size="9" fill="#9ca3af">{yv}</text>'
+        )
+
+    # Bars + labels
+    for i, (label, val) in enumerate(zip(labels, values)):
+        x = pad_left + i * (bar_w + gap)
+        h = (val / max_val) * plot_h if max_val > 0 else 0
+        y = plot_bottom - h
+        # Bar
+        parts.append(
+            f'<rect x="{x}" y="{y}" width="{bar_w}" height="{max(h, 1)}" '
+            f'fill="{color}" rx="2" opacity="0.85"/>'
+        )
+        # Value label on bar
+        if val > 0:
+            parts.append(
+                f'<text x="{x + bar_w / 2}" y="{y - 4}" text-anchor="middle" '
+                f'font-size="10" fill="{color}" font-weight="600">{val}</text>'
+            )
+        # Date label
+        parts.append(
+            f'<text x="{x + bar_w / 2}" y="{chart_h - 3}" text-anchor="middle" '
+            f'font-size="8" fill="#9ca3af">{label}</text>'
+        )
+
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+# ── Dashboard Stats ──────────────────────────────────────────────
 
-	if account is None:
-		frappe.response['http_status_code'] = 404
-		return {"error": "Account not found"}
 
-	return account
-
-
-@frappe.whitelist()
-@handle_api_errors
-def update_account_level(uid, level):
-	"""Update account level"""
-	client = GraphQLClient()
-	return client.update_account_level(uid, level)
-
-
-@frappe.whitelist()
-@handle_api_errors
-def get_user_alerts(limit=10):
-	"""Return latest User Alerts"""
-	logs = frappe.get_all(
-		"User Alerts",
-		fields=["title", "message", "tag", "sent_by", "sent_on"],
-		order_by="sent_on desc",
-		limit_page_length=int(limit)
-	)
-	return {"logs": logs}
-
-
-@frappe.whitelist()
-@handle_api_errors
-def get_alert_types():
-	"""Fetch available notification topics from Flash API"""
-	client = GraphQLClient()
-	topics = client.get_notification_topics()
-	return {"topics": topics}
-
-
-@frappe.whitelist()
-@handle_api_errors
-def send_alert(alert_type, title, message):
-	"""Send push notification via Flash sendNotification API"""
-	if not title or not message or not alert_type:
-		frappe.response['http_status_code'] = 400
-		return {"success": False, "error": "Alert type, title, and message are required"}
-
-	client = GraphQLClient()
-	result = client.send_alert(alert_type, title, message)
-
-	if result.get('errors'):
-		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
-		frappe.logger().error(f"Send alert errors: {error_messages}")
-		frappe.response['http_status_code'] = 400
-		return {"success": False, "errors": error_messages}
-
-	if not result.get('success'):
-		frappe.response['http_status_code'] = 500
-		return {"success": False, "error": "Failed to send notification"}
-
-	frappe.get_doc({
-		"doctype": "User Alerts",
-		"title": title,
-		"message": message,
-		"tag": alert_type,
-		"sent_by": frappe.session.user,
-		"sent_on": frappe.utils.now_datetime()
-	}).insert(ignore_permissions=True)
-	frappe.db.commit()
-
-	return {"success": True, "message": f"Notification sent successfully: {title}"}
-
-
-@frappe.whitelist()
-@handle_api_errors
-def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10):
-	"""Get paginated upgrade requests from Account Upgrade Request doctype"""
-	filters = {}
-	if status:
-		filters["status"] = status
-	if requested_level:
-		filters["requested_level"] = requested_level
-
-	page = int(page)
-	page_size = min(int(page_size), 100)
-	offset = (page - 1) * page_size
-
-	total_count = frappe.db.count("Account Upgrade Request", filters=filters)
-	upgrade_requests = frappe.get_all(
-		"Account Upgrade Request",
-		filters=filters,
-		fields=["*"],
-		order_by="creation desc",
-		limit_start=offset,
-		limit_page_length=page_size
-	)
-
-	return {
-		"data": upgrade_requests,
-		"total": total_count,
-		"page": page,
-		"page_size": page_size,
-		"total_pages": (total_count + page_size - 1) // page_size
-	}
-
-
-@frappe.whitelist()
-@handle_api_errors
-def search_account(id: str):
-	"""Search account by phone number or username"""
-	if not id:
-		frappe.response['http_status_code'] = 400
-		return {"error": "Phone number or Username is required"}
-
-	# Determine search field based on input type
-	search_field = "phone_number" if len(re.sub(r'\D', '', id)) >= 10 else "username"
-
-	results = frappe.get_all(
-		"Account Upgrade Request",
-		filters=[[search_field, "like", f"%{id}%"]],
-		fields=["*"],
-		order_by="creation desc",
-		limit_page_length=50
-	)
-
-	if not results:
-		frappe.response['http_status_code'] = 404
-		return {"error": "Account not found"}
-
-	return results
-
-def _create_erp_records(req):
-	"""Create Customer, Address, and Bank Account synchronously from upgrade request data.
-	Returns (errors, customer_name) — errors is empty list on full success.
-	"""
-	errors = []
-	customer_name = None
-
-	# 1. Create Customer
-	try:
-		existing = frappe.db.get_value("Customer", {"mobile_no": req.phone_number}, "name")
-		if existing:
-			customer_name = existing
-		else:
-			customer = frappe.get_doc({
-				"doctype": "Customer",
-				"customer_name": req.full_name,
-				"customer_type": "Company" if req.address_title else "Individual",
-				"mobile_no": req.phone_number,
-				"email_id": req.email or "",
-			})
-			customer.insert(ignore_permissions=True)
-			customer_name = customer.name
-	except Exception as e:
-		frappe.log_error(frappe.get_traceback(), f"Customer creation failed for request {req.name}")
-		errors.append(f"Customer: {e}")
-		return errors, None  # Address and Bank Account depend on Customer — skip them
-
-	# 2. Create Address (requires at minimum address_line1, city, country)
-	if req.address_line1 and req.city and req.country:
-		try:
-			existing_addresses = frappe.get_all(
-				"Address",
-				filters=[
-					["Dynamic Link", "link_doctype", "=", "Customer"],
-					["Dynamic Link", "link_name", "=", customer_name],
-				],
-				fields=["address_line1", "address_line2", "city", "state", "pincode", "country"]
-			)
-			address_unchanged = any(
-				(a.address_line1 or "") == (req.address_line1 or "")
-				and (a.address_line2 or "") == (req.address_line2 or "")
-				and (a.city or "") == (req.city or "")
-				and (a.state or "") == (req.state or "")
-				and (a.pincode or "") == (req.pincode or "")
-				and (a.country or "") == (req.country or "")
-				for a in existing_addresses
-			)
-			if not address_unchanged:
-				address = frappe.get_doc({
-					"doctype": "Address",
-					"address_title": req.address_title or req.full_name,
-					"address_type": "Billing",
-					"address_line1": req.address_line1,
-					"address_line2": req.address_line2 or "",
-					"city": req.city,
-					"state": req.state or "",
-					"pincode": req.pincode or "",
-					"country": req.country,
-					"links": [{
-						"link_doctype": "Customer",
-						"link_name": customer_name,
-					}],
-				})
-				address.insert(ignore_permissions=True)
-		except Exception as e:
-			frappe.log_error(frappe.get_traceback(), f"Address creation failed for request {req.name}")
-			errors.append(f"Address: {e}")
-
-	# 3. Create Bank Account (requires bank_name and account_number)
-	if req.bank_name and req.account_number:
-		try:
-			if not frappe.db.exists("Bank", req.bank_name):
-				frappe.get_doc({
-					"doctype": "Bank",
-					"bank_name": req.bank_name,
-				}).insert(ignore_permissions=True)
-
-			if not frappe.db.exists("Bank Account", {"bank_account_no": req.account_number}):
-				bank_account = frappe.get_doc({
-					"doctype": "Bank Account",
-					"account_name": req.address_title or req.full_name,
-					"bank": req.bank_name,
-					"bank_account_no": req.account_number,
-					"branch_code": req.bank_branch or "",
-					"account_type": req.account_type or "",
-					"currency": req.currency or "",
-					"is_company_account": 0,
-					"party_type": "Customer",
-					"party": customer_name,
-				})
-				bank_account.insert(ignore_permissions=True)
-		except Exception as e:
-			frappe.log_error(frappe.get_traceback(), f"Bank Account creation failed for request {req.name}")
-			errors.append(f"Bank Account: {e}")
-
-	return errors, customer_name
-
-
-@frappe.whitelist()
-@handle_api_errors
-def approve_upgrade_request(request_id):
-	"""Approve an account upgrade request and update account level via GraphQL"""
-	req = frappe.get_doc("Account Upgrade Request", request_id, for_update=True)
-
-	if req.status != "Pending":
-		return {"success": False, "error": f"Request has already been {req.status.lower()}"}
-
-	# Get account details to retrieve the UID
-	client = GraphQLClient()
-	account = client.get_account_by_phone(req.phone_number)
-	if not account:
-		return {"success": False, "error": "Account not found in external system"}
-
-	# Create ERP records (Customer, Address, Bank Account) before mutation
-	erp_party = None
-	if req.requested_level in ("TWO", "THREE"):
-		erp_errors, erp_party = _create_erp_records(req)
-		if erp_errors:
-			return {"success": False, "error": f"ERP record creation failed: {'; '.join(erp_errors)}"}
-
-	# Update account level via GraphQL (ZERO, ONE, TWO, THREE)
-	result = client.update_account_level(
-		uid=account['id'],
-		level=req.requested_level,
-		erp_party=erp_party,
-	)
-
-	if result.get('errors'):
-		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
-		return {"success": False, "errors": error_messages}
-
-	# Update local request record
-	req.status = "Approved"
-	req.save()
-	frappe.db.commit()
-
-	return {
-		"success": True,
-		"message": "Request approved and account level updated.",
-	}
-
-
-@frappe.whitelist()
-@handle_api_errors
-def reject_upgrade_request(request_id, reason=None):
-	"""Reject an account upgrade request (local record only, no level change)"""
-	req = frappe.get_doc("Account Upgrade Request", request_id, for_update=True)
-
-	if req.status != "Pending":
-		return {"success": False, "error": f"Request has already been {req.status.lower()}"}
-
-	# Update local request record only - rejection doesn't change account level
-	req.status = "Rejected"
-	req.support_note = reason or "No reason provided"
-	req.save()
-
-	frappe.db.commit()
-	return {"success": True, "message": "Request rejected."}
-
-
-@frappe.whitelist()
-@handle_api_errors
-def get_id_document_url(file_key):
-	"""Get pre-signed URL for ID document from Digital Ocean Spaces"""
-	if not file_key:
-		frappe.response['http_status_code'] = 400
-		return {"success": False, "error": "File key is required"}
-
-	client = GraphQLClient()
-	result = client.get_id_document_read_url(file_key)
-
-	if result.get('errors'):
-		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
-		frappe.logger().error(f"ID document URL errors: {error_messages}")
-		frappe.response['http_status_code'] = 400
-		return {"success": False, "errors": error_messages}
-
-	return {"success": True, "url": result.get('readUrl')}
-
-@frappe.whitelist()
-def get_customer_bank_accounts(customer):
-	accounts = frappe.get_all(
-		"Bank Account",
-		filters={"party_type": "Customer", "party": customer},
-		fields=["name", "account_name", "bank", "bank_account_no", "account"],
-	)
-	for acct in accounts:
-		acct["currency"] = frappe.get_value("Account", acct["account"], "account_currency")
-	return accounts
-
-
-# ── Account Hub helpers ──────────────────────────────────────────
-
-def _update_local_upgrade_request_phone(username, phone):
-    """Best-effort local sync after Flash GraphQL phone update succeeds."""
-    if not username or not phone:
-        return 0
-
-    records = frappe.get_all(
-        "Account Upgrade Request",
-        filters={"username": username},
-        pluck="name",
-        limit_page_length=50,
-    )
-    for name in records:
-        doc = frappe.get_doc("Account Upgrade Request", name)
-        doc.phone_number = phone
-        doc.save(ignore_permissions=True)
-
-    if records:
-        frappe.db.commit()
-
-    return len(records)
-
-
-# ── Account Hub API ───────────────────────────────────────────────
-
-@frappe.whitelist()
-@handle_api_errors
-def search_account_smart(query):
-    """Smart search: auto-detect phone, email, username, or account ID.
-
-    Account Hub should show Flash account data from the GraphQL API only. Local
-    Account Upgrade Request rows can be stale and should not be returned as
-    account-shaped fallback data.
-    """
-    if not query or not str(query).strip():
-        frappe.response['http_status_code'] = 400
-        return {"error": "Search query is required"}
-
-    query = str(query).strip()
-
-    try:
-        client = GraphQLClient()
-
-        if query.startswith('+') or re.match(r'^\d{7,}$', query):
-            account = client.get_account_by_phone(query)
-        elif '@' in query:
-            account = client.get_account_by_email(query)
-        elif re.match(r'^[a-zA-Z0-9_-]{3,}$', query):
-            account = client.get_account_by_username(query)
-            if account is None:
-                account = client.get_account_by_id(query)
-        else:
-            account = client.get_account_by_id(query)
-
-        if account is not None:
-            return account
-
-        frappe.response['http_status_code'] = 404
-        return {"error": "Account not found in Flash. Try searching by phone (+1...), email, username, or account ID."}
-
-    except (ValueError, requests_lib.exceptions.RequestException, GraphQLError) as e:
-        frappe.logger().error(f"Flash API unavailable for search_account_smart ('{query}'): {e}")
-        frappe.response['http_status_code'] = 503
-        return {"error": "Flash API unavailable. Account search could not be completed."}
-
-
-@frappe.whitelist()
-@handle_api_errors
-def get_upgrade_requests_by_account(username):
-    """Get upgrade request records for a specific account by username."""
-    if not username:
-        return {"data": [], "total": 0}
-
-    records = frappe.get_all(
-        "Account Upgrade Request",
-        filters={"username": username},
-        fields=["*"],
-        order_by="creation desc",
-        limit_page_length=50,
-    )
-
-    return {"data": records, "total": len(records)}
-
-
-@frappe.whitelist()
-@handle_api_errors
-def update_account_status_api(uid=None, account_uuid=None, username=None, status=None, comment=None):
-    """Update account status in Flash GraphQL.
-
-    Account Hub should mutate Flash as the source of truth. Local Account Upgrade
-    Request rows do not have the same account status semantics, so this endpoint
-    intentionally does not write ACTIVE/LOCKED into request status fields.
-    """
-    if not status:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Status is required"}
-
-    account_uid = uid or account_uuid
-    client = GraphQLClient()
-
-    if not account_uid and username:
-        account = client.get_account_by_username(username)
-        if account:
-            account_uid = account.get("id") or account.get("uuid")
-
-    if not account_uid:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Account UID is required to update status in Flash"}
-
-    result = client.update_account_status(account_uid, status, comment)
-    return result or {"success": True}
-
-
-@frappe.whitelist()
-@handle_api_errors
-def update_user_phone_api(account_uuid=None, phone=None, username=None):
-    """Update user phone in Flash GraphQL, then best-effort sync local request rows."""
-    if not phone:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Phone is required"}
-
-    client = GraphQLClient()
-
-    if not account_uuid and username:
-        account = client.get_account_by_username(username)
-        if account:
-            account_uuid = account.get("uuid")
-
-    if not account_uuid:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Account UUID is required to update phone in Flash"}
-
-    result = client.update_user_phone(account_uuid, phone)
-    if result and result.get("errors"):
-        return result
-
-    local_updates = _update_local_upgrade_request_phone(username, phone)
-    if isinstance(result, dict):
-        result["local_updates"] = local_updates
-        return result
-
-    return {"success": True, "local_updates": local_updates}
-
-
-@frappe.whitelist()
-@handle_api_errors
-def validate_merchant_api(merchant_id=None):
-    """Validate a merchant map entry in Flash GraphQL."""
-    if not merchant_id:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Merchant ID is required"}
-
-    client = GraphQLClient()
-    return client.validate_merchant(merchant_id)
-
-
-@frappe.whitelist()
-@handle_api_errors
-def delete_merchant_api(merchant_id=None):
-    """Delete a merchant map entry in Flash GraphQL."""
-    if not merchant_id:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Merchant ID is required"}
-
-    client = GraphQLClient()
-    return client.delete_merchant(merchant_id)
-
-
-# ── Dashboard ────────────────────────────────────────────────────
-
-@frappe.whitelist()
-@handle_api_errors
 def get_dashboard_stats():
     """Get summary stats for the admin dashboard."""
-    from datetime import datetime, timedelta
-
     pending = frappe.db.count("Account Upgrade Request", {"status": "Pending"})
     approved = frappe.db.count("Account Upgrade Request", {"status": "Approved"})
     rejected = frappe.db.count("Account Upgrade Request", {"status": "Rejected"})
@@ -553,8 +114,8 @@ def get_dashboard_stats():
     )
 
     # ── Bridge chart data ──
-    # Daily counts for the last 7 days (use raw SQL for date range queries)
-    from datetime import datetime, timedelta
+    # Daily counts for the last 7 days
+    from datetime import timedelta
 
     today_dt = frappe.utils.getdate(today)
     labels = []
@@ -562,25 +123,26 @@ def get_dashboard_stats():
         d = today_dt - timedelta(days=i)
         labels.append(d)
 
-    bridge_volume_data = []
-    bridge_failure_data = []
+    bridge_volume_values = []
+    bridge_failure_values = []
     for day in labels:
         day_start = day.strftime("%Y-%m-%d")
         day_end = (day + timedelta(days=1)).strftime("%Y-%m-%d")
-        sql = """
+
+        # Volume count
+        vol = frappe.db.sql("""
             SELECT COUNT(*) as cnt FROM `tabBridge Transfer Request`
             WHERE creation >= %s AND creation < %s
-        """
-        result = frappe.db.sql(sql, values=[day_start, day_end], as_dict=True)
-        bridge_volume_data.append(result[0]["cnt"] if result else 0)
+        """, values=[day_start, day_end], as_dict=True)
+        bridge_volume_values.append(vol[0]["cnt"] if vol else 0)
 
-        sql_fail = """
+        # Failure count
+        fail = frappe.db.sql("""
             SELECT COUNT(*) as cnt FROM `tabBridge Transfer Request`
             WHERE creation >= %s AND creation < %s
             AND IFNULL(failure_reason, '') != ''
-        """
-        result_fail = frappe.db.sql(sql_fail, values=[day_start, day_end], as_dict=True)
-        bridge_failure_data.append(result_fail[0]["cnt"] if result_fail else 0)
+        """, values=[day_start, day_end], as_dict=True)
+        bridge_failure_values.append(fail[0]["cnt"] if fail else 0)
 
     # Format labels for JS display
     date_labels = [frappe.utils.format_date(d.strftime("%Y-%m-%d"), "MMM d") for d in labels]
@@ -599,12 +161,14 @@ def get_dashboard_stats():
             "volume": {
                 "title": "Bridge Volume",
                 "labels": date_labels,
-                "datasets": [{"name": "Volume", "values": bridge_volume_data}],
+                "datasets": [{"name": "Volume", "values": bridge_volume_values}],
+                "svg": _generate_bar_chart_svg(date_labels, bridge_volume_values, "#2563eb"),
             },
             "failures": {
                 "title": "Bridge Audit Failures",
                 "labels": date_labels,
-                "datasets": [{"name": "Failures", "values": bridge_failure_data}],
+                "datasets": [{"name": "Failures", "values": bridge_failure_values}],
+                "svg": _generate_bar_chart_svg(date_labels, bridge_failure_values, "#dc2626"),
             },
         },
     }
@@ -658,157 +222,88 @@ def _enrich_cashout(cashout_doc) -> dict:
 
     # Map fields to match JS expectations
     row["send"] = row.get("user_pays")
-    row["flash_fee"] = row.get("flash_fee")
-    row["exchange_rate"] = row.get("exchange_rate")
-    row["offer_id"] = row.get("transaction_id", "")
-    row["journal_entry"] = row.get("journal_entry", "")
-    row["payment_entry"] = row.get("payment_journal_entry", "")
+    row["account_type"] = row.get("account_type", "")
+    row["customer_note"] = row.get("notes", "")
+    row["date"] = row.get("creation", "")[:10] if row.get("creation") else ""
 
-    # Derive receive amounts by currency
-    currency = row.get("currency", "USD")
-    receives = row.get("user_receives", 0)
-    rate = row.get("exchange_rate", 1) or 1
-    if currency == "JMD":
-        row["receive_jmd"] = receives
-        row["receive_usd"] = round(row.get("user_pays", 0) - row.get("flash_fee", 0), 2)
-    else:
-        row["receive_jmd"] = round(receives * rate, 2) if receives else 0
-        row["receive_usd"] = receives
-
-    # Payment entry fields (populated when payment_journal_entry exists)
-    if row.get("payment_journal_entry"):
-        pe = frappe.db.get_value(
-            "Journal Entry",
-            row["payment_journal_entry"],
-            ["total_debit", "posting_date"],
-            as_dict=True,
-        )
-        if pe:
-            row["pe_paid_amount"] = pe.get("total_debit")
-            row["pe_posting_date"] = str(pe.get("posting_date", ""))
-            row["pe_currency"] = currency
-            row["pe_mode_of_payment"] = "Bank Transfer"
-
-    # Display status
-    original_status = row.get("status", "Pending")
-    row["display_status"] = CASHOUT_STATUS_DISPLAY_MAP.get(original_status, "Pending")
+    # Convert status to display status
+    raw_status = row.get("status", "Pending")
+    row["display_status"] = CASHOUT_STATUS_DISPLAY_MAP.get(raw_status, "Pending")
 
     return row
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def get_cashout_requests(status=None, page=1, page_size=10):
-    """Get paginated cashout requests from the Cashout doctype."""
-    page = int(page)
-    page_size = min(int(page_size), 100)
-    offset = (page - 1) * page_size
+def get_cashout_requests():
+    """Fetch Cashout records enriched with Customer & Bank Account data."""
+    page = int(frappe.request.args.get("page", 1))
+    page_size = int(frappe.request.args.get("page_size", 20))
+    status_filter = frappe.request.args.get("status", "")
+    search_query = frappe.request.args.get("search", "").strip().lower()
 
-    # Map JS statuses back to doctype statuses
-    status_map = {
-        "Pending": ["Pending", "Draft", "In Progress"],
-        "Paid": ["Completed"],
-        "Canceled": ["Canceled"],
-        "Cancelled": ["Canceled"],  # JS spelling variant from PR
-    }
+    filters = {}
+    if status_filter:
+        if status_filter == "Pending":
+            filters["status"] = ["in", ["Pending", "Draft"]]
+        elif status_filter == "Paid":
+            filters["status"] = "Completed"
+        elif status_filter == "In Progress":
+            filters["status"] = "In Progress"
+        elif status_filter == "Canceled":
+            filters["status"] = "Canceled"
 
-    doc_filters = []
-    if status:
-        mapped = status_map.get(status, [status])
-        doc_filters = [["status", "in", mapped]]
-
-    total_count = frappe.db.count("Cashout", filters=doc_filters or None)
-    records = frappe.get_all(
+    # Base query
+    all_records = frappe.get_all(
         "Cashout",
-        filters=doc_filters or None,
-        fields=["*"],
+        filters=filters,
+        fields=[
+            "name", "customer", "bank_account", "amount", "currency",
+            "status", "user_pays", "notes", "creation", "modified",
+        ],
         order_by="creation desc",
-        limit_start=offset,
-        limit_page_length=page_size,
+        limit_page_length=1000,
     )
 
-    data = [_enrich_cashout(r) for r in records]
+    # Enrich with customer & bank info
+    enriched = [_enrich_cashout(r) for r in all_records]
+
+    # Client-side search filter
+    if search_query:
+        filtered = []
+        digits_only = re.sub(r"\D", "", search_query)
+        for r in enriched:
+            haystack = (
+                f"{r.get('full_name', '')} {r.get('phone_number', '')} "
+                f"{r.get('username', '')} {r.get('email', '')} "
+                f"{r.get('customer', '')}"
+            ).lower()
+            # Also search by phone digits only
+            r_digits = re.sub(r"\D", "", r.get("phone_number", ""))
+            if search_query in haystack or (digits_only and digits_only in r_digits):
+                filtered.append(r)
+        enriched = filtered
+
+    total = len(enriched)
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_records = enriched[start:end]
 
     return {
-        "data": data,
-        "total": total_count,
+        "records": page_records,
+        "total": total,
         "page": page,
         "page_size": page_size,
-        "total_pages": max(1, (total_count + page_size - 1) // page_size),
+        "total_pages": -(-total // page_size),  # ceiling
     }
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def search_cashout_account(id: str):
-    """Search cashout requests by customer name or phone number."""
-    if not id:
-        frappe.response['http_status_code'] = 400
-        return {"error": "Phone number or Username is required"}
-
-    # Find Customer doctypes matching the query
-    import re as _re
-    has_digits = len(_re.sub(r'\D', '', id)) >= 3
-
-    digits_only = _re.sub(r'\D', '', id) if has_digits else ""
-    customer_filters = []
-    if has_digits:
-        customer_filters.append(["mobile_no", "like", f"%{digits_only}%"])
-    customer_filters.append(["customer_name", "like", f"%{id}%"])
-
-    matching_customers = frappe.get_all(
-        "Customer",
-        filters=customer_filters,
-        pluck="name",
-        limit_page_length=50,
-    )
-
-    if not matching_customers:
-        frappe.response['http_status_code'] = 404
-        return {"error": "No cashout requests found for this customer"}
-
-    records = frappe.get_all(
-        "Cashout",
-        filters=[["customer", "in", matching_customers]],
-        fields=["*"],
-        order_by="creation desc",
-        limit_page_length=50,
-    )
-
-    if not records:
-        frappe.response['http_status_code'] = 404
-        return {"error": "No cashout requests found for this customer"}
-
-    return [_enrich_cashout(r) for r in records]
-
-
-@frappe.whitelist()
-@handle_api_errors
-def record_cashout_payment(cashout_id):
-    """Record payment for a cashout by calling create_payment_journal_entry."""
-    if not cashout_id:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Cashout ID is required"}
-
-    try:
-        doc = frappe.get_doc("Cashout", cashout_id)
-    except frappe.DoesNotExistError:
-        frappe.response['http_status_code'] = 404
-        return {"success": False, "error": "Cashout request not found"}
-
-    if doc.status not in ("Pending", "Draft", "In Progress"):
-        return {"success": False, "error": f"Cashout request status is '{doc.status}'; cannot record payment"}
-
-    # If still in draft, submit first
-    if doc.docstatus == 0:
-        doc.submit()
-        doc.reload()
-
-    # Create payment journal entry
-    doc.create_payment_journal_entry()
-
-    return {
-        "success": True,
-        "payment_entry": doc.payment_journal_entry,
-        "message": f"Payment recorded successfully. Journal Entry {doc.payment_journal_entry} created.",
-    }
+def record_cashout_payment(name):
+    """Mark a Cashout record as Completed."""
+    doc = frappe.get_doc("Cashout", name)
+    doc.status = "Completed"
+    doc.save()
+    frappe.db.commit()
+    return {"status": "ok", "name": name}

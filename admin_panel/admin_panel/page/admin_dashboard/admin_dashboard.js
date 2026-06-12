@@ -205,30 +205,6 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             color: #666;
         }
 
-        .bridge-charts-row {
-            display: grid;
-            gap: 20px;
-            margin-bottom: 28px;
-        }
-        .bridge-charts-2 {
-            grid-template-columns: repeat(2, 1fr);
-        }
-        .bridge-chart-card {
-            background: var(--bg);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 16px 20px 12px;
-        }
-        .bridge-chart-card .chart-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-color);
-            margin: 0 0 8px 0;
-        }
-        .bridge-chart-card .chart-container {
-            min-height: 220px;
-        }
-
         .ad-loading {
             display: flex;
             align-items: center;
@@ -393,59 +369,10 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             `).join('');
         };
 
-        function renderBridgeCharts(bridge) {
-            if (!bridge) return;
-            const chartId1 = 'bridge-volume-chart';
-            const chartId2 = 'bridge-failures-chart';
-
-            // Volume chart
-            new frappe.chart.Chart(`#${chartId1}`, {
-                data: {
-                    labels: bridge.volume.labels,
-                    datasets: bridge.volume.datasets,
-                },
-                type: 'line',
-                height: 180,
-                colors: ['#2563eb'],
-                axisOptions: {
-                    xAxisMode: 'tick',
-                    yAxisMode: 'span',
-                    shortenYAxisNumbers: 1,
-                },
-            });
-
-            // Failures chart
-            new frappe.chart.Chart(`#${chartId2}`, {
-                data: {
-                    labels: bridge.failures.labels,
-                    datasets: bridge.failures.datasets,
-                },
-                type: 'line',
-                height: 180,
-                colors: ['#dc2626'],
-                axisOptions: {
-                    xAxisMode: 'tick',
-                    yAxisMode: 'span',
-                    shortenYAxisNumbers: 1,
-                },
-            });
-        }
-
         $wrap.html(`
             <div class="ad-header">
                 <h1>Admin Dashboard</h1>
                 <p>Welcome, support team. Here's what's happening.</p>
-            </div>
-
-            <div class="bridge-charts-row bridge-charts-2">
-                <div class="bridge-chart-card">
-                    <div class="chart-title">Bridge Volume</div>
-                    <div class="chart-container" id="bridge-volume-chart"></div>
-                </div>
-                <div class="bridge-chart-card">
-                    <div class="chart-title">Bridge Audit Failures</div>
-                    <div class="chart-container" id="bridge-failures-chart"></div>
-                </div>
             </div>
 
             <div class="ad-grid-row ad-grid-4">
@@ -558,8 +485,5 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
         });
 
         updateRequestList();
-
-        // ── Render bridge charts (must be after DOM is in place) ──
-        setTimeout(() => renderBridgeCharts(data.bridge_charts), 100);
     }
 };

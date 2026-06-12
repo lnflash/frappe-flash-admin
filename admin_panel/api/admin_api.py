@@ -737,6 +737,90 @@ def search_cashout_account(id: str):
 
 @frappe.whitelist()
 @handle_api_errors
+def get_bridge_transfer_requests(status=None, transaction_type=None, query=None, page=1, page_size=10):
+    """Get paginated Bridge transfer audit records for the Transfer Requests page."""
+    page = max(int(page or 1), 1)
+    page_size = min(max(int(page_size or 10), 1), 100)
+    offset = (page - 1) * page_size
+
+    filters = {}
+    if status:
+        filters["status"] = status
+    if transaction_type:
+        filters["transaction_type"] = transaction_type
+
+    or_filters = None
+    if query:
+        like_query = f"%{query}%"
+        or_filters = [
+            ["request_id", "like", like_query],
+            ["bridge_transfer_id", "like", like_query],
+            ["bridge_customer_id", "like", like_query],
+            ["account_id", "like", like_query],
+            ["wallet_id", "like", like_query],
+            ["ibex_tx_hash", "like", like_query],
+            ["source_event_id", "like", like_query],
+        ]
+
+    fields = [
+        "name",
+        "request_id",
+        "transaction_type",
+        "status",
+        "provider",
+        "asset",
+        "network",
+        "amount",
+        "currency",
+        "developer_fee",
+        "initial_amount",
+        "subtotal_amount",
+        "final_amount",
+        "account_id",
+        "wallet_id",
+        "bridge_customer_id",
+        "bridge_transfer_id",
+        "ibex_tx_hash",
+        "address",
+        "source_event_id",
+        "source_event_type",
+        "source_systems_seen",
+        "first_seen_at",
+        "last_seen_at",
+        "raw_payload_json",
+        "failure_reason",
+        "creation",
+        "modified",
+    ]
+
+    count_rows = frappe.get_all(
+        "Bridge Transfer Request",
+        filters=filters or None,
+        or_filters=or_filters,
+        fields=["name"],
+    )
+    records = frappe.get_all(
+        "Bridge Transfer Request",
+        filters=filters or None,
+        or_filters=or_filters,
+        fields=fields,
+        order_by="modified desc",
+        limit_start=offset,
+        limit_page_length=page_size,
+    )
+
+    total_count = len(count_rows)
+    return {
+        "data": [dict(record) for record in records],
+        "total": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total_count + page_size - 1) // page_size),
+    }
+
+
+@frappe.whitelist()
+@handle_api_errors
 def record_cashout_payment(cashout_id):
     """Record payment for a cashout by calling create_payment_journal_entry."""
     if not cashout_id:

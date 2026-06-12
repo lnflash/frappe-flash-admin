@@ -1,8 +1,8 @@
-frappe.pages['cashout-requests'].on_page_load = function(wrapper) {
+frappe.pages['transfer-requests'].on_page_load = function(wrapper) {
     if (!frappe.user_roles.includes('Accounts Manager')) {
         var page = frappe.ui.make_app_page({
             parent: wrapper,
-            title: 'Cashout Requests',
+            title: 'Transfer Requests',
             single_column: true
         });
 
@@ -19,11 +19,11 @@ frappe.pages['cashout-requests'].on_page_load = function(wrapper) {
 
     var page = frappe.ui.make_app_page({
         parent: wrapper,
-        title: 'Cashout Requests',
+        title: 'Transfer Requests',
         single_column: true
     });
 
-    new FlashCashoutManager(page);
+    new TransferRequestsManager(page);
 };
 
 const CashoutStatus = {
@@ -42,8 +42,28 @@ const CASHOUT_STATUS_BADGE_MAP = {
     'Canceled': 'cashout-badge-cancelled'
 };
 
+const BridgeStatus = {
+    PENDING: "Pending",
+    FIAT_RECEIVED: "Fiat Received",
+    SETTLED: "Settled",
+    COMPLETED: "Completed",
+    FAILED: "Failed"
+};
+
+const BRIDGE_STATUS_BADGE_MAP = {
+    [BridgeStatus.PENDING]: 'cashout-badge-pending',
+    [BridgeStatus.FIAT_RECEIVED]: 'cashout-badge-pending',
+    [BridgeStatus.SETTLED]: 'cashout-badge-paid',
+    [BridgeStatus.COMPLETED]: 'cashout-badge-paid',
+    [BridgeStatus.FAILED]: 'cashout-badge-failed'
+};
+
 function getCashoutStatusBadgeClass(status) {
     return CASHOUT_STATUS_BADGE_MAP[status] || 'cashout-badge-pending';
+}
+
+function getBridgeStatusBadgeClass(status) {
+    return BRIDGE_STATUS_BADGE_MAP[status] || 'cashout-badge-pending';
 }
 
 function debounce(func, wait) {
@@ -58,15 +78,18 @@ function debounce(func, wait) {
     };
 }
 
-class FlashCashoutManager {
+class TransferRequestsManager {
     constructor(page) {
         this.page = page;
         this.selected_request = null;
+        this.active_type = 'cashout';
         this.cashout_requests = [];
+        this.bridge_requests = [];
         this.current_page = 1;
         this.page_size = 10;
         this.total_pages = 1;
         this.total_count = 0;
+        this.cashoutDetailsHtml = '';
         this.$cache = {};
         this.setup_page();
     }
@@ -74,8 +97,10 @@ class FlashCashoutManager {
     setup_page() {
         this.create_layout();
         this.cache_elements();
+        this.cashoutDetailsHtml = this.$cache.requestDetails.find('.card-body').html();
         this.bind_events();
-        this.load_cashout_requests();
+        this.update_type_controls();
+        this.load_requests();
     }
 
     cache_elements() {
@@ -90,7 +115,12 @@ class FlashCashoutManager {
             requestsTbody: main.find('.requests-tbody'),
             searchLoading: main.find('.search-loading'),
             searchError: main.find('.search-error'),
-            filterStatus: main.find('#filter-status')
+            filterStatus: main.find('#filter-status'),
+            filterTransactionType: main.find('#filter-transaction-type'),
+            tableHead: main.find('.requests-thead'),
+            tableTitle: main.find('.request-table-title'),
+            noRequestsTitle: main.find('.no-requests-title'),
+            noRequestsBody: main.find('.no-requests-body')
         };
     }
 
@@ -121,6 +151,32 @@ class FlashCashoutManager {
                     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
                     border: 1px solid var(--color-border01);
                     margin-bottom: 24px;
+                }
+
+                .flash-cashout-manager .transfer-tabs {
+                    display: inline-flex;
+                    background: var(--color-layer);
+                    border: 1px solid var(--color-border01);
+                    border-radius: 12px;
+                    padding: 4px;
+                    margin-bottom: 16px;
+                    gap: 4px;
+                }
+
+                .flash-cashout-manager .transfer-tab {
+                    border: 0;
+                    background: transparent;
+                    color: var(--color-text02);
+                    border-radius: 8px;
+                    padding: 10px 18px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                }
+
+                .flash-cashout-manager .transfer-tab.active {
+                    background: var(--color-primary);
+                    color: white;
                 }
 
                 .flash-cashout-manager .modern-search-wrapper {
@@ -409,6 +465,11 @@ class FlashCashoutManager {
             </style>
 
             <div class="flash-cashout-manager m-3">
+                <div class="transfer-tabs" role="tablist" aria-label="Transfer request type">
+                    <button class="transfer-tab active" data-type="cashout" role="tab" aria-selected="true">Cashouts</button>
+                    <button class="transfer-tab" data-type="bridge" role="tab" aria-selected="false">Bridge</button>
+                </div>
+
                 <!-- Search & Filter -->
                 <div class="modern-search-card">
                     <div class="modern-search-wrapper" style="margin-bottom: 20px;">
@@ -430,15 +491,20 @@ class FlashCashoutManager {
                             <option value="${CashoutStatus.CANCELLED}">Cancelled</option>
                             <option value="${CashoutStatus.FAILED}">Failed</option>
                         </select>
+                        <select id="filter-transaction-type" class="modern-search-input modern-search-select" style="display:none;">
+                            <option value="">Bridge Type (All)</option>
+                            <option value="Topup">Topup</option>
+                            <option value="Cashout">Cashout</option>
+                        </select>
                     </div>
                 </div>
 
-                <!-- Cashout Requests Table -->
+                <!-- Transfer Requests Table -->
                 <div class="modern-requests-card">
                     <div class="modern-card-header">
                         <h5 class="modern-card-title">
                             <i class="fa fa-money" style="margin-right: 10px;"></i>
-                            Cashout Requests
+                            <span class="request-table-title">Cashout Requests</span>
                         </h5>
                         <button class="modern-btn modern-btn-secondary btn-refresh">
                             <i class="fa fa-refresh"></i>
@@ -453,7 +519,7 @@ class FlashCashoutManager {
 
                         <div class="requests-list">
                             <table class="modern-table">
-                                <thead>
+                                <thead class="requests-thead">
                                     <tr>
                                         <th>Username</th>
                                         <th>Phone</th>
@@ -469,8 +535,8 @@ class FlashCashoutManager {
                             </table>
                             <div class="no-requests" style="display: none;">
                                 <div class="no-requests-icon">💸</div>
-                                <p style="font-size: 16px; font-weight: 500;">No cashout requests found</p>
-                                <p style="font-size: 14px;">Cashout requests will appear here when submitted</p>
+                                <p class="no-requests-title" style="font-size: 16px; font-weight: 500;">No cashout requests found</p>
+                                <p class="no-requests-body" style="font-size: 14px;">Cashout requests will appear here when submitted</p>
                             </div>
                         </div>
                     </div>
@@ -712,24 +778,93 @@ class FlashCashoutManager {
                 this.search();
             } else {
                 this.$cache.searchError.hide();
-                this.load_cashout_requests();
+                this.current_page = 1;
+                this.load_requests();
             }
         }, 300);
 
+        main.find('.transfer-tab').on('click', (event) => {
+            this.switch_type($(event.currentTarget).data('type'));
+        });
         main.find('.btn-search').on('click', () => this.search());
         this.$cache.searchInput.on('keypress', (e) => { if (e.which === 13) this.search(); });
         this.$cache.searchInput.on('input', debouncedSearch);
 
-        main.find('.btn-refresh').on('click', () => this.load_cashout_requests());
+        main.find('.btn-refresh').on('click', () => this.load_requests());
         main.find('.btn-close-details').on('click', () => this.close_details());
-        main.find('.btn-record-payment').on('click', () => this.record_payment_entry(this.selected_request));
+        main.on('click', '.btn-record-payment', () => this.record_payment_entry(this.selected_request));
 
-        this.$cache.filterStatus.on('change', () => { this.current_page = 1; this.load_cashout_requests(); });
+        this.$cache.filterStatus.on('change', () => { this.current_page = 1; this.load_requests(); });
+        this.$cache.filterTransactionType.on('change', () => { this.current_page = 1; this.load_requests(); });
 
         main.find('.btn-first-page').on('click', () => this.go_to_page(1));
         main.find('.btn-prev-page').on('click', () => this.go_to_page(this.current_page - 1));
         main.find('.btn-next-page').on('click', () => this.go_to_page(this.current_page + 1));
         main.find('.btn-last-page').on('click', () => this.go_to_page(this.total_pages));
+    }
+
+    switch_type(type) {
+        if (!['cashout', 'bridge'].includes(type) || this.active_type === type) return;
+        this.active_type = type;
+        this.current_page = 1;
+        this.selected_request = null;
+        this.$cache.searchInput.val('');
+        this.$cache.searchError.hide();
+        this.$cache.requestDetails.hide();
+        this.update_type_controls();
+        this.load_requests();
+    }
+
+    update_type_controls() {
+        const isBridge = this.active_type === 'bridge';
+        this.page.main.find('.transfer-tab').removeClass('active').attr('aria-selected', 'false');
+        this.page.main.find(`.transfer-tab[data-type="${this.active_type}"]`).addClass('active').attr('aria-selected', 'true');
+
+        this.$cache.tableTitle.text(isBridge ? 'Bridge Transfer Requests' : 'Cashout Requests');
+        this.$cache.searchInput.attr(
+            'placeholder',
+            isBridge
+                ? 'Search request, Bridge transfer, account, or wallet ID'
+                : 'Enter username or phone number'
+        );
+
+        this.$cache.filterTransactionType.toggle(isBridge);
+        this.$cache.noRequestsTitle.text(isBridge ? 'No Bridge transfer requests found' : 'No cashout requests found');
+        this.$cache.noRequestsBody.text(
+            isBridge
+                ? 'Bridge transfer audit records will appear here when received'
+                : 'Cashout requests will appear here when submitted'
+        );
+
+        const options = isBridge
+            ? ['', BridgeStatus.PENDING, BridgeStatus.FIAT_RECEIVED, BridgeStatus.SETTLED, BridgeStatus.COMPLETED, BridgeStatus.FAILED]
+            : ['', CashoutStatus.PENDING, CashoutStatus.PAID, CashoutStatus.CANCELLED, CashoutStatus.FAILED];
+        const labels = isBridge
+            ? ['Status (All)', 'Pending', 'Fiat Received', 'Settled', 'Completed', 'Failed']
+            : ['Status (All)', 'Pending', 'Paid', 'Cancelled', 'Failed'];
+        this.$cache.filterStatus.html(options.map((value, index) => (
+            `<option value="${value}">${labels[index]}</option>`
+        )).join(''));
+
+        this.render_table_header();
+    }
+
+    render_table_header() {
+        const headers = this.active_type === 'bridge'
+            ? ['Request ID', 'Type', 'Amount', 'Status', 'Failure', 'Last Seen']
+            : ['Username', 'Phone', 'Send (USD)', 'Receive (JMD)', 'Status', 'Submitted'];
+
+        this.$cache.tableHead.html(`
+            <tr>${headers.map((header) => `<th>${header}</th>`).join('')}</tr>
+        `);
+    }
+
+    load_requests() {
+        if (this.active_type === 'bridge') {
+            this.load_bridge_requests();
+        } else {
+            this.load_cashout_requests();
+        }
     }
 
     create_request_row(req) {
@@ -763,10 +898,37 @@ class FlashCashoutManager {
         return row;
     }
 
+    create_bridge_request_row(req) {
+        const statusVal = req.status || BridgeStatus.PENDING;
+        const statusBadge = getBridgeStatusBadgeClass(statusVal);
+        const amountDisplay = this.formatAmount(req.amount, req.currency);
+        const failureDisplay = req.failure_reason ? this.escapeHtml(req.failure_reason) : '-';
+        const requestId = req.request_id || req.name || '-';
+
+        const row = $(`
+            <tr class="bridge-row" data-request-id="${this.escapeHtml(req.name)}">
+                <td><strong>${this.escapeHtml(requestId)}</strong></td>
+                <td>${this.escapeHtml(req.transaction_type || '-')}</td>
+                <td><strong>${this.escapeHtml(amountDisplay)}</strong></td>
+                <td><span class="modern-badge ${statusBadge}">${this.escapeHtml(statusVal)}</span></td>
+                <td>${failureDisplay}</td>
+                <td>${this.formatDateTime(req.last_seen_at || req.modified || req.creation)}</td>
+            </tr>
+        `);
+
+        row.on('click', () => {
+            this.page.main.find('.bridge-row').removeClass('selected');
+            row.addClass('selected');
+            this.show_bridge_details(req);
+        });
+
+        return row;
+    }
+
     go_to_page(page) {
         if (page < 1 || page > this.total_pages) return;
         this.current_page = page;
-        this.load_cashout_requests();
+        this.load_requests();
     }
 
     load_cashout_requests() {
@@ -800,6 +962,39 @@ class FlashCashoutManager {
         });
     }
 
+    load_bridge_requests() {
+        this.$cache.requestsLoading.show();
+        this.$cache.requestsTable.hide();
+        this.$cache.noRequests.hide();
+        this.$cache.requestDetails.hide();
+        this.$cache.paginationControls.hide();
+
+        frappe.call({
+            method: 'admin_panel.api.admin_api.get_bridge_transfer_requests',
+            args: {
+                status: this.$cache.filterStatus.val(),
+                transaction_type: this.$cache.filterTransactionType.val(),
+                query: this.$cache.searchInput.val().trim(),
+                page: this.current_page,
+                page_size: this.page_size
+            },
+            callback: (response) => {
+                this.$cache.requestsLoading.hide();
+                const result = response.message || {};
+                this.bridge_requests = result.data || [];
+                this.total_count = result.total || 0;
+                this.total_pages = result.total_pages || 1;
+                this.current_page = result.page || 1;
+                this.render_requests();
+                this.update_pagination();
+            },
+            error: () => {
+                this.$cache.requestsLoading.hide();
+                frappe.show_alert({ message: 'Failed to load Bridge transfer requests', indicator: 'red' }, 5);
+            }
+        });
+    }
+
     update_pagination() {
         if (this.total_count === 0) {
             this.$cache.paginationControls.hide();
@@ -824,8 +1019,10 @@ class FlashCashoutManager {
 
     render_requests() {
         this.$cache.requestsTbody.empty();
+        this.render_table_header();
+        const requests = this.active_type === 'bridge' ? this.bridge_requests : this.cashout_requests;
 
-        if (this.cashout_requests.length === 0) {
+        if (requests.length === 0) {
             this.$cache.requestsTable.hide();
             this.$cache.noRequests.show();
             return;
@@ -834,14 +1031,26 @@ class FlashCashoutManager {
         this.$cache.requestsTable.show();
         this.$cache.noRequests.hide();
 
-        this.cashout_requests.forEach((req) => {
-            this.$cache.requestsTbody.append(this.create_request_row(req));
+        requests.forEach((req) => {
+            this.$cache.requestsTbody.append(
+                this.active_type === 'bridge'
+                    ? this.create_bridge_request_row(req)
+                    : this.create_request_row(req)
+            );
         });
     }
 
     show_request_details(req) {
+        if (this.active_type === 'bridge') {
+            this.show_bridge_details(req);
+            return;
+        }
+
         this.selected_request = req;
         const panel = this.page.main.find('.request-details');
+        panel.data('detail-mode', 'cashout');
+        panel.find('.modern-card-title').html('<i class="fa fa-file-text-o" style="margin-right: 10px;"></i> Cashout Details');
+        panel.find('.card-body').html(this.cashoutDetailsHtml);
 
         // User Information
         panel.find('.detail-username').text(req.username || '-');
@@ -961,7 +1170,7 @@ class FlashCashoutManager {
                             req.display_status = CashoutStatus.PAID;
                             req.payment_entry = result.payment_entry;
                             this.show_request_details(req);
-                            this.load_cashout_requests();
+                            this.load_requests();
                         } else {
                             frappe.msgprint({
                                 title: 'Error',
@@ -980,6 +1189,92 @@ class FlashCashoutManager {
         );
     }
 
+    show_bridge_details(req) {
+        this.selected_request = req;
+        const panel = this.page.main.find('.request-details');
+        panel.data('detail-mode', 'bridge');
+        panel.find('.modern-card-title').html('<i class="fa fa-exchange" style="margin-right: 10px;"></i> Bridge Transfer Details');
+
+        panel.find('.card-body').html(`
+            <div class="detail-section mb-4">
+                <h6 class="section-header">
+                    <i class="fa fa-info-circle" style="margin-right: 8px; color: var(--color-primary);"></i>
+                    Request Summary
+                </h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        ${this.renderDetailItem('Request ID', req.request_id || req.name)}
+                        ${this.renderDetailItem('Transaction Type', req.transaction_type)}
+                        ${this.renderDetailItem('Status', `<span class="modern-badge ${getBridgeStatusBadgeClass(req.status)}">${this.escapeHtml(req.status || '-')}</span>`, true)}
+                    </div>
+                    <div class="col-md-6">
+                        ${this.renderDetailItem('Amount', this.formatAmount(req.amount, req.currency), false, true)}
+                        ${this.renderDetailItem('Asset', req.asset)}
+                        ${this.renderDetailItem('Network', req.network)}
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section mb-4">
+                <h6 class="section-header">
+                    <i class="fa fa-link" style="margin-right: 8px; color: var(--color-primary);"></i>
+                    References
+                </h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        ${this.renderDetailItem('Bridge Document', this.renderDocLink('bridge-transfer-request', req.name), true)}
+                        ${this.renderDetailItem('Bridge Transfer ID', req.bridge_transfer_id)}
+                        ${this.renderDetailItem('Bridge Customer ID', req.bridge_customer_id)}
+                        ${this.renderDetailItem('IBEX TX Hash', req.ibex_tx_hash)}
+                    </div>
+                    <div class="col-md-6">
+                        ${this.renderDetailItem('Account ID', req.account_id)}
+                        ${this.renderDetailItem('Wallet ID', req.wallet_id)}
+                        ${this.renderDetailItem('Address', req.address)}
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section mb-4">
+                <h6 class="section-header">
+                    <i class="fa fa-clock-o" style="margin-right: 8px; color: var(--color-primary);"></i>
+                    Event Trace
+                </h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        ${this.renderDetailItem('Source Event ID', req.source_event_id)}
+                        ${this.renderDetailItem('Source Event Type', req.source_event_type)}
+                        ${this.renderDetailItem('Source Systems Seen', req.source_systems_seen)}
+                    </div>
+                    <div class="col-md-6">
+                        ${this.renderDetailItem('First Seen', this.formatDateTime(req.first_seen_at))}
+                        ${this.renderDetailItem('Last Seen', this.formatDateTime(req.last_seen_at))}
+                        ${this.renderDetailItem('Last Modified', this.formatDateTime(req.modified))}
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section mb-4">
+                <h6 class="section-header">
+                    <i class="fa fa-exclamation-circle" style="margin-right: 8px; color: var(--color-error);"></i>
+                    Failure / Payload
+                </h6>
+                ${this.renderDetailItem('Failure Reason', req.failure_reason)}
+                <details>
+                    <summary class="detail-link" style="cursor:pointer;">Raw Payload</summary>
+                    <pre style="margin-top: 12px; white-space: pre-wrap; word-break: break-word; background: var(--color-background); border: 1px solid var(--color-border01); border-radius: 8px; padding: 12px;">${this.escapeHtml(req.raw_payload_json || '-')}</pre>
+                </details>
+            </div>
+        `);
+
+        panel.show();
+
+        const row = this.page.main.find(`tr[data-request-id="${this.escapeHtml(req.name)}"]`);
+        if (row.length) {
+            row[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
     close_details() {
         this.$cache.requestDetails.hide();
         this.selected_request = null;
@@ -988,7 +1283,13 @@ class FlashCashoutManager {
     search() {
         const input = this.$cache.searchInput.val().trim();
         if (!input) {
-            frappe.show_alert({ message: 'Please enter a username or phone number', indicator: 'orange' }, 3);
+            frappe.show_alert({ message: 'Please enter a search value', indicator: 'orange' }, 3);
+            return;
+        }
+
+        if (this.active_type === 'bridge') {
+            this.current_page = 1;
+            this.load_bridge_requests();
             return;
         }
 
@@ -1017,6 +1318,7 @@ class FlashCashoutManager {
 
     show_search_results(results) {
         this.$cache.requestsTbody.empty();
+        this.render_table_header();
         this.$cache.searchError.hide();
         this.$cache.paginationControls.hide();
 
@@ -1048,5 +1350,33 @@ class FlashCashoutManager {
 
     formatDateTime(dt) {
         return dt ? frappe.datetime.str_to_user(dt) : '-';
+    }
+
+    formatAmount(amount, currency) {
+        if (amount === null || amount === undefined || amount === '') return '-';
+        const value = parseFloat(amount);
+        if (Number.isNaN(value)) return `${currency || ''} ${amount}`.trim();
+        return `${currency || ''} ${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`.trim();
+    }
+
+    renderDetailItem(label, value, allowHtml = false, isAmount = false) {
+        const displayValue = allowHtml ? (value || '-') : this.escapeHtml(value || '-');
+        const valueClass = isAmount ? 'detail-value amount-display' : 'detail-value';
+        return `
+            <div class="detail-item">
+                <span class="detail-label">${this.escapeHtml(label)}</span>
+                <span class="${valueClass}">${displayValue}</span>
+            </div>
+        `;
+    }
+
+    renderDocLink(route, name) {
+        if (!name) return '-';
+        return `<a class="detail-link" href="/app/${route}/${encodeURIComponent(name)}" target="_blank">${this.escapeHtml(name)}</a>`;
+    }
+
+    escapeHtml(value) {
+        if (value === null || value === undefined || value === '') return '-';
+        return $('<div>').text(String(value)).html();
     }
 }

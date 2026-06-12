@@ -4,16 +4,16 @@
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-04-03 12:29:03.124676",
+ "modified": "2026-06-12 10:38:48.840619",
  "modified_by": "Administrator",
  "module": "Admin Panel",
- "name": "cashout-requests",
+ "name": "transfer-requests",
  "owner": "Administrator",
- "page_name": "cashout-requests",
+ "page_name": "transfer-requests",
  "roles": [],
  "script": null,
  "standard": "Yes",
  "style": null,
  "system_page": 0,
- "title": "Cashout Requests"
+ "title": "Transfer Requests"
 }

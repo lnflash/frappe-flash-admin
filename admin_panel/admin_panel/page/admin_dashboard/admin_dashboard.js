@@ -414,11 +414,11 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
                         <div class="ad-tool-desc">Review ID documents, approve or reject upgrade requests, update user details.</div>
                     </div>
                 </div>
-                <div class="ad-tool-card" data-route="/app/bridge-transfer-request">
+                <div class="ad-tool-card" data-route="/app/transfer-requests">
                     <div class="ad-tool-icon" style="background:#e6f9ed;color:#1a7d36;">💸</div>
                     <div class="ad-tool-content">
                         <div class="ad-tool-title">Transfer Requests</div>
-                        <div class="ad-tool-desc">Review Bridge transfer audit records and investigate failed requests.</div>
+                        <div class="ad-tool-desc">Review cashout payments and Bridge transfer audit records from one operations queue.</div>
                     </div>
                 </div>
                 <div class="ad-tool-card" data-route="/app/alert-users">

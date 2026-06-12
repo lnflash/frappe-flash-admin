@@ -1,6 +1,6 @@
 {
  "doctype": "Workspace",
- "charts": [],
+ "charts": [{"chart_name": "Bridge Volume", "label": "Bridge Volume"}, {"chart_name": "Bridge Audit Failures", "label": "Bridge Audit Failures"}],
  "charts_data": null,
  "content": "[{\"id\": \"_EYFml0tr6\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Admin Panel</b></span>\", \"col\": 12}}, {\"id\": \"_bridgeTotalCard\", \"type\": \"number_card\", \"data\": {\"card_name\": \"Bridge Total\", \"col\": 4}}, {\"id\": \"_bridgeFailedCard\", \"type\": \"number_card\", \"data\": {\"card_name\": \"Bridge Failed Audits\", \"col\": 4}}, {\"id\": \"_bridgeVolumeChart\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Bridge Volume\", \"col\": 6}}, {\"id\": \"_bridgeFailureChart\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Bridge Audit Failures\", \"col\": 6}}, {\"id\": \"_operationsCard\", \"type\": \"card\", \"data\": {\"card_name\": \"Operations\", \"col\": 12}}, {\"id\": \"_adminCard\", \"type\": \"card\", \"data\": {\"card_name\": \"Administration\", \"col\": 12}}, {\"id\": \"_Eng390ComplianceCard\", \"type\": \"card\", \"data\": {\"card_name\": \"Compliance\", \"col\": 12}}]",
  "custom_app": null,
@@ -232,7 +232,7 @@
  "module": "Admin Panel",
  "module_name": "Admin Panel",
  "name": "Admin Panel",
- "number_cards": [],
+ "number_cards": [{"number_card_name": "Bridge Total", "label": "Bridge Total"}, {"number_card_name": "Bridge Failed Audits", "label": "Bridge Failed Audits"}],
  "owner": "Administrator",
  "public": 1,
  "restrict_to_domain": null,

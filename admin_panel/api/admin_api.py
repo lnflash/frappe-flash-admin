@@ -561,3 +561,206 @@ def get_dashboard_stats():
         "all_requests": all_records,
         "total_requests": pending + approved + rejected,
     }
+
+
+# ── Cashout Requests API ──────────────────────────────────────────
+
+
+CASHOUT_STATUS_DISPLAY_MAP = {
+    "Pending": "Pending",
+    "Draft": "Pending",
+    "In Progress": "In Progress",
+    "Completed": "Paid",
+    "Canceled": "Canceled",
+}
+
+
+def _enrich_cashout(cashout_doc) -> dict:
+    """Enrich a Cashout doctype record with Customer and Bank Account fields."""
+    row = dict(cashout_doc)
+
+    # Resolve Customer display fields
+    customer_info = {}
+    if row.get("customer"):
+        customer_info = frappe.db.get_value(
+            "Customer",
+            row["customer"],
+            ["customer_name", "mobile_no", "email_id"],
+            as_dict=True,
+        ) or {}
+    row["username"] = row.get("customer", "")
+    row["full_name"] = customer_info.get("customer_name", "")
+    row["phone_number"] = customer_info.get("mobile_no", "")
+    row["email"] = customer_info.get("email_id", "")
+
+    # Resolve Bank Account display fields
+    bank_info = {}
+    if row.get("bank_account"):
+        bank_info = frappe.db.get_value(
+            "Bank Account",
+            row["bank_account"],
+            ["bank", "bank_account_no", "account_type", "account_name"],
+            as_dict=True,
+        ) or {}
+    # Mask account number for display
+    raw_no = (bank_info.get("bank_account_no") or "")
+    row["bank_name"] = bank_info.get("bank", "")
+    row["account_number"] = f"****{raw_no[-4:]}" if len(raw_no) >= 4 else raw_no
+    row["account_type"] = bank_info.get("account_type", "")
+    row["bank_label"] = bank_info.get("account_name", "")
+
+    # Map fields to match JS expectations
+    row["send"] = row.get("user_pays")
+    row["flash_fee"] = row.get("flash_fee")
+    row["exchange_rate"] = row.get("exchange_rate")
+    row["offer_id"] = row.get("transaction_id", "")
+    row["journal_entry"] = row.get("journal_entry", "")
+    row["payment_entry"] = row.get("payment_journal_entry", "")
+
+    # Derive receive amounts by currency
+    currency = row.get("currency", "USD")
+    receives = row.get("user_receives", 0)
+    rate = row.get("exchange_rate", 1) or 1
+    if currency == "JMD":
+        row["receive_jmd"] = receives
+        row["receive_usd"] = round(row.get("user_pays", 0) - row.get("flash_fee", 0), 2)
+    else:
+        row["receive_jmd"] = round(receives * rate, 2) if receives else 0
+        row["receive_usd"] = receives
+
+    # Payment entry fields (populated when payment_journal_entry exists)
+    if row.get("payment_journal_entry"):
+        pe = frappe.db.get_value(
+            "Journal Entry",
+            row["payment_journal_entry"],
+            ["total_debit", "posting_date"],
+            as_dict=True,
+        )
+        if pe:
+            row["pe_paid_amount"] = pe.get("total_debit")
+            row["pe_posting_date"] = str(pe.get("posting_date", ""))
+            row["pe_currency"] = currency
+            row["pe_mode_of_payment"] = "Bank Transfer"
+
+    # Display status
+    original_status = row.get("status", "Pending")
+    row["display_status"] = CASHOUT_STATUS_DISPLAY_MAP.get(original_status, "Pending")
+
+    return row
+
+
+@frappe.whitelist()
+@handle_api_errors
+def get_cashout_requests(status=None, page=1, page_size=10):
+    """Get paginated cashout requests from the Cashout doctype."""
+    page = int(page)
+    page_size = min(int(page_size), 100)
+    offset = (page - 1) * page_size
+
+    # Map JS statuses back to doctype statuses
+    status_map = {
+        "Pending": ["Pending", "Draft", "In Progress"],
+        "Paid": ["Completed"],
+        "Canceled": ["Canceled"],
+        "Cancelled": ["Canceled"],  # JS spelling variant from PR
+    }
+
+    doc_filters = []
+    if status:
+        mapped = status_map.get(status, [status])
+        doc_filters = [["status", "in", mapped]]
+
+    total_count = frappe.db.count("Cashout", filters=doc_filters or None)
+    records = frappe.get_all(
+        "Cashout",
+        filters=doc_filters or None,
+        fields=["*"],
+        order_by="creation desc",
+        limit_start=offset,
+        limit_page_length=page_size,
+    )
+
+    data = [_enrich_cashout(r) for r in records]
+
+    return {
+        "data": data,
+        "total": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total_count + page_size - 1) // page_size),
+    }
+
+
+@frappe.whitelist()
+@handle_api_errors
+def search_cashout_account(id: str):
+    """Search cashout requests by customer name or phone number."""
+    if not id:
+        frappe.response['http_status_code'] = 400
+        return {"error": "Phone number or Username is required"}
+
+    # Find Customer doctypes matching the query
+    import re as _re
+    has_digits = len(_re.sub(r'\D', '', id)) >= 3
+
+    customer_filters = []
+    if has_digits:
+        customer_filters.append(["mobile_no", "like", f"%{_re.sub(r'\D', '', id)}%"])
+    customer_filters.append(["customer_name", "like", f"%{id}%"])
+
+    matching_customers = frappe.get_all(
+        "Customer",
+        filters=customer_filters,
+        pluck="name",
+        limit_page_length=50,
+    )
+
+    if not matching_customers:
+        frappe.response['http_status_code'] = 404
+        return {"error": "No cashout requests found for this customer"}
+
+    records = frappe.get_all(
+        "Cashout",
+        filters=[["customer", "in", matching_customers]],
+        fields=["*"],
+        order_by="creation desc",
+        limit_page_length=50,
+    )
+
+    if not records:
+        frappe.response['http_status_code'] = 404
+        return {"error": "No cashout requests found for this customer"}
+
+    return [_enrich_cashout(r) for r in records]
+
+
+@frappe.whitelist()
+@handle_api_errors
+def record_cashout_payment(cashout_id):
+    """Record payment for a cashout by calling create_payment_journal_entry."""
+    if not cashout_id:
+        frappe.response['http_status_code'] = 400
+        return {"success": False, "error": "Cashout ID is required"}
+
+    try:
+        doc = frappe.get_doc("Cashout", cashout_id)
+    except frappe.DoesNotExistError:
+        frappe.response['http_status_code'] = 404
+        return {"success": False, "error": "Cashout request not found"}
+
+    if doc.status not in ("Pending", "Draft", "In Progress"):
+        return {"success": False, "error": f"Cashout request status is '{doc.status}'; cannot record payment"}
+
+    # If still in draft, submit first
+    if doc.docstatus == 0:
+        doc.submit()
+        doc.reload()
+
+    # Create payment journal entry
+    doc.create_payment_journal_entry()
+
+    return {
+        "success": True,
+        "payment_entry": doc.payment_journal_entry,
+        "message": f"Payment recorded successfully. Journal Entry {doc.payment_journal_entry} created.",
+    }

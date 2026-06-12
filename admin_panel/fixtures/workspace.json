@@ -16,7 +16,7 @@
     "parenttype": "Workspace"
    }
   ],
-  "content": "[{\"id\":\"_EYFml0tr6\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Admin Panel</b></span>\",\"col\":12}},{\"id\":\"_bridgeTotalCard\",\"type\":\"number_card\",\"data\":{\"card_name\":\"Bridge Total\",\"col\":4}},{\"id\":\"_bridgeFailedCard\",\"type\":\"number_card\",\"data\":{\"card_name\":\"Bridge Failed Audits\",\"col\":4}},{\"id\":\"_bridgeVolumeChart\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Bridge Volume\",\"col\":6}},{\"id\":\"_bridgeFailureChart\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Bridge Audit Failures\",\"col\":6}},{\"id\":\"_operationsCard\",\"type\":\"card\",\"data\":{\"card_name\":\"Operations\",\"col\":12}},{\"id\":\"_adminCard\",\"type\":\"card\",\"data\":{\"card_name\":\"Administration\",\"col\":12}},{\"id\":\"_Eng390ComplianceCard\",\"type\":\"card\",\"data\":{\"card_name\":\"Compliance\",\"col\":12}}]",
+  "content": "[{\"id\": \"_EYFml0tr6\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Admin Panel</b></span>\", \"col\": 12}}, {\"id\": \"_bridgeTotalCard\", \"type\": \"number_card\", \"data\": {\"card_name\": \"Bridge Total\", \"col\": 4}}, {\"id\": \"_bridgeFailedCard\", \"type\": \"number_card\", \"data\": {\"card_name\": \"Bridge Failed Audits\", \"col\": 4}}, {\"id\": \"_bridgeVolumeChart\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Bridge Volume\", \"col\": 6}}, {\"id\": \"_bridgeFailureChart\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Bridge Audit Failures\", \"col\": 6}}, {\"id\": \"_operationsCard\", \"type\": \"card\", \"data\": {\"card_name\": \"Operations\", \"col\": 12}}, {\"id\": \"_adminCard\", \"type\": \"card\", \"data\": {\"card_name\": \"Administration\", \"col\": 12}}, {\"id\": \"_Eng390ComplianceCard\", \"type\": \"card\", \"data\": {\"card_name\": \"Compliance\", \"col\": 12}}]",
   "custom_blocks": [],
   "docstatus": 0,
   "doctype": "Workspace",
@@ -181,6 +181,24 @@
     "link_count": 0,
     "link_to": "Account Upgrade Request",
     "link_type": "DocType",
+    "onboard": 0,
+    "only_for": null,
+    "parent": "Admin Panel",
+    "parentfield": "links",
+    "parenttype": "Workspace",
+    "report_ref_doctype": null,
+    "type": "Link"
+   },
+   {
+    "dependencies": null,
+    "description": null,
+    "hidden": 0,
+    "icon": "money",
+    "is_query_report": 0,
+    "label": "Cashout Requests",
+    "link_count": 0,
+    "link_to": "cashout-requests",
+    "link_type": "Page",
     "onboard": 0,
     "only_for": null,
     "parent": "Admin Panel",

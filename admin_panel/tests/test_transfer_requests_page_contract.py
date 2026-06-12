@@ -117,3 +117,15 @@ def test_admin_api_exposes_cashout_action_endpoints():
     assert "def confirm_cashout_payment" in api_py
     assert "def complete_cashout" in api_py
     assert "confirmation_code" in api_py
+
+
+def test_cashout_completion_calls_flash_notification_mutation():
+    api_py = read_text(ADMIN_PANEL / "api" / "admin_api.py")
+    graphql_client_py = read_text(ADMIN_PANEL / "api" / "graphql_client.py")
+
+    assert "CASHOUT_NOTIFICATION_SEND_MUTATION" in graphql_client_py
+    assert "cashoutNotificationSend" in graphql_client_py
+    assert "def send_cashout_notification" in graphql_client_py
+    assert "_send_cashout_completion_notification" in api_py
+    assert "send_cashout_notification(" in api_py
+    assert "_cashout_notification_amount_cents" in api_py

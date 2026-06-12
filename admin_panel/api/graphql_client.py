@@ -185,6 +185,17 @@ class GraphQLClient:
 		}
 	"""
 
+	CASHOUT_NOTIFICATION_SEND_MUTATION = """
+		mutation CashoutNotificationSend($input: CashoutNotificationSendInput!) {
+			cashoutNotificationSend(input: $input) {
+				errors {
+					message
+				}
+				success
+			}
+		}
+	"""
+
 	ACCOUNT_BY_USERNAME_QUERY = """
 		query accountDetailsByUsername($username: Username!) {
 			accountDetailsByUsername(username: $username) {
@@ -306,6 +317,14 @@ class GraphQLClient:
 			{"input": {"topic": topic, "title": title, "body": body}},
 			"sendNotification"
 		)
+
+	def send_cashout_notification(self, account_id: str, amount: int, currency: str) -> dict:
+		"""Notify a Flash user that their cashout has been settled."""
+		return self.execute_and_extract(
+			self.CASHOUT_NOTIFICATION_SEND_MUTATION,
+			{"input": {"accountId": account_id, "amount": int(amount), "currency": currency}},
+			"cashoutNotificationSend"
+		) or {}
 
 	def get_account_by_username(self, username: str) -> dict | None:
 		"""Get account details by username"""

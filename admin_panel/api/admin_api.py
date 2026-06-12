@@ -2,6 +2,7 @@ import functools
 import re
 import requests as requests_lib
 import frappe
+from decimal import Decimal, ROUND_HALF_UP
 from .graphql_client import GraphQLClient, GraphQLError
 
 
@@ -858,10 +859,95 @@ def _append_cashout_confirmation_code(doc, confirmation_code):
     doc.remarks = updated_remarks
 
 
+def _cashout_notification_amount_cents(doc):
+    amount = Decimal(str(doc.user_receives or 0)) * Decimal("100")
+    return int(amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _first_cashout_account_match(client, doc):
+    customer_info = {}
+    if doc.customer:
+        customer_info = frappe.db.get_value(
+            "Customer",
+            doc.customer,
+            ["customer_name", "mobile_no", "email_id"],
+            as_dict=True,
+        ) or {}
+
+    username_candidates = []
+    for value in (doc.customer, customer_info.get("customer_name")):
+        if value and value not in username_candidates:
+            username_candidates.append(value)
+
+    for username in username_candidates:
+        account = client.get_account_by_username(username)
+        if account:
+            return account
+
+    phone = customer_info.get("mobile_no")
+    if phone:
+        account = client.get_account_by_phone(phone)
+        if account:
+            return account
+
+    email = customer_info.get("email_id")
+    if email:
+        account = client.get_account_by_email(email)
+        if account:
+            return account
+
+    return None
+
+
+def _get_cashout_completion_notification_context(doc):
+    client = GraphQLClient()
+    account = _first_cashout_account_match(client, doc)
+    if not account:
+        return {"success": False, "error": "Flash account not found for this Cashout customer"}
+
+    account_uuid = account.get("uuid") or account.get("id")
+    if not account_uuid:
+        return {"success": False, "error": "Flash account is missing UUID"}
+
+    return {
+        "success": True,
+        "client": client,
+        "account_id": account_uuid,
+        "amount": _cashout_notification_amount_cents(doc),
+        "currency": doc.currency,
+    }
+
+
+def _send_cashout_completion_notification(notification_context):
+    result = notification_context["client"].send_cashout_notification(
+        account_id=notification_context["account_id"],
+        amount=notification_context["amount"],
+        currency=notification_context["currency"],
+    )
+
+    if result.get("errors"):
+        error_messages = [err.get("message", "Unknown error") for err in result["errors"]]
+        return {"success": False, "error": "; ".join(error_messages)}
+
+    if not result.get("success"):
+        return {"success": False, "error": "Flash cashout notification mutation returned success=false"}
+
+    return {
+        "success": True,
+        "account_id": notification_context["account_id"],
+        "amount": notification_context["amount"],
+        "currency": notification_context["currency"],
+    }
+
+
 def _settle_cashout(doc, confirmation_code=None):
     submit_error = _submit_cashout_if_needed(doc)
     if submit_error:
         return submit_error
+
+    notification_context = _get_cashout_completion_notification_context(doc)
+    if not notification_context.get("success"):
+        return notification_context
 
     _append_cashout_confirmation_code(doc, confirmation_code)
 
@@ -869,21 +955,41 @@ def _settle_cashout(doc, confirmation_code=None):
         if doc.status != "Completed":
             doc.db_set("status", "Completed", update_modified=True)
             doc.status = "Completed"
+        notification = _send_cashout_completion_notification(notification_context)
+        if not notification.get("success"):
+            return {
+                "success": False,
+                "status": doc.status,
+                "payment_entry": doc.payment_journal_entry,
+                "notification_sent": False,
+                "error": f"Cashout is complete, but Flash notification failed: {notification.get('error')}",
+            }
         return {
             "success": True,
             "status": doc.status,
             "payment_entry": doc.payment_journal_entry,
-            "message": f"Cashout already has payment journal entry {doc.payment_journal_entry}.",
+            "notification_sent": True,
+            "message": f"Cashout already has payment journal entry {doc.payment_journal_entry}; Flash notification sent.",
         }
 
     doc.create_payment_journal_entry()
     doc.reload()
+    notification = _send_cashout_completion_notification(notification_context)
+    if not notification.get("success"):
+        return {
+            "success": False,
+            "status": doc.status,
+            "payment_entry": doc.payment_journal_entry,
+            "notification_sent": False,
+            "error": f"Cashout is complete, but Flash notification failed: {notification.get('error')}",
+        }
 
     return {
         "success": True,
         "status": doc.status,
         "payment_entry": doc.payment_journal_entry,
-        "message": f"Payment recorded successfully. Journal Entry {doc.payment_journal_entry} created.",
+        "notification_sent": True,
+        "message": f"Payment recorded successfully. Journal Entry {doc.payment_journal_entry} created and Flash notification sent.",
     }
 
 
@@ -927,7 +1033,7 @@ def confirm_cashout_payment(cashout_id, confirmation_code=None):
     if result.get("success"):
         result["message"] = (
             f"Payment confirmed with code {confirmation_code}. "
-            f"Journal Entry {result.get('payment_entry')} recorded."
+            f"Journal Entry {result.get('payment_entry')} recorded and Flash notification sent."
         )
     return result
 
@@ -942,7 +1048,7 @@ def complete_cashout(cashout_id):
 
     result = _settle_cashout(doc)
     if result.get("success"):
-        result["message"] = f"Cashout marked complete. Journal Entry {result.get('payment_entry')} recorded."
+        result["message"] = f"Cashout marked complete. Journal Entry {result.get('payment_entry')} recorded and Flash notification sent."
     return result
 
 

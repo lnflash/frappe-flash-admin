@@ -395,11 +395,12 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
 
         function renderBridgeCharts(bridge) {
             if (!bridge) return;
-            const chartId1 = 'bridge-volume-chart';
-            const chartId2 = 'bridge-failures-chart';
+            const chartId1 = document.getElementById('bridge-volume-chart');
+            const chartId2 = document.getElementById('bridge-failures-chart');
+            if (!chartId1 || !chartId2) return;
 
             // Volume chart
-            new frappe.chart.Chart(`#${chartId1}`, {
+            frappe.utils.make_chart(chartId1, {
                 data: {
                     labels: bridge.volume.labels,
                     datasets: bridge.volume.datasets,
@@ -407,15 +408,10 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
                 type: 'line',
                 height: 180,
                 colors: ['#2563eb'],
-                axisOptions: {
-                    xAxisMode: 'tick',
-                    yAxisMode: 'span',
-                    shortenYAxisNumbers: 1,
-                },
             });
 
             // Failures chart
-            new frappe.chart.Chart(`#${chartId2}`, {
+            frappe.utils.make_chart(chartId2, {
                 data: {
                     labels: bridge.failures.labels,
                     datasets: bridge.failures.datasets,
@@ -423,11 +419,6 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
                 type: 'line',
                 height: 180,
                 colors: ['#dc2626'],
-                axisOptions: {
-                    xAxisMode: 'tick',
-                    yAxisMode: 'span',
-                    shortenYAxisNumbers: 1,
-                },
             });
         }
 

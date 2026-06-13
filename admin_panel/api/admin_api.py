@@ -978,7 +978,7 @@ def _settle_cashout(doc, confirmation_code=None):
             "message": f"Cashout already has payment journal entry {doc.payment_journal_entry}; Flash notification sent.",
         }
 
-    doc.create_payment_journal_entry()
+    doc.create_payment_journal_entry(reference_no=confirmation_code, reference_date=frappe.utils.today())
     doc.reload()
     notification = _send_cashout_completion_notification(notification_context)
     if not notification.get("success"):

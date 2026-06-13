@@ -138,3 +138,14 @@ def test_cashout_completion_lookup_ignores_invalid_flash_identifiers():
     assert '"INVALID_INPUT"' in graphql_client_py
     assert "def _is_flash_username_candidate" in api_py
     assert "_is_flash_username_candidate(username)" in api_py
+
+
+def test_cashout_payment_bank_entry_sets_required_reference_fields():
+    api_py = read_text(ADMIN_PANEL / "api" / "admin_api.py")
+    cashout_py = read_text(ADMIN_PANEL / "admin_panel" / "doctype" / "cashout" / "cashout.py")
+
+    assert "def create_payment_journal_entry(self, reference_no=None, reference_date=None)" in cashout_py
+    assert "payment_reference_no = (reference_no or self.transaction_id or self.name)" in cashout_py
+    assert '"cheque_no": payment_reference_no' in cashout_py
+    assert '"cheque_date": payment_reference_date' in cashout_py
+    assert "doc.create_payment_journal_entry(reference_no=confirmation_code" in api_py

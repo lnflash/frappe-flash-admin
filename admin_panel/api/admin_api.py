@@ -1,33 +1,37 @@
 import functools
 import re
-import requests as requests_lib
+from decimal import ROUND_HALF_UP, Decimal
+
 import frappe
-from decimal import Decimal, ROUND_HALF_UP
+import requests as requests_lib
+
 from .graphql_client import GraphQLClient, GraphQLError
 
 
 def handle_api_errors(func):
 	"""Decorator to handle common API errors consistently"""
+
 	@functools.wraps(func)
 	def wrapper(*args, **kwargs):
 		try:
 			return func(*args, **kwargs)
 		except GraphQLError as e:
 			frappe.logger().error(f"GraphQL error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
+			frappe.response["http_status_code"] = 500
 			return {"success": False, "error": str(e)}
 		except requests_lib.exceptions.RequestException as e:
 			frappe.logger().error(f"Request error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
+			frappe.response["http_status_code"] = 500
 			return {"success": False, "error": str(e)}
 		except ValueError as e:
 			frappe.logger().error(f"Configuration error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
+			frappe.response["http_status_code"] = 500
 			return {"success": False, "error": str(e)}
 		except Exception as e:
 			frappe.logger().error(f"Unexpected error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
+			frappe.response["http_status_code"] = 500
 			return {"success": False, "error": "An internal error occurred"}
+
 	return wrapper
 
 
@@ -39,7 +43,7 @@ def get_account_by_phone(phone):
 	account = client.get_account_by_phone(phone)
 
 	if account is None:
-		frappe.response['http_status_code'] = 404
+		frappe.response["http_status_code"] = 404
 		return {"error": "Account not found"}
 
 	return account
@@ -61,7 +65,7 @@ def get_user_alerts(limit=10):
 		"User Alerts",
 		fields=["title", "message", "tag", "sent_by", "sent_on"],
 		order_by="sent_on desc",
-		limit_page_length=int(limit)
+		limit_page_length=int(limit),
 	)
 	return {"logs": logs}
 
@@ -80,30 +84,32 @@ def get_alert_types():
 def send_alert(alert_type, title, message):
 	"""Send push notification via Flash sendNotification API"""
 	if not title or not message or not alert_type:
-		frappe.response['http_status_code'] = 400
+		frappe.response["http_status_code"] = 400
 		return {"success": False, "error": "Alert type, title, and message are required"}
 
 	client = GraphQLClient()
 	result = client.send_alert(alert_type, title, message)
 
-	if result.get('errors'):
-		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
+	if result.get("errors"):
+		error_messages = [err.get("message", "Unknown error") for err in result["errors"]]
 		frappe.logger().error(f"Send alert errors: {error_messages}")
-		frappe.response['http_status_code'] = 400
+		frappe.response["http_status_code"] = 400
 		return {"success": False, "errors": error_messages}
 
-	if not result.get('success'):
-		frappe.response['http_status_code'] = 500
+	if not result.get("success"):
+		frappe.response["http_status_code"] = 500
 		return {"success": False, "error": "Failed to send notification"}
 
-	frappe.get_doc({
-		"doctype": "User Alerts",
-		"title": title,
-		"message": message,
-		"tag": alert_type,
-		"sent_by": frappe.session.user,
-		"sent_on": frappe.utils.now_datetime()
-	}).insert(ignore_permissions=True)
+	frappe.get_doc(
+		{
+			"doctype": "User Alerts",
+			"title": title,
+			"message": message,
+			"tag": alert_type,
+			"sent_by": frappe.session.user,
+			"sent_on": frappe.utils.now_datetime(),
+		}
+	).insert(ignore_permissions=True)
 	frappe.db.commit()
 
 	return {"success": True, "message": f"Notification sent successfully: {title}"}
@@ -130,7 +136,7 @@ def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10
 		fields=["*"],
 		order_by="creation desc",
 		limit_start=offset,
-		limit_page_length=page_size
+		limit_page_length=page_size,
 	)
 
 	return {
@@ -138,7 +144,7 @@ def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10
 		"total": total_count,
 		"page": page,
 		"page_size": page_size,
-		"total_pages": (total_count + page_size - 1) // page_size
+		"total_pages": (total_count + page_size - 1) // page_size,
 	}
 
 
@@ -147,25 +153,26 @@ def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10
 def search_account(id: str):
 	"""Search account by phone number or username"""
 	if not id:
-		frappe.response['http_status_code'] = 400
+		frappe.response["http_status_code"] = 400
 		return {"error": "Phone number or Username is required"}
 
 	# Determine search field based on input type
-	search_field = "phone_number" if len(re.sub(r'\D', '', id)) >= 10 else "username"
+	search_field = "phone_number" if len(re.sub(r"\D", "", id)) >= 10 else "username"
 
 	results = frappe.get_all(
 		"Account Upgrade Request",
 		filters=[[search_field, "like", f"%{id}%"]],
 		fields=["*"],
 		order_by="creation desc",
-		limit_page_length=50
+		limit_page_length=50,
 	)
 
 	if not results:
-		frappe.response['http_status_code'] = 404
+		frappe.response["http_status_code"] = 404
 		return {"error": "Account not found"}
 
 	return results
+
 
 def _create_erp_records(req):
 	"""Create Customer, Address, and Bank Account synchronously from upgrade request data.
@@ -180,13 +187,15 @@ def _create_erp_records(req):
 		if existing:
 			customer_name = existing
 		else:
-			customer = frappe.get_doc({
-				"doctype": "Customer",
-				"customer_name": req.full_name,
-				"customer_type": "Company" if req.address_title else "Individual",
-				"mobile_no": req.phone_number,
-				"email_id": req.email or "",
-			})
+			customer = frappe.get_doc(
+				{
+					"doctype": "Customer",
+					"customer_name": req.full_name,
+					"customer_type": "Company" if req.address_title else "Individual",
+					"mobile_no": req.phone_number,
+					"email_id": req.email or "",
+				}
+			)
 			customer.insert(ignore_permissions=True)
 			customer_name = customer.name
 	except Exception as e:
@@ -203,7 +212,7 @@ def _create_erp_records(req):
 					["Dynamic Link", "link_doctype", "=", "Customer"],
 					["Dynamic Link", "link_name", "=", customer_name],
 				],
-				fields=["address_line1", "address_line2", "city", "state", "pincode", "country"]
+				fields=["address_line1", "address_line2", "city", "state", "pincode", "country"],
 			)
 			address_unchanged = any(
 				(a.address_line1 or "") == (req.address_line1 or "")
@@ -215,21 +224,25 @@ def _create_erp_records(req):
 				for a in existing_addresses
 			)
 			if not address_unchanged:
-				address = frappe.get_doc({
-					"doctype": "Address",
-					"address_title": req.address_title or req.full_name,
-					"address_type": "Billing",
-					"address_line1": req.address_line1,
-					"address_line2": req.address_line2 or "",
-					"city": req.city,
-					"state": req.state or "",
-					"pincode": req.pincode or "",
-					"country": req.country,
-					"links": [{
-						"link_doctype": "Customer",
-						"link_name": customer_name,
-					}],
-				})
+				address = frappe.get_doc(
+					{
+						"doctype": "Address",
+						"address_title": req.address_title or req.full_name,
+						"address_type": "Billing",
+						"address_line1": req.address_line1,
+						"address_line2": req.address_line2 or "",
+						"city": req.city,
+						"state": req.state or "",
+						"pincode": req.pincode or "",
+						"country": req.country,
+						"links": [
+							{
+								"link_doctype": "Customer",
+								"link_name": customer_name,
+							}
+						],
+					}
+				)
 				address.insert(ignore_permissions=True)
 		except Exception as e:
 			frappe.log_error(frappe.get_traceback(), f"Address creation failed for request {req.name}")
@@ -239,24 +252,28 @@ def _create_erp_records(req):
 	if req.bank_name and req.account_number:
 		try:
 			if not frappe.db.exists("Bank", req.bank_name):
-				frappe.get_doc({
-					"doctype": "Bank",
-					"bank_name": req.bank_name,
-				}).insert(ignore_permissions=True)
+				frappe.get_doc(
+					{
+						"doctype": "Bank",
+						"bank_name": req.bank_name,
+					}
+				).insert(ignore_permissions=True)
 
 			if not frappe.db.exists("Bank Account", {"bank_account_no": req.account_number}):
-				bank_account = frappe.get_doc({
-					"doctype": "Bank Account",
-					"account_name": req.address_title or req.full_name,
-					"bank": req.bank_name,
-					"bank_account_no": req.account_number,
-					"branch_code": req.bank_branch or "",
-					"account_type": req.account_type or "",
-					"currency": req.currency or "",
-					"is_company_account": 0,
-					"party_type": "Customer",
-					"party": customer_name,
-				})
+				bank_account = frappe.get_doc(
+					{
+						"doctype": "Bank Account",
+						"account_name": req.address_title or req.full_name,
+						"bank": req.bank_name,
+						"bank_account_no": req.account_number,
+						"branch_code": req.bank_branch or "",
+						"account_type": req.account_type or "",
+						"currency": req.currency or "",
+						"is_company_account": 0,
+						"party_type": "Customer",
+						"party": customer_name,
+					}
+				)
 				bank_account.insert(ignore_permissions=True)
 		except Exception as e:
 			frappe.log_error(frappe.get_traceback(), f"Bank Account creation failed for request {req.name}")
@@ -289,13 +306,13 @@ def approve_upgrade_request(request_id):
 
 	# Update account level via GraphQL (ZERO, ONE, TWO, THREE)
 	result = client.update_account_level(
-		uid=account['id'],
+		uid=account["id"],
 		level=req.requested_level,
 		erp_party=erp_party,
 	)
 
-	if result.get('errors'):
-		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
+	if result.get("errors"):
+		error_messages = [err.get("message", "Unknown error") for err in result["errors"]]
 		return {"success": False, "errors": error_messages}
 
 	# Update local request record
@@ -332,19 +349,20 @@ def reject_upgrade_request(request_id, reason=None):
 def get_id_document_url(file_key):
 	"""Get pre-signed URL for ID document from Digital Ocean Spaces"""
 	if not file_key:
-		frappe.response['http_status_code'] = 400
+		frappe.response["http_status_code"] = 400
 		return {"success": False, "error": "File key is required"}
 
 	client = GraphQLClient()
 	result = client.get_id_document_read_url(file_key)
 
-	if result.get('errors'):
-		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
+	if result.get("errors"):
+		error_messages = [err.get("message", "Unknown error") for err in result["errors"]]
 		frappe.logger().error(f"ID document URL errors: {error_messages}")
-		frappe.response['http_status_code'] = 400
+		frappe.response["http_status_code"] = 400
 		return {"success": False, "errors": error_messages}
 
-	return {"success": True, "url": result.get('readUrl')}
+	return {"success": True, "url": result.get("readUrl")}
+
 
 @frappe.whitelist()
 def get_customer_bank_accounts(customer):
@@ -360,706 +378,735 @@ def get_customer_bank_accounts(customer):
 
 # ── Account Hub helpers ──────────────────────────────────────────
 
+
 def _update_local_upgrade_request_phone(username, phone):
-    """Best-effort local sync after Flash GraphQL phone update succeeds."""
-    if not username or not phone:
-        return 0
+	"""Best-effort local sync after Flash GraphQL phone update succeeds."""
+	if not username or not phone:
+		return 0
 
-    records = frappe.get_all(
-        "Account Upgrade Request",
-        filters={"username": username},
-        pluck="name",
-        limit_page_length=50,
-    )
-    for name in records:
-        doc = frappe.get_doc("Account Upgrade Request", name)
-        doc.phone_number = phone
-        doc.save(ignore_permissions=True)
+	records = frappe.get_all(
+		"Account Upgrade Request",
+		filters={"username": username},
+		pluck="name",
+		limit_page_length=50,
+	)
+	for name in records:
+		doc = frappe.get_doc("Account Upgrade Request", name)
+		doc.phone_number = phone
+		doc.save(ignore_permissions=True)
 
-    if records:
-        frappe.db.commit()
+	if records:
+		frappe.db.commit()
 
-    return len(records)
+	return len(records)
 
 
 # ── Account Hub API ───────────────────────────────────────────────
 
+
 @frappe.whitelist()
 @handle_api_errors
 def search_account_smart(query):
-    """Smart search: auto-detect phone, email, username, or account ID.
+	"""Smart search: auto-detect phone, email, username, or account ID.
 
-    Account Hub should show Flash account data from the GraphQL API only. Local
-    Account Upgrade Request rows can be stale and should not be returned as
-    account-shaped fallback data.
-    """
-    if not query or not str(query).strip():
-        frappe.response['http_status_code'] = 400
-        return {"error": "Search query is required"}
+	Account Hub should show Flash account data from the GraphQL API only. Local
+	Account Upgrade Request rows can be stale and should not be returned as
+	account-shaped fallback data.
+	"""
+	if not query or not str(query).strip():
+		frappe.response["http_status_code"] = 400
+		return {"error": "Search query is required"}
 
-    query = str(query).strip()
+	query = str(query).strip()
 
-    try:
-        client = GraphQLClient()
+	try:
+		client = GraphQLClient()
 
-        if query.startswith('+') or re.match(r'^\d{7,}$', query):
-            account = client.get_account_by_phone(query)
-        elif '@' in query:
-            account = client.get_account_by_email(query)
-        elif re.match(r'^[a-zA-Z0-9_-]{3,}$', query):
-            account = client.get_account_by_username(query)
-            if account is None:
-                account = client.get_account_by_id(query)
-        else:
-            account = client.get_account_by_id(query)
+		if query.startswith("+") or re.match(r"^\d{7,}$", query):
+			account = client.get_account_by_phone(query)
+		elif "@" in query:
+			account = client.get_account_by_email(query)
+		elif re.match(r"^[a-zA-Z0-9_-]{3,}$", query):
+			account = client.get_account_by_username(query)
+			if account is None:
+				account = client.get_account_by_id(query)
+		else:
+			account = client.get_account_by_id(query)
 
-        if account is not None:
-            return account
+		if account is not None:
+			return account
 
-        frappe.response['http_status_code'] = 404
-        return {"error": "Account not found in Flash. Try searching by phone (+1...), email, username, or account ID."}
+		frappe.response["http_status_code"] = 404
+		return {
+			"error": "Account not found in Flash. Try searching by phone (+1...), email, username, or account ID."
+		}
 
-    except (ValueError, requests_lib.exceptions.RequestException, GraphQLError) as e:
-        frappe.logger().error(f"Flash API unavailable for search_account_smart ('{query}'): {e}")
-        frappe.response['http_status_code'] = 503
-        return {"error": "Flash API unavailable. Account search could not be completed."}
+	except (ValueError, requests_lib.exceptions.RequestException, GraphQLError) as e:
+		frappe.logger().error(f"Flash API unavailable for search_account_smart ('{query}'): {e}")
+		frappe.response["http_status_code"] = 503
+		return {"error": "Flash API unavailable. Account search could not be completed."}
 
 
 @frappe.whitelist()
 @handle_api_errors
 def get_upgrade_requests_by_account(username):
-    """Get upgrade request records for a specific account by username."""
-    if not username:
-        return {"data": [], "total": 0}
+	"""Get upgrade request records for a specific account by username."""
+	if not username:
+		return {"data": [], "total": 0}
 
-    records = frappe.get_all(
-        "Account Upgrade Request",
-        filters={"username": username},
-        fields=["*"],
-        order_by="creation desc",
-        limit_page_length=50,
-    )
+	records = frappe.get_all(
+		"Account Upgrade Request",
+		filters={"username": username},
+		fields=["*"],
+		order_by="creation desc",
+		limit_page_length=50,
+	)
 
-    return {"data": records, "total": len(records)}
+	return {"data": records, "total": len(records)}
 
 
 @frappe.whitelist()
 @handle_api_errors
 def update_account_status_api(uid=None, account_uuid=None, username=None, status=None, comment=None):
-    """Update account status in Flash GraphQL.
+	"""Update account status in Flash GraphQL.
 
-    Account Hub should mutate Flash as the source of truth. Local Account Upgrade
-    Request rows do not have the same account status semantics, so this endpoint
-    intentionally does not write ACTIVE/LOCKED into request status fields.
-    """
-    if not status:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Status is required"}
+	Account Hub should mutate Flash as the source of truth. Local Account Upgrade
+	Request rows do not have the same account status semantics, so this endpoint
+	intentionally does not write ACTIVE/LOCKED into request status fields.
+	"""
+	if not status:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Status is required"}
 
-    account_uid = uid or account_uuid
-    client = GraphQLClient()
+	account_uid = uid or account_uuid
+	client = GraphQLClient()
 
-    if not account_uid and username:
-        account = client.get_account_by_username(username)
-        if account:
-            account_uid = account.get("id") or account.get("uuid")
+	if not account_uid and username:
+		account = client.get_account_by_username(username)
+		if account:
+			account_uid = account.get("id") or account.get("uuid")
 
-    if not account_uid:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Account UID is required to update status in Flash"}
+	if not account_uid:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Account UID is required to update status in Flash"}
 
-    result = client.update_account_status(account_uid, status, comment)
-    return result or {"success": True}
+	result = client.update_account_status(account_uid, status, comment)
+	return result or {"success": True}
 
 
 @frappe.whitelist()
 @handle_api_errors
 def update_user_phone_api(account_uuid=None, phone=None, username=None):
-    """Update user phone in Flash GraphQL, then best-effort sync local request rows."""
-    if not phone:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Phone is required"}
+	"""Update user phone in Flash GraphQL, then best-effort sync local request rows."""
+	if not phone:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Phone is required"}
 
-    client = GraphQLClient()
+	client = GraphQLClient()
 
-    if not account_uuid and username:
-        account = client.get_account_by_username(username)
-        if account:
-            account_uuid = account.get("uuid")
+	if not account_uuid and username:
+		account = client.get_account_by_username(username)
+		if account:
+			account_uuid = account.get("uuid")
 
-    if not account_uuid:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Account UUID is required to update phone in Flash"}
+	if not account_uuid:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Account UUID is required to update phone in Flash"}
 
-    result = client.update_user_phone(account_uuid, phone)
-    if result and result.get("errors"):
-        return result
+	result = client.update_user_phone(account_uuid, phone)
+	if result and result.get("errors"):
+		return result
 
-    local_updates = _update_local_upgrade_request_phone(username, phone)
-    if isinstance(result, dict):
-        result["local_updates"] = local_updates
-        return result
+	local_updates = _update_local_upgrade_request_phone(username, phone)
+	if isinstance(result, dict):
+		result["local_updates"] = local_updates
+		return result
 
-    return {"success": True, "local_updates": local_updates}
+	return {"success": True, "local_updates": local_updates}
 
 
 @frappe.whitelist()
 @handle_api_errors
 def validate_merchant_api(merchant_id=None):
-    """Validate a merchant map entry in Flash GraphQL."""
-    if not merchant_id:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Merchant ID is required"}
+	"""Validate a merchant map entry in Flash GraphQL."""
+	if not merchant_id:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Merchant ID is required"}
 
-    client = GraphQLClient()
-    return client.validate_merchant(merchant_id)
+	client = GraphQLClient()
+	return client.validate_merchant(merchant_id)
 
 
 @frappe.whitelist()
 @handle_api_errors
 def delete_merchant_api(merchant_id=None):
-    """Delete a merchant map entry in Flash GraphQL."""
-    if not merchant_id:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Merchant ID is required"}
+	"""Delete a merchant map entry in Flash GraphQL."""
+	if not merchant_id:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Merchant ID is required"}
 
-    client = GraphQLClient()
-    return client.delete_merchant(merchant_id)
+	client = GraphQLClient()
+	return client.delete_merchant(merchant_id)
 
 
 # ── Dashboard ────────────────────────────────────────────────────
 
+
 @frappe.whitelist()
 @handle_api_errors
 def get_dashboard_stats():
-    """Get summary stats for the admin dashboard."""
-    pending = frappe.db.count("Account Upgrade Request", {"status": "Pending"})
-    approved = frappe.db.count("Account Upgrade Request", {"status": "Approved"})
-    rejected = frappe.db.count("Account Upgrade Request", {"status": "Rejected"})
+	"""Get summary stats for the admin dashboard."""
+	pending = frappe.db.count("Account Upgrade Request", {"status": "Pending"})
+	approved = frappe.db.count("Account Upgrade Request", {"status": "Approved"})
+	rejected = frappe.db.count("Account Upgrade Request", {"status": "Rejected"})
 
-    today = frappe.utils.nowdate()
-    approved_today = frappe.db.count("Account Upgrade Request", {
-        "status": "Approved",
-        "modified": [">=", today],
-    })
+	today = frappe.utils.nowdate()
+	approved_today = frappe.db.count(
+		"Account Upgrade Request",
+		{
+			"status": "Approved",
+			"modified": [">=", today],
+		},
+	)
 
-    all_records = frappe.get_all(
-        "Account Upgrade Request",
-        fields=["name", "username", "full_name", "phone_number", "email",
-                "requested_level", "current_level", "status", "creation"],
-        order_by="creation desc",
-        limit_page_length=500,
-    )
+	all_records = frappe.get_all(
+		"Account Upgrade Request",
+		fields=[
+			"name",
+			"username",
+			"full_name",
+			"phone_number",
+			"email",
+			"requested_level",
+			"current_level",
+			"status",
+			"creation",
+		],
+		order_by="creation desc",
+		limit_page_length=500,
+	)
 
-    return {
-        "upgrade_requests": {
-            "pending": pending,
-            "approved": approved,
-            "rejected": rejected,
-            "approved_today": approved_today,
-        },
-        "recent_requests": all_records[:8],
-        "all_requests": all_records,
-        "total_requests": pending + approved + rejected,
-    }
+	return {
+		"upgrade_requests": {
+			"pending": pending,
+			"approved": approved,
+			"rejected": rejected,
+			"approved_today": approved_today,
+		},
+		"recent_requests": all_records[:8],
+		"all_requests": all_records,
+		"total_requests": pending + approved + rejected,
+	}
 
 
 # ── Cashout Requests API ──────────────────────────────────────────
 
 
 CASHOUT_STATUS_DISPLAY_MAP = {
-    "Pending": "Pending",
-    "Draft": "Pending",
-    "In Progress": "In Progress",
-    "Completed": "Paid",
-    "Canceled": "Canceled",
+	"Pending": "Pending",
+	"Draft": "Pending",
+	"In Progress": "In Progress",
+	"Completed": "Paid",
+	"Canceled": "Canceled",
 }
 
 
 def _enrich_cashout(cashout_doc) -> dict:
-    """Enrich a Cashout doctype record with Customer and Bank Account fields."""
-    row = dict(cashout_doc)
+	"""Enrich a Cashout doctype record with Customer and Bank Account fields."""
+	row = dict(cashout_doc)
 
-    # Resolve Customer display fields
-    customer_info = {}
-    if row.get("customer"):
-        customer_info = frappe.db.get_value(
-            "Customer",
-            row["customer"],
-            ["customer_name", "mobile_no", "email_id"],
-            as_dict=True,
-        ) or {}
-    row["username"] = row.get("customer", "")
-    row["full_name"] = customer_info.get("customer_name", "")
-    row["phone_number"] = customer_info.get("mobile_no", "")
-    row["email"] = customer_info.get("email_id", "")
+	# Resolve Customer display fields
+	customer_info = {}
+	if row.get("customer"):
+		customer_info = (
+			frappe.db.get_value(
+				"Customer",
+				row["customer"],
+				["customer_name", "mobile_no", "email_id"],
+				as_dict=True,
+			)
+			or {}
+		)
+	row["username"] = row.get("customer", "")
+	row["full_name"] = customer_info.get("customer_name", "")
+	row["phone_number"] = customer_info.get("mobile_no", "")
+	row["email"] = customer_info.get("email_id", "")
 
-    # Resolve Bank Account display fields
-    bank_info = {}
-    if row.get("bank_account"):
-        bank_info = frappe.db.get_value(
-            "Bank Account",
-            row["bank_account"],
-            ["bank", "bank_account_no", "account_type", "account_name"],
-            as_dict=True,
-        ) or {}
-    # Mask account number for display
-    raw_no = (bank_info.get("bank_account_no") or "")
-    row["bank_name"] = bank_info.get("bank", "")
-    row["account_number"] = f"****{raw_no[-4:]}" if len(raw_no) >= 4 else raw_no
-    row["account_type"] = bank_info.get("account_type", "")
-    row["bank_label"] = bank_info.get("account_name", "")
+	# Resolve Bank Account display fields
+	bank_info = {}
+	if row.get("bank_account"):
+		bank_info = (
+			frappe.db.get_value(
+				"Bank Account",
+				row["bank_account"],
+				["bank", "bank_account_no", "account_type", "account_name"],
+				as_dict=True,
+			)
+			or {}
+		)
+	# Mask account number for display
+	raw_no = bank_info.get("bank_account_no") or ""
+	row["bank_name"] = bank_info.get("bank", "")
+	row["account_number"] = f"****{raw_no[-4:]}" if len(raw_no) >= 4 else raw_no
+	row["account_type"] = bank_info.get("account_type", "")
+	row["bank_label"] = bank_info.get("account_name", "")
 
-    # Map fields to match JS expectations
-    row["send"] = row.get("user_pays")
-    row["flash_fee"] = row.get("flash_fee")
-    row["exchange_rate"] = row.get("exchange_rate")
-    row["offer_id"] = row.get("transaction_id", "")
-    row["journal_entry"] = row.get("journal_entry", "")
-    row["payment_entry"] = row.get("payment_journal_entry", "")
+	# Map fields to match JS expectations
+	row["send"] = row.get("user_pays")
+	row["flash_fee"] = row.get("flash_fee")
+	row["exchange_rate"] = row.get("exchange_rate")
+	row["offer_id"] = row.get("transaction_id", "")
+	row["journal_entry"] = row.get("journal_entry", "")
+	row["payment_entry"] = row.get("payment_journal_entry", "")
 
-    # Derive receive amounts by currency
-    currency = row.get("currency", "USD")
-    receives = row.get("user_receives", 0)
-    rate = row.get("exchange_rate", 1) or 1
-    if currency == "JMD":
-        row["receive_jmd"] = receives
-        row["receive_usd"] = round(row.get("user_pays", 0) - row.get("flash_fee", 0), 2)
-    else:
-        row["receive_jmd"] = round(receives * rate, 2) if receives else 0
-        row["receive_usd"] = receives
+	# Derive receive amounts by currency
+	currency = row.get("currency", "USD")
+	receives = row.get("user_receives", 0)
+	rate = row.get("exchange_rate", 1) or 1
+	if currency == "JMD":
+		row["receive_jmd"] = receives
+		row["receive_usd"] = round(row.get("user_pays", 0) - row.get("flash_fee", 0), 2)
+	else:
+		row["receive_jmd"] = round(receives * rate, 2) if receives else 0
+		row["receive_usd"] = receives
 
-    # Payment entry fields (populated when payment_journal_entry exists)
-    if row.get("payment_journal_entry"):
-        pe = frappe.db.get_value(
-            "Journal Entry",
-            row["payment_journal_entry"],
-            ["total_debit", "posting_date"],
-            as_dict=True,
-        )
-        if pe:
-            row["pe_paid_amount"] = pe.get("total_debit")
-            row["pe_posting_date"] = str(pe.get("posting_date", ""))
-            row["pe_currency"] = currency
-            row["pe_mode_of_payment"] = "Bank Transfer"
+	# Payment entry fields (populated when payment_journal_entry exists)
+	if row.get("payment_journal_entry"):
+		pe = frappe.db.get_value(
+			"Journal Entry",
+			row["payment_journal_entry"],
+			["total_debit", "posting_date"],
+			as_dict=True,
+		)
+		if pe:
+			row["pe_paid_amount"] = pe.get("total_debit")
+			row["pe_posting_date"] = str(pe.get("posting_date", ""))
+			row["pe_currency"] = currency
+			row["pe_mode_of_payment"] = "Bank Transfer"
 
-    # Display status
-    original_status = row.get("status", "Pending")
-    row["display_status"] = CASHOUT_STATUS_DISPLAY_MAP.get(original_status, "Pending")
+	# Display status
+	original_status = row.get("status", "Pending")
+	row["display_status"] = CASHOUT_STATUS_DISPLAY_MAP.get(original_status, "Pending")
 
-    return row
+	return row
 
 
 @frappe.whitelist()
 @handle_api_errors
 def get_cashout_requests(status=None, page=1, page_size=10):
-    """Get paginated cashout requests from the Cashout doctype."""
-    page = int(page)
-    page_size = min(int(page_size), 100)
-    offset = (page - 1) * page_size
+	"""Get paginated cashout requests from the Cashout doctype."""
+	page = int(page)
+	page_size = min(int(page_size), 100)
+	offset = (page - 1) * page_size
 
-    # Map JS statuses back to doctype statuses
-    status_map = {
-        "Pending": ["Pending", "Draft", "In Progress"],
-        "Paid": ["Completed"],
-        "Canceled": ["Canceled"],
-        "Cancelled": ["Canceled"],  # JS spelling variant from PR
-    }
+	# Map JS statuses back to doctype statuses
+	status_map = {
+		"Pending": ["Pending", "Draft", "In Progress"],
+		"Paid": ["Completed"],
+		"Canceled": ["Canceled"],
+		"Cancelled": ["Canceled"],  # JS spelling variant from PR
+	}
 
-    doc_filters = []
-    if status:
-        mapped = status_map.get(status, [status])
-        doc_filters = [["status", "in", mapped]]
+	doc_filters = []
+	if status:
+		mapped = status_map.get(status, [status])
+		doc_filters = [["status", "in", mapped]]
 
-    total_count = frappe.db.count("Cashout", filters=doc_filters or None)
-    records = frappe.get_all(
-        "Cashout",
-        filters=doc_filters or None,
-        fields=["*"],
-        order_by="creation desc",
-        limit_start=offset,
-        limit_page_length=page_size,
-    )
+	total_count = frappe.db.count("Cashout", filters=doc_filters or None)
+	records = frappe.get_all(
+		"Cashout",
+		filters=doc_filters or None,
+		fields=["*"],
+		order_by="creation desc",
+		limit_start=offset,
+		limit_page_length=page_size,
+	)
 
-    data = [_enrich_cashout(r) for r in records]
+	data = [_enrich_cashout(r) for r in records]
 
-    return {
-        "data": data,
-        "total": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": max(1, (total_count + page_size - 1) // page_size),
-    }
+	return {
+		"data": data,
+		"total": total_count,
+		"page": page,
+		"page_size": page_size,
+		"total_pages": max(1, (total_count + page_size - 1) // page_size),
+	}
 
 
 @frappe.whitelist()
 @handle_api_errors
 def search_cashout_account(id: str):
-    """Search cashout requests by customer name or phone number."""
-    if not id:
-        frappe.response['http_status_code'] = 400
-        return {"error": "Phone number or Username is required"}
+	"""Search cashout requests by customer name or phone number."""
+	if not id:
+		frappe.response["http_status_code"] = 400
+		return {"error": "Phone number or Username is required"}
 
-    # Find Customer doctypes matching the query
-    import re as _re
-    has_digits = len(_re.sub(r'\D', '', id)) >= 3
+	# Find Customer doctypes matching the query
+	import re as _re
 
-    digits_only = _re.sub(r'\D', '', id) if has_digits else ""
-    customer_filters = []
-    if has_digits:
-        customer_filters.append(["mobile_no", "like", f"%{digits_only}%"])
-    customer_filters.append(["customer_name", "like", f"%{id}%"])
+	has_digits = len(_re.sub(r"\D", "", id)) >= 3
 
-    matching_customers = frappe.get_all(
-        "Customer",
-        filters=customer_filters,
-        pluck="name",
-        limit_page_length=50,
-    )
+	digits_only = _re.sub(r"\D", "", id) if has_digits else ""
+	customer_filters = []
+	if has_digits:
+		customer_filters.append(["mobile_no", "like", f"%{digits_only}%"])
+	customer_filters.append(["customer_name", "like", f"%{id}%"])
 
-    if not matching_customers:
-        frappe.response['http_status_code'] = 404
-        return {"error": "No cashout requests found for this customer"}
+	matching_customers = frappe.get_all(
+		"Customer",
+		filters=customer_filters,
+		pluck="name",
+		limit_page_length=50,
+	)
 
-    records = frappe.get_all(
-        "Cashout",
-        filters=[["customer", "in", matching_customers]],
-        fields=["*"],
-        order_by="creation desc",
-        limit_page_length=50,
-    )
+	if not matching_customers:
+		frappe.response["http_status_code"] = 404
+		return {"error": "No cashout requests found for this customer"}
 
-    if not records:
-        frappe.response['http_status_code'] = 404
-        return {"error": "No cashout requests found for this customer"}
+	records = frappe.get_all(
+		"Cashout",
+		filters=[["customer", "in", matching_customers]],
+		fields=["*"],
+		order_by="creation desc",
+		limit_page_length=50,
+	)
 
-    return [_enrich_cashout(r) for r in records]
+	if not records:
+		frappe.response["http_status_code"] = 404
+		return {"error": "No cashout requests found for this customer"}
+
+	return [_enrich_cashout(r) for r in records]
 
 
 @frappe.whitelist()
 @handle_api_errors
 def get_bridge_transfer_requests(status=None, transaction_type=None, query=None, page=1, page_size=10):
-    """Get paginated Bridge transfer audit records for the Transfer Requests page."""
-    page = max(int(page or 1), 1)
-    page_size = min(max(int(page_size or 10), 1), 100)
-    offset = (page - 1) * page_size
+	"""Get paginated Bridge transfer audit records for the Transfer Requests page."""
+	page = max(int(page or 1), 1)
+	page_size = min(max(int(page_size or 10), 1), 100)
+	offset = (page - 1) * page_size
 
-    filters = {}
-    if status:
-        filters["status"] = status
-    if transaction_type:
-        filters["transaction_type"] = transaction_type
+	filters = {}
+	if status:
+		filters["status"] = status
+	if transaction_type:
+		filters["transaction_type"] = transaction_type
 
-    or_filters = None
-    if query:
-        like_query = f"%{query}%"
-        or_filters = [
-            ["request_id", "like", like_query],
-            ["bridge_transfer_id", "like", like_query],
-            ["bridge_customer_id", "like", like_query],
-            ["account_id", "like", like_query],
-            ["wallet_id", "like", like_query],
-            ["ibex_tx_hash", "like", like_query],
-            ["source_event_id", "like", like_query],
-        ]
+	or_filters = None
+	if query:
+		like_query = f"%{query}%"
+		or_filters = [
+			["request_id", "like", like_query],
+			["bridge_transfer_id", "like", like_query],
+			["bridge_customer_id", "like", like_query],
+			["account_id", "like", like_query],
+			["wallet_id", "like", like_query],
+			["ibex_tx_hash", "like", like_query],
+			["source_event_id", "like", like_query],
+		]
 
-    fields = [
-        "name",
-        "request_id",
-        "transaction_type",
-        "status",
-        "provider",
-        "asset",
-        "network",
-        "amount",
-        "currency",
-        "developer_fee",
-        "initial_amount",
-        "subtotal_amount",
-        "final_amount",
-        "account_id",
-        "wallet_id",
-        "bridge_customer_id",
-        "bridge_transfer_id",
-        "ibex_tx_hash",
-        "address",
-        "source_event_id",
-        "source_event_type",
-        "source_systems_seen",
-        "first_seen_at",
-        "last_seen_at",
-        "raw_payload_json",
-        "failure_reason",
-        "creation",
-        "modified",
-    ]
+	fields = [
+		"name",
+		"request_id",
+		"transaction_type",
+		"status",
+		"provider",
+		"asset",
+		"network",
+		"amount",
+		"currency",
+		"developer_fee",
+		"initial_amount",
+		"subtotal_amount",
+		"final_amount",
+		"account_id",
+		"wallet_id",
+		"bridge_customer_id",
+		"bridge_transfer_id",
+		"ibex_tx_hash",
+		"address",
+		"source_event_id",
+		"source_event_type",
+		"source_systems_seen",
+		"first_seen_at",
+		"last_seen_at",
+		"raw_payload_json",
+		"failure_reason",
+		"creation",
+		"modified",
+	]
 
-    count_rows = frappe.get_all(
-        "Bridge Transfer Request",
-        filters=filters or None,
-        or_filters=or_filters,
-        fields=["name"],
-    )
-    records = frappe.get_all(
-        "Bridge Transfer Request",
-        filters=filters or None,
-        or_filters=or_filters,
-        fields=fields,
-        order_by="modified desc",
-        limit_start=offset,
-        limit_page_length=page_size,
-    )
+	count_rows = frappe.get_all(
+		"Bridge Transfer Request",
+		filters=filters or None,
+		or_filters=or_filters,
+		fields=["name"],
+	)
+	records = frappe.get_all(
+		"Bridge Transfer Request",
+		filters=filters or None,
+		or_filters=or_filters,
+		fields=fields,
+		order_by="modified desc",
+		limit_start=offset,
+		limit_page_length=page_size,
+	)
 
-    total_count = len(count_rows)
-    return {
-        "data": [dict(record) for record in records],
-        "total": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": max(1, (total_count + page_size - 1) // page_size),
-    }
+	total_count = len(count_rows)
+	return {
+		"data": [dict(record) for record in records],
+		"total": total_count,
+		"page": page,
+		"page_size": page_size,
+		"total_pages": max(1, (total_count + page_size - 1) // page_size),
+	}
 
 
 def _get_cashout_for_action(cashout_id):
-    if not cashout_id:
-        frappe.response['http_status_code'] = 400
-        return None, {"success": False, "error": "Cashout ID is required"}
+	if not cashout_id:
+		frappe.response["http_status_code"] = 400
+		return None, {"success": False, "error": "Cashout ID is required"}
 
-    try:
-        return frappe.get_doc("Cashout", cashout_id), None
-    except frappe.DoesNotExistError:
-        frappe.response['http_status_code'] = 404
-        return None, {"success": False, "error": "Cashout request not found"}
+	try:
+		return frappe.get_doc("Cashout", cashout_id), None
+	except frappe.DoesNotExistError:
+		frappe.response["http_status_code"] = 404
+		return None, {"success": False, "error": "Cashout request not found"}
 
 
 def _submit_cashout_if_needed(doc):
-    if doc.docstatus == 2 or doc.status == "Canceled":
-        return {"success": False, "error": "Canceled cashout requests cannot be modified"}
+	if doc.docstatus == 2 or doc.status == "Canceled":
+		return {"success": False, "error": "Canceled cashout requests cannot be modified"}
 
-    if doc.status == "Completed":
-        return {"success": False, "error": "Completed cashout requests cannot be modified"}
+	if doc.status == "Completed":
+		return {"success": False, "error": "Completed cashout requests cannot be modified"}
 
-    if doc.docstatus == 0:
-        doc.submit()
-        doc.reload()
+	if doc.docstatus == 0:
+		doc.submit()
+		doc.reload()
 
-    return None
+	return None
 
 
 def _append_cashout_confirmation_code(doc, confirmation_code):
-    code = (confirmation_code or "").strip()
-    if not code:
-        return
+	code = (confirmation_code or "").strip()
+	if not code:
+		return
 
-    timestamp = frappe.utils.now_datetime().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"Bank confirmation code: {code} ({frappe.session.user}, {timestamp})"
-    remarks = (doc.remarks or "").strip()
-    updated_remarks = f"{remarks}\n{line}" if remarks else line
-    doc.db_set("remarks", updated_remarks, update_modified=True)
-    doc.remarks = updated_remarks
+	timestamp = frappe.utils.now_datetime().strftime("%Y-%m-%d %H:%M:%S")
+	line = f"Bank confirmation code: {code} ({frappe.session.user}, {timestamp})"
+	remarks = (doc.remarks or "").strip()
+	updated_remarks = f"{remarks}\n{line}" if remarks else line
+	doc.db_set("remarks", updated_remarks, update_modified=True)
+	doc.remarks = updated_remarks
 
 
 def _cashout_notification_amount_cents(doc):
-    amount = Decimal(str(doc.user_receives or 0)) * Decimal("100")
-    return int(amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+	amount = Decimal(str(doc.user_receives or 0)) * Decimal("100")
+	return int(amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def _is_flash_username_candidate(value):
-    return bool(value and re.match(r"^[a-zA-Z0-9_-]{3,}$", str(value).strip()))
+	return bool(value and re.match(r"^[a-zA-Z0-9_-]{3,}$", str(value).strip()))
 
 
 def _first_cashout_account_match(client, doc):
-    customer_info = {}
-    if doc.customer:
-        customer_info = frappe.db.get_value(
-            "Customer",
-            doc.customer,
-            ["customer_name", "mobile_no", "email_id"],
-            as_dict=True,
-        ) or {}
+	customer_info = {}
+	if doc.customer:
+		customer_info = (
+			frappe.db.get_value(
+				"Customer",
+				doc.customer,
+				["customer_name", "mobile_no", "email_id"],
+				as_dict=True,
+			)
+			or {}
+		)
 
-    username_candidates = []
-    for value in (doc.customer, customer_info.get("customer_name")):
-        if value and value not in username_candidates:
-            username_candidates.append(value)
+	username_candidates = []
+	for value in (doc.customer, customer_info.get("customer_name")):
+		if value and value not in username_candidates:
+			username_candidates.append(value)
 
-    for username in username_candidates:
-        if not _is_flash_username_candidate(username):
-            continue
-        account = client.get_account_by_username(username)
-        if account:
-            return account
+	for username in username_candidates:
+		if not _is_flash_username_candidate(username):
+			continue
+		account = client.get_account_by_username(username)
+		if account:
+			return account
 
-    phone = customer_info.get("mobile_no")
-    if phone:
-        account = client.get_account_by_phone(phone)
-        if account:
-            return account
+	phone = customer_info.get("mobile_no")
+	if phone:
+		account = client.get_account_by_phone(phone)
+		if account:
+			return account
 
-    email = customer_info.get("email_id")
-    if email:
-        account = client.get_account_by_email(email)
-        if account:
-            return account
+	email = customer_info.get("email_id")
+	if email:
+		account = client.get_account_by_email(email)
+		if account:
+			return account
 
-    return None
+	return None
 
 
 def _get_cashout_completion_notification_context(doc):
-    client = GraphQLClient()
-    account = _first_cashout_account_match(client, doc)
-    if not account:
-        return {"success": False, "error": "Flash account not found for this Cashout customer"}
+	client = GraphQLClient()
+	account = _first_cashout_account_match(client, doc)
+	if not account:
+		return {"success": False, "error": "Flash account not found for this Cashout customer"}
 
-    account_uuid = account.get("uuid") or account.get("id")
-    if not account_uuid:
-        return {"success": False, "error": "Flash account is missing UUID"}
+	account_uuid = account.get("uuid") or account.get("id")
+	if not account_uuid:
+		return {"success": False, "error": "Flash account is missing UUID"}
 
-    return {
-        "success": True,
-        "client": client,
-        "account_id": account_uuid,
-        "amount": _cashout_notification_amount_cents(doc),
-        "currency": doc.currency,
-    }
+	return {
+		"success": True,
+		"client": client,
+		"account_id": account_uuid,
+		"amount": _cashout_notification_amount_cents(doc),
+		"currency": doc.currency,
+	}
 
 
 def _send_cashout_completion_notification(notification_context):
-    result = notification_context["client"].send_cashout_notification(
-        account_id=notification_context["account_id"],
-        amount=notification_context["amount"],
-        currency=notification_context["currency"],
-    )
+	result = notification_context["client"].send_cashout_notification(
+		account_id=notification_context["account_id"],
+		amount=notification_context["amount"],
+		currency=notification_context["currency"],
+	)
 
-    if result.get("errors"):
-        error_messages = [err.get("message", "Unknown error") for err in result["errors"]]
-        return {"success": False, "error": "; ".join(error_messages)}
+	if result.get("errors"):
+		error_messages = [err.get("message", "Unknown error") for err in result["errors"]]
+		return {"success": False, "error": "; ".join(error_messages)}
 
-    if not result.get("success"):
-        return {"success": False, "error": "Flash cashout notification mutation returned success=false"}
+	if not result.get("success"):
+		return {"success": False, "error": "Flash cashout notification mutation returned success=false"}
 
-    return {
-        "success": True,
-        "account_id": notification_context["account_id"],
-        "amount": notification_context["amount"],
-        "currency": notification_context["currency"],
-    }
+	return {
+		"success": True,
+		"account_id": notification_context["account_id"],
+		"amount": notification_context["amount"],
+		"currency": notification_context["currency"],
+	}
 
 
 def _settle_cashout(doc, confirmation_code=None):
-    submit_error = _submit_cashout_if_needed(doc)
-    if submit_error:
-        return submit_error
+	submit_error = _submit_cashout_if_needed(doc)
+	if submit_error:
+		return submit_error
 
-    notification_context = _get_cashout_completion_notification_context(doc)
-    if not notification_context.get("success"):
-        return notification_context
+	notification_context = _get_cashout_completion_notification_context(doc)
+	if not notification_context.get("success"):
+		return notification_context
 
-    _append_cashout_confirmation_code(doc, confirmation_code)
+	_append_cashout_confirmation_code(doc, confirmation_code)
 
-    if doc.payment_journal_entry:
-        if doc.status != "Completed":
-            doc.db_set("status", "Completed", update_modified=True)
-            doc.status = "Completed"
-        notification = _send_cashout_completion_notification(notification_context)
-        if not notification.get("success"):
-            return {
-                "success": False,
-                "status": doc.status,
-                "payment_entry": doc.payment_journal_entry,
-                "notification_sent": False,
-                "error": f"Cashout is complete, but Flash notification failed: {notification.get('error')}",
-            }
-        return {
-            "success": True,
-            "status": doc.status,
-            "payment_entry": doc.payment_journal_entry,
-            "notification_sent": True,
-            "message": f"Cashout already has payment journal entry {doc.payment_journal_entry}; Flash notification sent.",
-        }
+	if doc.payment_journal_entry:
+		if doc.status != "Completed":
+			doc.db_set("status", "Completed", update_modified=True)
+			doc.status = "Completed"
+		notification = _send_cashout_completion_notification(notification_context)
+		if not notification.get("success"):
+			return {
+				"success": False,
+				"status": doc.status,
+				"payment_entry": doc.payment_journal_entry,
+				"notification_sent": False,
+				"error": f"Cashout is complete, but Flash notification failed: {notification.get('error')}",
+			}
+		return {
+			"success": True,
+			"status": doc.status,
+			"payment_entry": doc.payment_journal_entry,
+			"notification_sent": True,
+			"message": f"Cashout already has payment journal entry {doc.payment_journal_entry}; Flash notification sent.",
+		}
 
-    doc.create_payment_journal_entry(reference_no=confirmation_code, reference_date=frappe.utils.today())
-    doc.reload()
-    notification = _send_cashout_completion_notification(notification_context)
-    if not notification.get("success"):
-        return {
-            "success": False,
-            "status": doc.status,
-            "payment_entry": doc.payment_journal_entry,
-            "notification_sent": False,
-            "error": f"Cashout is complete, but Flash notification failed: {notification.get('error')}",
-        }
+	doc.create_payment_journal_entry(reference_no=confirmation_code, reference_date=frappe.utils.today())
+	doc.reload()
+	notification = _send_cashout_completion_notification(notification_context)
+	if not notification.get("success"):
+		return {
+			"success": False,
+			"status": doc.status,
+			"payment_entry": doc.payment_journal_entry,
+			"notification_sent": False,
+			"error": f"Cashout is complete, but Flash notification failed: {notification.get('error')}",
+		}
 
-    return {
-        "success": True,
-        "status": doc.status,
-        "payment_entry": doc.payment_journal_entry,
-        "notification_sent": True,
-        "message": f"Payment recorded successfully. Journal Entry {doc.payment_journal_entry} created and Flash notification sent.",
-    }
+	return {
+		"success": True,
+		"status": doc.status,
+		"payment_entry": doc.payment_journal_entry,
+		"notification_sent": True,
+		"message": f"Payment recorded successfully. Journal Entry {doc.payment_journal_entry} created and Flash notification sent.",
+	}
 
 
 @frappe.whitelist()
 @handle_api_errors
 def create_cashout_request(cashout_id):
-    """Submit a draft cashout so it is ready for out-of-band bank settlement."""
-    doc, error = _get_cashout_for_action(cashout_id)
-    if error:
-        return error
+	"""Submit a draft cashout so it is ready for out-of-band bank settlement."""
+	doc, error = _get_cashout_for_action(cashout_id)
+	if error:
+		return error
 
-    if doc.status in ("Completed", "Canceled") or doc.docstatus == 2:
-        return {"success": False, "error": f"Cashout request status is '{doc.status}'; cannot create"}
+	if doc.status in ("Completed", "Canceled") or doc.docstatus == 2:
+		return {"success": False, "error": f"Cashout request status is '{doc.status}'; cannot create"}
 
-    if doc.docstatus == 0:
-        doc.submit()
-        doc.reload()
+	if doc.docstatus == 0:
+		doc.submit()
+		doc.reload()
 
-    return {
-        "success": True,
-        "status": doc.status,
-        "journal_entry": doc.journal_entry,
-        "message": f"Cashout request {doc.name} is ready for settlement.",
-    }
+	return {
+		"success": True,
+		"status": doc.status,
+		"journal_entry": doc.journal_entry,
+		"message": f"Cashout request {doc.name} is ready for settlement.",
+	}
 
 
 @frappe.whitelist()
 @handle_api_errors
 def confirm_cashout_payment(cashout_id, confirmation_code=None):
-    """Record a bank confirmation code and settle the cashout payment."""
-    confirmation_code = (confirmation_code or "").strip()
-    if not confirmation_code:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Confirmation code is required"}
+	"""Record a bank confirmation code and settle the cashout payment."""
+	confirmation_code = (confirmation_code or "").strip()
+	if not confirmation_code:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Confirmation code is required"}
 
-    doc, error = _get_cashout_for_action(cashout_id)
-    if error:
-        return error
+	doc, error = _get_cashout_for_action(cashout_id)
+	if error:
+		return error
 
-    result = _settle_cashout(doc, confirmation_code=confirmation_code)
-    if result.get("success"):
-        result["message"] = (
-            f"Payment confirmed with code {confirmation_code}. "
-            f"Journal Entry {result.get('payment_entry')} recorded and Flash notification sent."
-        )
-    return result
+	result = _settle_cashout(doc, confirmation_code=confirmation_code)
+	if result.get("success"):
+		result["message"] = (
+			f"Payment confirmed with code {confirmation_code}. "
+			f"Journal Entry {result.get('payment_entry')} recorded and Flash notification sent."
+		)
+	return result
 
 
 @frappe.whitelist()
 @handle_api_errors
 def complete_cashout(cashout_id):
-    """Settle a cashout without requiring a bank confirmation code."""
-    doc, error = _get_cashout_for_action(cashout_id)
-    if error:
-        return error
+	"""Settle a cashout without requiring a bank confirmation code."""
+	doc, error = _get_cashout_for_action(cashout_id)
+	if error:
+		return error
 
-    result = _settle_cashout(doc)
-    if result.get("success"):
-        result["message"] = f"Cashout marked complete. Journal Entry {result.get('payment_entry')} recorded and Flash notification sent."
-    return result
+	result = _settle_cashout(doc)
+	if result.get("success"):
+		result["message"] = (
+			f"Cashout marked complete. Journal Entry {result.get('payment_entry')} recorded and Flash notification sent."
+		)
+	return result
 
 
 @frappe.whitelist()
 @handle_api_errors
 def record_cashout_payment(cashout_id):
-    """Record payment for a cashout by calling create_payment_journal_entry."""
-    return complete_cashout(cashout_id)
+	"""Record payment for a cashout by calling create_payment_journal_entry."""
+	return complete_cashout(cashout_id)

@@ -8,7 +8,6 @@ def submit_cashout(name):
 
 
 class Cashout(Document):
-
 	def validate(self):
 		bank_account = frappe.get_doc("Bank Account", self.bank_account)
 		if bank_account.party_type != "Customer" or bank_account.party != self.customer:
@@ -35,39 +34,41 @@ class Cashout(Document):
 		is_jmd = self.currency == "JMD"
 		payables_account = settings.payables_account_jmd if is_jmd else settings.payables_account_usd
 
-		je = frappe.get_doc({
-			"doctype": "Journal Entry",
-			"voucher_type": "Journal Entry",
-			"company": company,
-			"multi_currency": 1,
-			"posting_date": frappe.utils.today(),
-			"user_remark": f'{{"transactionId": "{self.transaction_id}", "walletId": "{self.wallet_id}"}}',
-			"accounts": [
-				{
-					"account": settings.operating_account,
-					"account_currency": "USD",
-					"debit_in_account_currency": self.user_pays,
-					"debit": self.user_pays,
-					"exchange_rate": 1,
-				},
-				{
-					"account": payables_account,
-					"account_currency": self.currency,
-					"credit_in_account_currency": self.user_receives,
-					"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
-					"exchange_rate": 1 / self.exchange_rate if is_jmd else 1,
-					# "party_type": "Customer",
-					# "party": self.customer,
-				},
-				{
-					"account": settings.service_fees_account,
-					"account_currency": "USD",
-					"credit_in_account_currency": self.flash_fee,
-					"credit": self.flash_fee,
-					"exchange_rate": 1,
-				},
-			]
-		})
+		je = frappe.get_doc(
+			{
+				"doctype": "Journal Entry",
+				"voucher_type": "Journal Entry",
+				"company": company,
+				"multi_currency": 1,
+				"posting_date": frappe.utils.today(),
+				"user_remark": f'{{"transactionId": "{self.transaction_id}", "walletId": "{self.wallet_id}"}}',
+				"accounts": [
+					{
+						"account": settings.operating_account,
+						"account_currency": "USD",
+						"debit_in_account_currency": self.user_pays,
+						"debit": self.user_pays,
+						"exchange_rate": 1,
+					},
+					{
+						"account": payables_account,
+						"account_currency": self.currency,
+						"credit_in_account_currency": self.user_receives,
+						"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
+						"exchange_rate": 1 / self.exchange_rate if is_jmd else 1,
+						# "party_type": "Customer",
+						# "party": self.customer,
+					},
+					{
+						"account": settings.service_fees_account,
+						"account_currency": "USD",
+						"credit_in_account_currency": self.flash_fee,
+						"credit": self.flash_fee,
+						"exchange_rate": 1,
+					},
+				],
+			}
+		)
 
 		je.insert(ignore_permissions=True)
 		self.db_set("journal_entry", je.name, update_modified=False)
@@ -92,19 +93,20 @@ class Cashout(Document):
 		)
 
 		bank_accounts = frappe.get_all(
-			"Bank Account",
-			filters={"company": company, "is_company_account": 1},
-			fields=["account"]
+			"Bank Account", filters={"company": company, "is_company_account": 1}, fields=["account"]
 		)
 		company_bank_account = next(
-			(ba.account for ba in bank_accounts
-			 if frappe.get_value("Account", ba.account, "account_currency") == self.currency),
-			None
+			(
+				ba.account
+				for ba in bank_accounts
+				if frappe.get_value("Account", ba.account, "account_currency") == self.currency
+			),
+			None,
 		)
 		if not company_bank_account:
 			frappe.throw(f"No company Bank Account found for currency {self.currency}.")
 
-		payment_reference_no = (reference_no or self.transaction_id or self.name)
+		payment_reference_no = reference_no or self.transaction_id or self.name
 		if isinstance(payment_reference_no, str):
 			payment_reference_no = payment_reference_no.strip()
 		payment_reference_date = reference_date or frappe.utils.today()
@@ -117,32 +119,34 @@ class Cashout(Document):
 			"exchange_rate": 1 / self.exchange_rate if is_jmd else 1,
 		}
 
-		je = frappe.get_doc({
-			"doctype": "Journal Entry",
-			"voucher_type": "Bank Entry",
-			"company": company,
-			"multi_currency": 1,
-			"posting_date": frappe.utils.today(),
-			"cheque_no": payment_reference_no,
-			"cheque_date": payment_reference_date,
-			"user_remark": f'{{"transactionId": "{self.transaction_id}", "walletId": "{self.wallet_id}"}}',
-			"accounts": [
-				{
-					**payout_entry,
-					"account": payables_account,
-					# "party_type": "Customer",
-					# "party": self.customer,
-				},
-				{
-					**payout_entry,
-					"account": company_bank_account,
-					"debit_in_account_currency": 0,
-					"debit": 0,
-					"credit_in_account_currency": self.user_receives,
-					"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
-				},
-			]
-		})
+		je = frappe.get_doc(
+			{
+				"doctype": "Journal Entry",
+				"voucher_type": "Bank Entry",
+				"company": company,
+				"multi_currency": 1,
+				"posting_date": frappe.utils.today(),
+				"cheque_no": payment_reference_no,
+				"cheque_date": payment_reference_date,
+				"user_remark": f'{{"transactionId": "{self.transaction_id}", "walletId": "{self.wallet_id}"}}',
+				"accounts": [
+					{
+						**payout_entry,
+						"account": payables_account,
+						# "party_type": "Customer",
+						# "party": self.customer,
+					},
+					{
+						**payout_entry,
+						"account": company_bank_account,
+						"debit_in_account_currency": 0,
+						"debit": 0,
+						"credit_in_account_currency": self.user_receives,
+						"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
+					},
+				],
+			}
+		)
 
 		je.insert(ignore_permissions=True)
 		je.submit()

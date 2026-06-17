@@ -149,3 +149,11 @@ def test_cashout_payment_bank_entry_sets_required_reference_fields():
     assert '"cheque_no": payment_reference_no' in cashout_py
     assert '"cheque_date": payment_reference_date' in cashout_py
     assert "doc.create_payment_journal_entry(reference_no=confirmation_code" in api_py
+
+
+def test_cashout_details_render_remarks_from_cashout_record():
+    js = read_text(PAGE_DIR / "transfer_requests.js")
+
+    assert '<span class="detail-label">Remarks</span>' in js
+    assert "detail-remarks" in js
+    assert "panel.find('.detail-remarks').text(req.remarks || '-')" in js

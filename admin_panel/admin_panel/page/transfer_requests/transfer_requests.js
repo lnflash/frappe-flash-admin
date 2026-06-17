@@ -450,6 +450,10 @@ class TransferRequestsManager {
                     font-weight: 500;
                 }
 
+                .flash-cashout-manager .detail-remarks {
+                    white-space: pre-wrap;
+                }
+
                 .flash-cashout-manager .detail-link {
                     color: var(--color-primary);
                     text-decoration: none;
@@ -782,6 +786,12 @@ class TransferRequestsManager {
                                     <div class="detail-item">
                                         <span class="detail-label">Last Modified</span>
                                         <span class="detail-value detail-modified"></span>
+                                    </div>
+                                </div>
+                                <div class="col-md-12">
+                                    <div class="detail-item">
+                                        <span class="detail-label">Remarks</span>
+                                        <span class="detail-value detail-remarks"></span>
                                     </div>
                                 </div>
                             </div>
@@ -1237,6 +1247,7 @@ class TransferRequestsManager {
         panel.find('.detail-request-id').text(req.name || '-');
         panel.find('.detail-submitted').text(this.formatDateTime(req.creation));
         panel.find('.detail-modified').text(this.formatDateTime(req.modified));
+        panel.find('.detail-remarks').text(req.remarks || '-');
 
         const createBtn = panel.find('.btn-create-cashout');
         const confirmBtn = panel.find('.btn-confirm-payment');

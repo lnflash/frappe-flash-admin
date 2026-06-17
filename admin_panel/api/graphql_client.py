@@ -65,7 +65,7 @@ class GraphQLClient:
 			return
 		raise GraphQLError(f"GraphQL errors: {errors}")
 
-	def execute_query(self, query: str, variables: dict = None) -> dict:
+	def execute_query(self, query: str, variables: dict | None = None) -> dict:
 		"""Execute a GraphQL query and return the response"""
 		payload = {"query": query}
 		if variables:
@@ -285,7 +285,7 @@ class GraphQLClient:
 			allow_not_found=True
 		)
 
-	def update_account_level(self, uid: str, level: str, erp_party: str = None) -> dict:
+	def update_account_level(self, uid: str, level: str, erp_party: str | None = None) -> dict:
 		"""Update account level"""
 		variables = {"input": {"uid": uid, "level": level}}
 		if erp_party:
@@ -353,7 +353,7 @@ class GraphQLClient:
 			allow_not_found=True
 		)
 
-	def update_account_status(self, uid: str, status: str, comment: str = None) -> dict:
+	def update_account_status(self, uid: str, status: str, comment: str | None = None) -> dict:
 		"""Change account status via admin mutation"""
 		variables = {"input": {"uid": uid, "status": status}}
 		if comment:

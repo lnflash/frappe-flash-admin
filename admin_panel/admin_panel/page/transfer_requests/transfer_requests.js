@@ -17,7 +17,7 @@ frappe.pages['transfer-requests'].on_page_load = function(wrapper) {
         return;
     }
 
-    var page = frappe.ui.make_app_page({
+    page = frappe.ui.make_app_page({
         parent: wrapper,
         title: 'Transfer Requests',
         single_column: true

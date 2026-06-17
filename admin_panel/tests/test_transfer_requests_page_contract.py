@@ -129,6 +129,7 @@ def test_cashout_completion_calls_flash_notification_mutation():
     assert "_send_cashout_completion_notification" in api_py
     assert "send_cashout_notification(" in api_py
     assert "_cashout_notification_amount_cents" in api_py
+    assert "Flash notification sent" in api_py
 
 
 def test_cashout_completion_lookup_ignores_invalid_flash_identifiers():
@@ -149,6 +150,7 @@ def test_cashout_payment_bank_entry_sets_required_reference_fields():
     assert '"cheque_no": payment_reference_no' in cashout_py
     assert '"cheque_date": payment_reference_date' in cashout_py
     assert "doc.create_payment_journal_entry(reference_no=confirmation_code" in api_py
+    assert "frappe.msgprint" not in cashout_py
 
 
 def test_cashout_details_render_remarks_from_cashout_record():

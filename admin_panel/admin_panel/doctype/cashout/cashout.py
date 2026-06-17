@@ -149,4 +149,3 @@ class Cashout(Document):
 
 		self.db_set("payment_journal_entry", je.name)
 		self.db_set("status", "Completed")
-		frappe.msgprint(f"Payment Journal Entry {je.name} created.")

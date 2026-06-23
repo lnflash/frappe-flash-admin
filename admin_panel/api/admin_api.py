@@ -3,6 +3,7 @@ import re
 import requests as requests_lib
 import frappe
 from .graphql_client import GraphQLClient, GraphQLError
+from .auth import require_admin, require_financial, require_roles, audit_log
 
 
 def handle_api_errors(func):
@@ -31,6 +32,7 @@ def handle_api_errors(func):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_account_by_phone(phone):
 	"""Get account details by phone number"""
@@ -45,6 +47,7 @@ def get_account_by_phone(phone):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def update_account_level(uid, level):
 	"""Update account level"""
@@ -75,6 +78,7 @@ def get_alert_types():
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def send_alert(alert_type, title, message):
 	"""Send push notification via Flash sendNotification API"""
@@ -109,6 +113,7 @@ def send_alert(alert_type, title, message):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10):
 	"""Get paginated upgrade requests from Account Upgrade Request doctype"""
@@ -142,6 +147,7 @@ def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def search_account(id: str):
 	"""Search account by phone number or username"""
@@ -265,6 +271,7 @@ def _create_erp_records(req):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def approve_upgrade_request(request_id):
 	"""Approve an account upgrade request and update account level via GraphQL"""
@@ -302,6 +309,9 @@ def approve_upgrade_request(request_id):
 	req.save()
 	frappe.db.commit()
 
+	audit_log("approve_upgrade", "Account Upgrade Request", request_id,
+	         {"phone": req.phone_number, "level": req.requested_level})
+
 	return {
 		"success": True,
 		"message": "Request approved and account level updated.",
@@ -309,6 +319,7 @@ def approve_upgrade_request(request_id):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def reject_upgrade_request(request_id, reason=None):
 	"""Reject an account upgrade request (local record only, no level change)"""
@@ -323,10 +334,13 @@ def reject_upgrade_request(request_id, reason=None):
 	req.save()
 
 	frappe.db.commit()
+	audit_log("reject_upgrade", "Account Upgrade Request", request_id,
+	         {"reason": reason or "No reason provided"})
 	return {"success": True, "message": "Request rejected."}
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_id_document_url(file_key):
 	"""Get pre-signed URL for ID document from Digital Ocean Spaces"""
@@ -384,6 +398,7 @@ def _update_local_upgrade_request_phone(username, phone):
 # ── Account Hub API ───────────────────────────────────────────────
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def search_account_smart(query):
     """Smart search: auto-detect phone, email, username, or account ID.
@@ -425,6 +440,7 @@ def search_account_smart(query):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_upgrade_requests_by_account(username):
     """Get upgrade request records for a specific account by username."""
@@ -443,6 +459,7 @@ def get_upgrade_requests_by_account(username):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def update_account_status_api(uid=None, account_uuid=None, username=None, status=None, comment=None):
     """Update account status in Flash GraphQL.
@@ -468,10 +485,13 @@ def update_account_status_api(uid=None, account_uuid=None, username=None, status
         return {"success": False, "error": "Account UID is required to update status in Flash"}
 
     result = client.update_account_status(account_uid, status, comment)
+    audit_log("update_status", "Flash Account", account_uid,
+             {"status": status, "comment": comment})
     return result or {"success": True}
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def update_user_phone_api(account_uuid=None, phone=None, username=None):
     """Update user phone in Flash GraphQL, then best-effort sync local request rows."""
@@ -503,6 +523,7 @@ def update_user_phone_api(account_uuid=None, phone=None, username=None):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def validate_merchant_api(merchant_id=None):
     """Validate a merchant map entry in Flash GraphQL."""
@@ -515,6 +536,7 @@ def validate_merchant_api(merchant_id=None):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def delete_merchant_api(merchant_id=None):
     """Delete a merchant map entry in Flash GraphQL."""
@@ -529,6 +551,7 @@ def delete_merchant_api(merchant_id=None):
 # ── Dashboard ────────────────────────────────────────────────────
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_dashboard_stats():
     """Get summary stats for the admin dashboard."""

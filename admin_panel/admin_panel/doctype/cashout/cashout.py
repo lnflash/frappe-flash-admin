@@ -1,6 +1,7 @@
 import frappe
 from frappe.model.document import Document
-from admin_panel.api.auth import require_financial, audit_log
+
+from admin_panel.api.auth import audit_log, require_financial
 
 
 @frappe.whitelist()
@@ -10,7 +11,6 @@ def submit_cashout(name):
 
 
 class Cashout(Document):
-
 	def validate(self):
 		bank_account = frappe.get_doc("Bank Account", self.bank_account)
 		if bank_account.party_type != "Customer" or bank_account.party != self.customer:
@@ -27,8 +27,9 @@ class Cashout(Document):
 		je = frappe.get_doc("Journal Entry", self.journal_entry)
 		je.submit()
 		self.db_set("status", "In Progress")
-		audit_log("submit_cashout", "Cashout", self.name,
-		          {"customer": self.customer, "amount": self.user_pays})
+		audit_log(
+			"submit_cashout", "Cashout", self.name, {"customer": self.customer, "amount": self.user_pays}
+		)
 
 	def create_payable_journal_entry(self):
 		company = frappe.defaults.get_user_default("Company")
@@ -36,39 +37,43 @@ class Cashout(Document):
 		is_jmd = self.currency == "JMD"
 		payables_account = settings.payables_account_jmd if is_jmd else settings.payables_account_usd
 
-		je = frappe.get_doc({
-			"doctype": "Journal Entry",
-			"voucher_type": "Journal Entry",
-			"company": company,
-			"multi_currency": 1,
-			"posting_date": frappe.utils.today(),
-			"user_remark": f'{{"transactionId": "{self.transaction_id}", "walletId": "{self.wallet_id}"}}',
-			"accounts": [
-				{
-					"account": settings.operating_account,
-					"account_currency": "USD",
-					"debit_in_account_currency": self.user_pays,
-					"debit": self.user_pays,
-					"exchange_rate": 1,
-				},
-				{
-					"account": payables_account,
-					"account_currency": self.currency,
-					"credit_in_account_currency": self.user_receives,
-					"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
-					"exchange_rate": 1 / self.exchange_rate if is_jmd else 1,
-				},
-				{
-					"account": settings.service_fees_account,
-					"account_currency": "USD",
-					"credit_in_account_currency": self.flash_fee,
-					"credit": self.flash_fee,
-					"exchange_rate": 1,
-				},
-			]
-		})
+		je = frappe.get_doc(
+			{
+				"doctype": "Journal Entry",
+				"voucher_type": "Journal Entry",
+				"company": company,
+				"multi_currency": 1,
+				"posting_date": frappe.utils.today(),
+				"user_remark": f'{{"transactionId": "{self.transaction_id}", "walletId": "{self.wallet_id}"}}',
+				"accounts": [
+					{
+						"account": settings.operating_account,
+						"account_currency": "USD",
+						"debit_in_account_currency": self.user_pays,
+						"debit": self.user_pays,
+						"exchange_rate": 1,
+					},
+					{
+						"account": payables_account,
+						"account_currency": self.currency,
+						"credit_in_account_currency": self.user_receives,
+						"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
+						"exchange_rate": 1 / self.exchange_rate if is_jmd else 1,
+					},
+					{
+						"account": settings.service_fees_account,
+						"account_currency": "USD",
+						"credit_in_account_currency": self.flash_fee,
+						"credit": self.flash_fee,
+						"exchange_rate": 1,
+					},
+				],
+			}
+		)
 
-		# Journal Entry created via internal doc lifecycle — caller already passed role check
+		# No ignore_permissions: enforce Journal Entry perms. Cashout creation is
+		# restricted to Accounts Manager (see cashout.json), which holds Journal
+		# Entry permission in standard ERPNext, so this insert succeeds for them.
 		je.insert()
 		self.db_set("journal_entry", je.name, update_modified=False)
 
@@ -93,14 +98,15 @@ class Cashout(Document):
 		)
 
 		bank_accounts = frappe.get_all(
-			"Bank Account",
-			filters={"company": company, "is_company_account": 1},
-			fields=["account"]
+			"Bank Account", filters={"company": company, "is_company_account": 1}, fields=["account"]
 		)
 		company_bank_account = next(
-			(ba.account for ba in bank_accounts
-			 if frappe.get_value("Account", ba.account, "account_currency") == self.currency),
-			None
+			(
+				ba.account
+				for ba in bank_accounts
+				if frappe.get_value("Account", ba.account, "account_currency") == self.currency
+			),
+			None,
 		)
 		if not company_bank_account:
 			frappe.throw(f"No company Bank Account found for currency {self.currency}.")
@@ -113,34 +119,37 @@ class Cashout(Document):
 			"exchange_rate": 1 / self.exchange_rate if is_jmd else 1,
 		}
 
-		je = frappe.get_doc({
-			"doctype": "Journal Entry",
-			"voucher_type": "Bank Entry",
-			"company": company,
-			"multi_currency": 1,
-			"posting_date": frappe.utils.today(),
-			"user_remark": f'{{"transactionId": "{self.transaction_id}", "walletId": "{self.wallet_id}"}}',
-			"accounts": [
-				{
-					**payout_entry,
-					"account": payables_account,
-				},
-				{
-					**payout_entry,
-					"account": company_bank_account,
-					"debit_in_account_currency": 0,
-					"debit": 0,
-					"credit_in_account_currency": self.user_receives,
-					"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
-				},
-			]
-		})
+		je = frappe.get_doc(
+			{
+				"doctype": "Journal Entry",
+				"voucher_type": "Bank Entry",
+				"company": company,
+				"multi_currency": 1,
+				"posting_date": frappe.utils.today(),
+				"user_remark": f'{{"transactionId": "{self.transaction_id}", "walletId": "{self.wallet_id}"}}',
+				"accounts": [
+					{
+						**payout_entry,
+						"account": payables_account,
+					},
+					{
+						**payout_entry,
+						"account": company_bank_account,
+						"debit_in_account_currency": 0,
+						"debit": 0,
+						"credit_in_account_currency": self.user_receives,
+						"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
+					},
+				],
+			}
+		)
 
 		je.insert()
 		je.submit()
 
 		self.db_set("payment_journal_entry", je.name)
 		self.db_set("status", "Completed")
-		audit_log("complete_cashout", "Cashout", self.name,
-		          {"payment_je": je.name, "amount": self.user_receives})
+		audit_log(
+			"complete_cashout", "Cashout", self.name, {"payment_je": je.name, "amount": self.user_receives}
+		)
 		frappe.msgprint(f"Payment Journal Entry {je.name} created.")

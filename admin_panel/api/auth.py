@@ -6,6 +6,7 @@ This prevents any logged-in Frappe user from calling admin/financial operations.
 """
 
 import functools
+
 import frappe
 
 # Roles that can access admin API endpoints
@@ -62,7 +63,11 @@ def require_financial():
 
 
 def audit_log(action, doc_type, doc_name, details=None):
-	"""Write an immutable audit entry for admin mutations.
+	"""Write a best-effort audit entry (Frappe Comment) for admin mutations.
+
+	Note: Comments are editable/deletable by System Managers, so this is a
+	traceability aid, not a tamper-proof log. A dedicated append-only audit
+	DocType is tracked as a follow-up.
 
 	Args:
 	    action: e.g. "approve_upgrade", "reject_upgrade", "update_status"
@@ -71,19 +76,16 @@ def audit_log(action, doc_type, doc_name, details=None):
 	    details: Optional dict with additional context
 	"""
 	try:
-		log = frappe.get_doc({
-			"doctype": "Comment",
-			"comment_type": "Info",
-			"reference_doctype": doc_type,
-			"reference_name": str(doc_name),
-			"content": (
-				f"[{action}] by {frappe.session.user}"
-				+ (f" — {details}" if details else "")
-			),
-		})
+		log = frappe.get_doc(
+			{
+				"doctype": "Comment",
+				"comment_type": "Info",
+				"reference_doctype": doc_type,
+				"reference_name": str(doc_name),
+				"content": (f"[{action}] by {frappe.session.user}" + (f" — {details}" if details else "")),
+			}
+		)
 		log.insert(ignore_permissions=True)
 	except Exception:
 		# Audit logging is best-effort — don't block the operation
-		frappe.logger().warning(
-			f"Failed to write audit log for {action} on {doc_type} {doc_name}"
-		)
+		frappe.logger().warning(f"Failed to write audit log for {action} on {doc_type} {doc_name}")

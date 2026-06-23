@@ -1,36 +1,42 @@
 import functools
 import re
-import requests as requests_lib
+
 import frappe
+import requests as requests_lib
+
+from .auth import audit_log, require_admin, require_financial, require_roles
 from .graphql_client import GraphQLClient, GraphQLError
 
 
 def handle_api_errors(func):
 	"""Decorator to handle common API errors consistently"""
+
 	@functools.wraps(func)
 	def wrapper(*args, **kwargs):
 		try:
 			return func(*args, **kwargs)
 		except GraphQLError as e:
 			frappe.logger().error(f"GraphQL error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
+			frappe.response["http_status_code"] = 500
 			return {"success": False, "error": str(e)}
 		except requests_lib.exceptions.RequestException as e:
 			frappe.logger().error(f"Request error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
+			frappe.response["http_status_code"] = 500
 			return {"success": False, "error": str(e)}
 		except ValueError as e:
 			frappe.logger().error(f"Configuration error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
+			frappe.response["http_status_code"] = 500
 			return {"success": False, "error": str(e)}
 		except Exception as e:
 			frappe.logger().error(f"Unexpected error in {func.__name__}: {e}")
-			frappe.response['http_status_code'] = 500
+			frappe.response["http_status_code"] = 500
 			return {"success": False, "error": "An internal error occurred"}
+
 	return wrapper
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_account_by_phone(phone):
 	"""Get account details by phone number"""
@@ -38,13 +44,14 @@ def get_account_by_phone(phone):
 	account = client.get_account_by_phone(phone)
 
 	if account is None:
-		frappe.response['http_status_code'] = 404
+		frappe.response["http_status_code"] = 404
 		return {"error": "Account not found"}
 
 	return account
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def update_account_level(uid, level):
 	"""Update account level"""
@@ -60,7 +67,7 @@ def get_user_alerts(limit=10):
 		"User Alerts",
 		fields=["title", "message", "tag", "sent_by", "sent_on"],
 		order_by="sent_on desc",
-		limit_page_length=int(limit)
+		limit_page_length=int(limit),
 	)
 	return {"logs": logs}
 
@@ -75,40 +82,55 @@ def get_alert_types():
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def send_alert(alert_type, title, message):
 	"""Send push notification via Flash sendNotification API"""
 	if not title or not message or not alert_type:
-		frappe.response['http_status_code'] = 400
+		frappe.response["http_status_code"] = 400
 		return {"success": False, "error": "Alert type, title, and message are required"}
+
+	# Bound input lengths to avoid oversized/abusive push payloads.
+	title = str(title).strip()
+	message = str(message).strip()
+	alert_type = str(alert_type).strip()
+	if len(title) > 140 or len(message) > 1000 or len(alert_type) > 64:
+		frappe.response["http_status_code"] = 400
+		return {
+			"success": False,
+			"error": "Alert exceeds length limits (title<=140, message<=1000, type<=64)",
+		}
 
 	client = GraphQLClient()
 	result = client.send_alert(alert_type, title, message)
 
-	if result.get('errors'):
-		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
+	if result.get("errors"):
+		error_messages = [err.get("message", "Unknown error") for err in result["errors"]]
 		frappe.logger().error(f"Send alert errors: {error_messages}")
-		frappe.response['http_status_code'] = 400
+		frappe.response["http_status_code"] = 400
 		return {"success": False, "errors": error_messages}
 
-	if not result.get('success'):
-		frappe.response['http_status_code'] = 500
+	if not result.get("success"):
+		frappe.response["http_status_code"] = 500
 		return {"success": False, "error": "Failed to send notification"}
 
-	frappe.get_doc({
-		"doctype": "User Alerts",
-		"title": title,
-		"message": message,
-		"tag": alert_type,
-		"sent_by": frappe.session.user,
-		"sent_on": frappe.utils.now_datetime()
-	}).insert(ignore_permissions=True)
+	frappe.get_doc(
+		{
+			"doctype": "User Alerts",
+			"title": title,
+			"message": message,
+			"tag": alert_type,
+			"sent_by": frappe.session.user,
+			"sent_on": frappe.utils.now_datetime(),
+		}
+	).insert(ignore_permissions=True)
 	frappe.db.commit()
 
 	return {"success": True, "message": f"Notification sent successfully: {title}"}
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10):
 	"""Get paginated upgrade requests from Account Upgrade Request doctype"""
@@ -129,7 +151,7 @@ def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10
 		fields=["*"],
 		order_by="creation desc",
 		limit_start=offset,
-		limit_page_length=page_size
+		limit_page_length=page_size,
 	)
 
 	return {
@@ -137,34 +159,36 @@ def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10
 		"total": total_count,
 		"page": page,
 		"page_size": page_size,
-		"total_pages": (total_count + page_size - 1) // page_size
+		"total_pages": (total_count + page_size - 1) // page_size,
 	}
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def search_account(id: str):
 	"""Search account by phone number or username"""
 	if not id:
-		frappe.response['http_status_code'] = 400
+		frappe.response["http_status_code"] = 400
 		return {"error": "Phone number or Username is required"}
 
 	# Determine search field based on input type
-	search_field = "phone_number" if len(re.sub(r'\D', '', id)) >= 10 else "username"
+	search_field = "phone_number" if len(re.sub(r"\D", "", id)) >= 10 else "username"
 
 	results = frappe.get_all(
 		"Account Upgrade Request",
 		filters=[[search_field, "like", f"%{id}%"]],
 		fields=["*"],
 		order_by="creation desc",
-		limit_page_length=50
+		limit_page_length=50,
 	)
 
 	if not results:
-		frappe.response['http_status_code'] = 404
+		frappe.response["http_status_code"] = 404
 		return {"error": "Account not found"}
 
 	return results
+
 
 def _create_erp_records(req):
 	"""Create Customer, Address, and Bank Account synchronously from upgrade request data.
@@ -179,13 +203,15 @@ def _create_erp_records(req):
 		if existing:
 			customer_name = existing
 		else:
-			customer = frappe.get_doc({
-				"doctype": "Customer",
-				"customer_name": req.full_name,
-				"customer_type": "Company" if req.address_title else "Individual",
-				"mobile_no": req.phone_number,
-				"email_id": req.email or "",
-			})
+			customer = frappe.get_doc(
+				{
+					"doctype": "Customer",
+					"customer_name": req.full_name,
+					"customer_type": "Company" if req.address_title else "Individual",
+					"mobile_no": req.phone_number,
+					"email_id": req.email or "",
+				}
+			)
 			customer.insert(ignore_permissions=True)
 			customer_name = customer.name
 	except Exception as e:
@@ -202,7 +228,7 @@ def _create_erp_records(req):
 					["Dynamic Link", "link_doctype", "=", "Customer"],
 					["Dynamic Link", "link_name", "=", customer_name],
 				],
-				fields=["address_line1", "address_line2", "city", "state", "pincode", "country"]
+				fields=["address_line1", "address_line2", "city", "state", "pincode", "country"],
 			)
 			address_unchanged = any(
 				(a.address_line1 or "") == (req.address_line1 or "")
@@ -214,21 +240,25 @@ def _create_erp_records(req):
 				for a in existing_addresses
 			)
 			if not address_unchanged:
-				address = frappe.get_doc({
-					"doctype": "Address",
-					"address_title": req.address_title or req.full_name,
-					"address_type": "Billing",
-					"address_line1": req.address_line1,
-					"address_line2": req.address_line2 or "",
-					"city": req.city,
-					"state": req.state or "",
-					"pincode": req.pincode or "",
-					"country": req.country,
-					"links": [{
-						"link_doctype": "Customer",
-						"link_name": customer_name,
-					}],
-				})
+				address = frappe.get_doc(
+					{
+						"doctype": "Address",
+						"address_title": req.address_title or req.full_name,
+						"address_type": "Billing",
+						"address_line1": req.address_line1,
+						"address_line2": req.address_line2 or "",
+						"city": req.city,
+						"state": req.state or "",
+						"pincode": req.pincode or "",
+						"country": req.country,
+						"links": [
+							{
+								"link_doctype": "Customer",
+								"link_name": customer_name,
+							}
+						],
+					}
+				)
 				address.insert(ignore_permissions=True)
 		except Exception as e:
 			frappe.log_error(frappe.get_traceback(), f"Address creation failed for request {req.name}")
@@ -238,24 +268,28 @@ def _create_erp_records(req):
 	if req.bank_name and req.account_number:
 		try:
 			if not frappe.db.exists("Bank", req.bank_name):
-				frappe.get_doc({
-					"doctype": "Bank",
-					"bank_name": req.bank_name,
-				}).insert(ignore_permissions=True)
+				frappe.get_doc(
+					{
+						"doctype": "Bank",
+						"bank_name": req.bank_name,
+					}
+				).insert(ignore_permissions=True)
 
 			if not frappe.db.exists("Bank Account", {"bank_account_no": req.account_number}):
-				bank_account = frappe.get_doc({
-					"doctype": "Bank Account",
-					"account_name": req.address_title or req.full_name,
-					"bank": req.bank_name,
-					"bank_account_no": req.account_number,
-					"branch_code": req.bank_branch or "",
-					"account_type": req.account_type or "",
-					"currency": req.currency or "",
-					"is_company_account": 0,
-					"party_type": "Customer",
-					"party": customer_name,
-				})
+				bank_account = frappe.get_doc(
+					{
+						"doctype": "Bank Account",
+						"account_name": req.address_title or req.full_name,
+						"bank": req.bank_name,
+						"bank_account_no": req.account_number,
+						"branch_code": req.bank_branch or "",
+						"account_type": req.account_type or "",
+						"currency": req.currency or "",
+						"is_company_account": 0,
+						"party_type": "Customer",
+						"party": customer_name,
+					}
+				)
 				bank_account.insert(ignore_permissions=True)
 		except Exception as e:
 			frappe.log_error(frappe.get_traceback(), f"Bank Account creation failed for request {req.name}")
@@ -265,6 +299,7 @@ def _create_erp_records(req):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def approve_upgrade_request(request_id):
 	"""Approve an account upgrade request and update account level via GraphQL"""
@@ -288,19 +323,26 @@ def approve_upgrade_request(request_id):
 
 	# Update account level via GraphQL (ZERO, ONE, TWO, THREE)
 	result = client.update_account_level(
-		uid=account['id'],
+		uid=account["id"],
 		level=req.requested_level,
 		erp_party=erp_party,
 	)
 
-	if result.get('errors'):
-		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
+	if result.get("errors"):
+		error_messages = [err.get("message", "Unknown error") for err in result["errors"]]
 		return {"success": False, "errors": error_messages}
 
 	# Update local request record
 	req.status = "Approved"
 	req.save()
 	frappe.db.commit()
+
+	audit_log(
+		"approve_upgrade",
+		"Account Upgrade Request",
+		request_id,
+		{"phone": req.phone_number, "level": req.requested_level},
+	)
 
 	return {
 		"success": True,
@@ -309,6 +351,7 @@ def approve_upgrade_request(request_id):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def reject_upgrade_request(request_id, reason=None):
 	"""Reject an account upgrade request (local record only, no level change)"""
@@ -323,27 +366,32 @@ def reject_upgrade_request(request_id, reason=None):
 	req.save()
 
 	frappe.db.commit()
+	audit_log(
+		"reject_upgrade", "Account Upgrade Request", request_id, {"reason": reason or "No reason provided"}
+	)
 	return {"success": True, "message": "Request rejected."}
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_id_document_url(file_key):
 	"""Get pre-signed URL for ID document from Digital Ocean Spaces"""
 	if not file_key:
-		frappe.response['http_status_code'] = 400
+		frappe.response["http_status_code"] = 400
 		return {"success": False, "error": "File key is required"}
 
 	client = GraphQLClient()
 	result = client.get_id_document_read_url(file_key)
 
-	if result.get('errors'):
-		error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
+	if result.get("errors"):
+		error_messages = [err.get("message", "Unknown error") for err in result["errors"]]
 		frappe.logger().error(f"ID document URL errors: {error_messages}")
-		frappe.response['http_status_code'] = 400
+		frappe.response["http_status_code"] = 400
 		return {"success": False, "errors": error_messages}
 
-	return {"success": True, "url": result.get('readUrl')}
+	return {"success": True, "url": result.get("readUrl")}
+
 
 @frappe.whitelist()
 def get_customer_bank_accounts(customer):
@@ -359,205 +407,230 @@ def get_customer_bank_accounts(customer):
 
 # ── Account Hub helpers ──────────────────────────────────────────
 
+
 def _update_local_upgrade_request_phone(username, phone):
-    """Best-effort local sync after Flash GraphQL phone update succeeds."""
-    if not username or not phone:
-        return 0
+	"""Best-effort local sync after Flash GraphQL phone update succeeds."""
+	if not username or not phone:
+		return 0
 
-    records = frappe.get_all(
-        "Account Upgrade Request",
-        filters={"username": username},
-        pluck="name",
-        limit_page_length=50,
-    )
-    for name in records:
-        doc = frappe.get_doc("Account Upgrade Request", name)
-        doc.phone_number = phone
-        doc.save(ignore_permissions=True)
+	records = frappe.get_all(
+		"Account Upgrade Request",
+		filters={"username": username},
+		pluck="name",
+		limit_page_length=50,
+	)
+	for name in records:
+		doc = frappe.get_doc("Account Upgrade Request", name)
+		doc.phone_number = phone
+		doc.save(ignore_permissions=True)
 
-    if records:
-        frappe.db.commit()
+	if records:
+		frappe.db.commit()
 
-    return len(records)
+	return len(records)
 
 
 # ── Account Hub API ───────────────────────────────────────────────
 
+
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def search_account_smart(query):
-    """Smart search: auto-detect phone, email, username, or account ID.
+	"""Smart search: auto-detect phone, email, username, or account ID.
 
-    Account Hub should show Flash account data from the GraphQL API only. Local
-    Account Upgrade Request rows can be stale and should not be returned as
-    account-shaped fallback data.
-    """
-    if not query or not str(query).strip():
-        frappe.response['http_status_code'] = 400
-        return {"error": "Search query is required"}
+	Account Hub should show Flash account data from the GraphQL API only. Local
+	Account Upgrade Request rows can be stale and should not be returned as
+	account-shaped fallback data.
+	"""
+	if not query or not str(query).strip():
+		frappe.response["http_status_code"] = 400
+		return {"error": "Search query is required"}
 
-    query = str(query).strip()
+	query = str(query).strip()
 
-    try:
-        client = GraphQLClient()
+	try:
+		client = GraphQLClient()
 
-        if query.startswith('+') or re.match(r'^\d{7,}$', query):
-            account = client.get_account_by_phone(query)
-        elif '@' in query:
-            account = client.get_account_by_email(query)
-        elif re.match(r'^[a-zA-Z0-9_-]{3,}$', query):
-            account = client.get_account_by_username(query)
-            if account is None:
-                account = client.get_account_by_id(query)
-        else:
-            account = client.get_account_by_id(query)
+		if query.startswith("+") or re.match(r"^\d{7,}$", query):
+			account = client.get_account_by_phone(query)
+		elif "@" in query:
+			account = client.get_account_by_email(query)
+		elif re.match(r"^[a-zA-Z0-9_-]{3,}$", query):
+			account = client.get_account_by_username(query)
+			if account is None:
+				account = client.get_account_by_id(query)
+		else:
+			account = client.get_account_by_id(query)
 
-        if account is not None:
-            return account
+		if account is not None:
+			return account
 
-        frappe.response['http_status_code'] = 404
-        return {"error": "Account not found in Flash. Try searching by phone (+1...), email, username, or account ID."}
+		frappe.response["http_status_code"] = 404
+		return {
+			"error": "Account not found in Flash. Try searching by phone (+1...), email, username, or account ID."
+		}
 
-    except (ValueError, requests_lib.exceptions.RequestException, GraphQLError) as e:
-        frappe.logger().error(f"Flash API unavailable for search_account_smart ('{query}'): {e}")
-        frappe.response['http_status_code'] = 503
-        return {"error": "Flash API unavailable. Account search could not be completed."}
+	except (ValueError, requests_lib.exceptions.RequestException, GraphQLError) as e:
+		frappe.logger().error(f"Flash API unavailable for search_account_smart ('{query}'): {e}")
+		frappe.response["http_status_code"] = 503
+		return {"error": "Flash API unavailable. Account search could not be completed."}
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_upgrade_requests_by_account(username):
-    """Get upgrade request records for a specific account by username."""
-    if not username:
-        return {"data": [], "total": 0}
+	"""Get upgrade request records for a specific account by username."""
+	if not username:
+		return {"data": [], "total": 0}
 
-    records = frappe.get_all(
-        "Account Upgrade Request",
-        filters={"username": username},
-        fields=["*"],
-        order_by="creation desc",
-        limit_page_length=50,
-    )
+	records = frappe.get_all(
+		"Account Upgrade Request",
+		filters={"username": username},
+		fields=["*"],
+		order_by="creation desc",
+		limit_page_length=50,
+	)
 
-    return {"data": records, "total": len(records)}
+	return {"data": records, "total": len(records)}
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def update_account_status_api(uid=None, account_uuid=None, username=None, status=None, comment=None):
-    """Update account status in Flash GraphQL.
+	"""Update account status in Flash GraphQL.
 
-    Account Hub should mutate Flash as the source of truth. Local Account Upgrade
-    Request rows do not have the same account status semantics, so this endpoint
-    intentionally does not write ACTIVE/LOCKED into request status fields.
-    """
-    if not status:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Status is required"}
+	Account Hub should mutate Flash as the source of truth. Local Account Upgrade
+	Request rows do not have the same account status semantics, so this endpoint
+	intentionally does not write ACTIVE/LOCKED into request status fields.
+	"""
+	if not status:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Status is required"}
 
-    account_uid = uid or account_uuid
-    client = GraphQLClient()
+	account_uid = uid or account_uuid
+	client = GraphQLClient()
 
-    if not account_uid and username:
-        account = client.get_account_by_username(username)
-        if account:
-            account_uid = account.get("id") or account.get("uuid")
+	if not account_uid and username:
+		account = client.get_account_by_username(username)
+		if account:
+			account_uid = account.get("id") or account.get("uuid")
 
-    if not account_uid:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Account UID is required to update status in Flash"}
+	if not account_uid:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Account UID is required to update status in Flash"}
 
-    result = client.update_account_status(account_uid, status, comment)
-    return result or {"success": True}
+	result = client.update_account_status(account_uid, status, comment)
+	audit_log("update_status", "Flash Account", account_uid, {"status": status, "comment": comment})
+	return result or {"success": True}
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def update_user_phone_api(account_uuid=None, phone=None, username=None):
-    """Update user phone in Flash GraphQL, then best-effort sync local request rows."""
-    if not phone:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Phone is required"}
+	"""Update user phone in Flash GraphQL, then best-effort sync local request rows."""
+	if not phone:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Phone is required"}
 
-    client = GraphQLClient()
+	client = GraphQLClient()
 
-    if not account_uuid and username:
-        account = client.get_account_by_username(username)
-        if account:
-            account_uuid = account.get("uuid")
+	if not account_uuid and username:
+		account = client.get_account_by_username(username)
+		if account:
+			account_uuid = account.get("uuid")
 
-    if not account_uuid:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Account UUID is required to update phone in Flash"}
+	if not account_uuid:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Account UUID is required to update phone in Flash"}
 
-    result = client.update_user_phone(account_uuid, phone)
-    if result and result.get("errors"):
-        return result
+	result = client.update_user_phone(account_uuid, phone)
+	if result and result.get("errors"):
+		return result
 
-    local_updates = _update_local_upgrade_request_phone(username, phone)
-    if isinstance(result, dict):
-        result["local_updates"] = local_updates
-        return result
+	local_updates = _update_local_upgrade_request_phone(username, phone)
+	if isinstance(result, dict):
+		result["local_updates"] = local_updates
+		return result
 
-    return {"success": True, "local_updates": local_updates}
+	return {"success": True, "local_updates": local_updates}
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def validate_merchant_api(merchant_id=None):
-    """Validate a merchant map entry in Flash GraphQL."""
-    if not merchant_id:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Merchant ID is required"}
+	"""Validate a merchant map entry in Flash GraphQL."""
+	if not merchant_id:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Merchant ID is required"}
 
-    client = GraphQLClient()
-    return client.validate_merchant(merchant_id)
+	client = GraphQLClient()
+	return client.validate_merchant(merchant_id)
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def delete_merchant_api(merchant_id=None):
-    """Delete a merchant map entry in Flash GraphQL."""
-    if not merchant_id:
-        frappe.response['http_status_code'] = 400
-        return {"success": False, "error": "Merchant ID is required"}
+	"""Delete a merchant map entry in Flash GraphQL."""
+	if not merchant_id:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Merchant ID is required"}
 
-    client = GraphQLClient()
-    return client.delete_merchant(merchant_id)
+	client = GraphQLClient()
+	return client.delete_merchant(merchant_id)
 
 
 # ── Dashboard ────────────────────────────────────────────────────
 
+
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_dashboard_stats():
-    """Get summary stats for the admin dashboard."""
-    pending = frappe.db.count("Account Upgrade Request", {"status": "Pending"})
-    approved = frappe.db.count("Account Upgrade Request", {"status": "Approved"})
-    rejected = frappe.db.count("Account Upgrade Request", {"status": "Rejected"})
+	"""Get summary stats for the admin dashboard."""
+	pending = frappe.db.count("Account Upgrade Request", {"status": "Pending"})
+	approved = frappe.db.count("Account Upgrade Request", {"status": "Approved"})
+	rejected = frappe.db.count("Account Upgrade Request", {"status": "Rejected"})
 
-    today = frappe.utils.nowdate()
-    approved_today = frappe.db.count("Account Upgrade Request", {
-        "status": "Approved",
-        "modified": [">=", today],
-    })
+	today = frappe.utils.nowdate()
+	approved_today = frappe.db.count(
+		"Account Upgrade Request",
+		{
+			"status": "Approved",
+			"modified": [">=", today],
+		},
+	)
 
-    all_records = frappe.get_all(
-        "Account Upgrade Request",
-        fields=["name", "username", "full_name", "phone_number", "email",
-                "requested_level", "current_level", "status", "creation"],
-        order_by="creation desc",
-        limit_page_length=500,
-    )
+	all_records = frappe.get_all(
+		"Account Upgrade Request",
+		fields=[
+			"name",
+			"username",
+			"full_name",
+			"phone_number",
+			"email",
+			"requested_level",
+			"current_level",
+			"status",
+			"creation",
+		],
+		order_by="creation desc",
+		limit_page_length=500,
+	)
 
-    return {
-        "upgrade_requests": {
-            "pending": pending,
-            "approved": approved,
-            "rejected": rejected,
-            "approved_today": approved_today,
-        },
-        "recent_requests": all_records[:8],
-        "all_requests": all_records,
-        "total_requests": pending + approved + rejected,
-    }
+	return {
+		"upgrade_requests": {
+			"pending": pending,
+			"approved": approved,
+			"rejected": rejected,
+			"approved_today": approved_today,
+		},
+		"recent_requests": all_records[:8],
+		"all_requests": all_records,
+		"total_requests": pending + approved + rejected,
+	}

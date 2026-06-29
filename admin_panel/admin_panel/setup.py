@@ -4,9 +4,26 @@ from admin_panel.admin_panel.doctype.allowed_country.seed import seed_allowed_co
 
 
 def after_migrate():
+	ensure_roles()
 	sync_pages()
 	delete_legacy_pages()
 	seed_allowed_countries()
+
+
+def ensure_roles():
+	"""Create custom roles referenced by RBAC (admin_panel.api.auth) if missing.
+
+	The Account Upgrade Request permissions and the require_admin decorator
+	reference "Flash Admin"; without the Role record it cannot be assigned.
+	"""
+	for role_name in ("Flash Admin",):
+		if not frappe.db.exists("Role", role_name):
+			role = frappe.new_doc("Role")
+			role.role_name = role_name
+			role.desk_access = 1
+			role.flags.ignore_permissions = True
+			role.insert()
+	frappe.db.commit()
 
 
 def sync_pages():

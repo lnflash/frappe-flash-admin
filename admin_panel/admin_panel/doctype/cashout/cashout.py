@@ -1,8 +1,11 @@
 import frappe
 from frappe.model.document import Document
 
+from admin_panel.api.auth import audit_log, require_financial
+
 
 @frappe.whitelist()
+@require_financial()
 def submit_cashout(name):
 	frappe.get_doc("Cashout", name).submit()
 
@@ -12,9 +15,6 @@ class Cashout(Document):
 		bank_account = frappe.get_doc("Bank Account", self.bank_account)
 		if bank_account.party_type != "Customer" or bank_account.party != self.customer:
 			frappe.throw("Bank Account does not belong to the selected Customer.")
-
-		# account_currency = frappe.get_value("Account", bank_account.account, "account_currency")
-		# self.currency = account_currency or "USD"
 
 	def after_insert(self):
 		self.create_payable_journal_entry()
@@ -27,6 +27,9 @@ class Cashout(Document):
 		je = frappe.get_doc("Journal Entry", self.journal_entry)
 		je.submit()
 		self.db_set("status", "In Progress")
+		audit_log(
+			"submit_cashout", "Cashout", self.name, {"customer": self.customer, "amount": self.user_pays}
+		)
 
 	def create_payable_journal_entry(self):
 		company = frappe.defaults.get_user_default("Company")
@@ -56,8 +59,6 @@ class Cashout(Document):
 						"credit_in_account_currency": self.user_receives,
 						"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
 						"exchange_rate": 1 / self.exchange_rate if is_jmd else 1,
-						# "party_type": "Customer",
-						# "party": self.customer,
 					},
 					{
 						"account": settings.service_fees_account,
@@ -70,10 +71,14 @@ class Cashout(Document):
 			}
 		)
 
-		je.insert(ignore_permissions=True)
+		# No ignore_permissions: enforce Journal Entry perms. Cashout creation is
+		# restricted to Accounts Manager (see cashout.json), which holds Journal
+		# Entry permission in standard ERPNext, so this insert succeeds for them.
+		je.insert()
 		self.db_set("journal_entry", je.name, update_modified=False)
 
 	@frappe.whitelist()
+	@require_financial()
 	def create_payment_journal_entry(self, reference_no=None, reference_date=None):
 		if self.payment_journal_entry:
 			frappe.throw("Payment Journal Entry already exists.")
@@ -133,8 +138,6 @@ class Cashout(Document):
 					{
 						**payout_entry,
 						"account": payables_account,
-						# "party_type": "Customer",
-						# "party": self.customer,
 					},
 					{
 						**payout_entry,
@@ -148,8 +151,12 @@ class Cashout(Document):
 			}
 		)
 
-		je.insert(ignore_permissions=True)
+		je.insert()
 		je.submit()
 
 		self.db_set("payment_journal_entry", je.name)
 		self.db_set("status", "Completed")
+		audit_log(
+			"complete_cashout", "Cashout", self.name, {"payment_je": je.name, "amount": self.user_receives}
+		)
+		frappe.msgprint(f"Payment Journal Entry {je.name} created.")

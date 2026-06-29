@@ -5,6 +5,7 @@ from decimal import ROUND_HALF_UP, Decimal
 import frappe
 import requests as requests_lib
 
+from .auth import audit_log, require_admin, require_financial, require_roles
 from .graphql_client import GraphQLClient, GraphQLError
 
 
@@ -36,6 +37,7 @@ def handle_api_errors(func):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_account_by_phone(phone):
 	"""Get account details by phone number"""
@@ -50,6 +52,7 @@ def get_account_by_phone(phone):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def update_account_level(uid, level):
 	"""Update account level"""
@@ -80,12 +83,24 @@ def get_alert_types():
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def send_alert(alert_type, title, message):
 	"""Send push notification via Flash sendNotification API"""
 	if not title or not message or not alert_type:
 		frappe.response["http_status_code"] = 400
 		return {"success": False, "error": "Alert type, title, and message are required"}
+
+	# Bound input lengths to avoid oversized/abusive push payloads.
+	title = str(title).strip()
+	message = str(message).strip()
+	alert_type = str(alert_type).strip()
+	if len(title) > 140 or len(message) > 1000 or len(alert_type) > 64:
+		frappe.response["http_status_code"] = 400
+		return {
+			"success": False,
+			"error": "Alert exceeds length limits (title<=140, message<=1000, type<=64)",
+		}
 
 	client = GraphQLClient()
 	result = client.send_alert(alert_type, title, message)
@@ -116,6 +131,7 @@ def send_alert(alert_type, title, message):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10):
 	"""Get paginated upgrade requests from Account Upgrade Request doctype"""
@@ -149,6 +165,7 @@ def get_upgrade_requests(status=None, requested_level=None, page=1, page_size=10
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def search_account(id: str):
 	"""Search account by phone number or username"""
@@ -283,6 +300,7 @@ def _create_erp_records(req):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def approve_upgrade_request(request_id):
 	"""Approve an account upgrade request and update account level via GraphQL"""
@@ -320,6 +338,13 @@ def approve_upgrade_request(request_id):
 	req.save()
 	frappe.db.commit()
 
+	audit_log(
+		"approve_upgrade",
+		"Account Upgrade Request",
+		request_id,
+		{"phone": req.phone_number, "level": req.requested_level},
+	)
+
 	return {
 		"success": True,
 		"message": "Request approved and account level updated.",
@@ -327,6 +352,7 @@ def approve_upgrade_request(request_id):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def reject_upgrade_request(request_id, reason=None):
 	"""Reject an account upgrade request (local record only, no level change)"""
@@ -341,10 +367,14 @@ def reject_upgrade_request(request_id, reason=None):
 	req.save()
 
 	frappe.db.commit()
+	audit_log(
+		"reject_upgrade", "Account Upgrade Request", request_id, {"reason": reason or "No reason provided"}
+	)
 	return {"success": True, "message": "Request rejected."}
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_id_document_url(file_key):
 	"""Get pre-signed URL for ID document from Digital Ocean Spaces"""
@@ -405,6 +435,7 @@ def _update_local_upgrade_request_phone(username, phone):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def search_account_smart(query):
 	"""Smart search: auto-detect phone, email, username, or account ID.
@@ -448,6 +479,7 @@ def search_account_smart(query):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_upgrade_requests_by_account(username):
 	"""Get upgrade request records for a specific account by username."""
@@ -466,6 +498,7 @@ def get_upgrade_requests_by_account(username):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def update_account_status_api(uid=None, account_uuid=None, username=None, status=None, comment=None):
 	"""Update account status in Flash GraphQL.
@@ -491,10 +524,12 @@ def update_account_status_api(uid=None, account_uuid=None, username=None, status
 		return {"success": False, "error": "Account UID is required to update status in Flash"}
 
 	result = client.update_account_status(account_uid, status, comment)
+	audit_log("update_status", "Flash Account", account_uid, {"status": status, "comment": comment})
 	return result or {"success": True}
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def update_user_phone_api(account_uuid=None, phone=None, username=None):
 	"""Update user phone in Flash GraphQL, then best-effort sync local request rows."""
@@ -526,6 +561,7 @@ def update_user_phone_api(account_uuid=None, phone=None, username=None):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def validate_merchant_api(merchant_id=None):
 	"""Validate a merchant map entry in Flash GraphQL."""
@@ -538,6 +574,7 @@ def validate_merchant_api(merchant_id=None):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def delete_merchant_api(merchant_id=None):
 	"""Delete a merchant map entry in Flash GraphQL."""
@@ -553,6 +590,7 @@ def delete_merchant_api(merchant_id=None):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_dashboard_stats():
 	"""Get summary stats for the admin dashboard."""
@@ -692,6 +730,7 @@ def _enrich_cashout(cashout_doc) -> dict:
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_cashout_requests(status=None, page=1, page_size=10):
 	"""Get paginated cashout requests from the Cashout doctype."""
@@ -734,6 +773,7 @@ def get_cashout_requests(status=None, page=1, page_size=10):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def search_cashout_account(id: str):
 	"""Search cashout requests by customer name or phone number."""
@@ -779,6 +819,7 @@ def search_cashout_account(id: str):
 
 
 @frappe.whitelist()
+@require_admin()
 @handle_api_errors
 def get_bridge_transfer_requests(status=None, transaction_type=None, query=None, page=1, page_size=10):
 	"""Get paginated Bridge transfer audit records for the Transfer Requests page."""
@@ -1045,6 +1086,7 @@ def _settle_cashout(doc, confirmation_code=None):
 
 
 @frappe.whitelist()
+@require_financial()
 @handle_api_errors
 def create_cashout_request(cashout_id):
 	"""Submit a draft cashout so it is ready for out-of-band bank settlement."""
@@ -1068,6 +1110,7 @@ def create_cashout_request(cashout_id):
 
 
 @frappe.whitelist()
+@require_financial()
 @handle_api_errors
 def confirm_cashout_payment(cashout_id, confirmation_code=None):
 	"""Record a bank confirmation code and settle the cashout payment."""
@@ -1082,6 +1125,12 @@ def confirm_cashout_payment(cashout_id, confirmation_code=None):
 
 	result = _settle_cashout(doc, confirmation_code=confirmation_code)
 	if result.get("success"):
+		audit_log(
+			"confirm_cashout_payment",
+			"Cashout",
+			doc.name,
+			{"confirmation_code": confirmation_code, "payment_entry": result.get("payment_entry")},
+		)
 		result["message"] = (
 			f"Payment confirmed with code {confirmation_code}. "
 			f"Journal Entry {result.get('payment_entry')} recorded and Flash notification sent."
@@ -1090,6 +1139,7 @@ def confirm_cashout_payment(cashout_id, confirmation_code=None):
 
 
 @frappe.whitelist()
+@require_financial()
 @handle_api_errors
 def complete_cashout(cashout_id):
 	"""Settle a cashout without requiring a bank confirmation code."""
@@ -1106,6 +1156,7 @@ def complete_cashout(cashout_id):
 
 
 @frappe.whitelist()
+@require_financial()
 @handle_api_errors
 def record_cashout_payment(cashout_id):
 	"""Record payment for a cashout by calling create_payment_journal_entry."""

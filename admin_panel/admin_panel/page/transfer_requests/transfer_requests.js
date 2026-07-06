@@ -996,19 +996,25 @@ class TransferRequestsManager {
 		const actions = [];
 		if (showActions && this.canCreateCashout(req)) {
 			actions.push(`
-                <button class="modern-icon-btn modern-icon-btn-primary btn-quick-create" data-request-id="${this.escapeHtml(req.name)}" title="Create">
+                <button class="modern-icon-btn modern-icon-btn-primary btn-quick-create" data-request-id="${this.escapeHtml(
+					req.name
+				)}" title="Create">
                     <i class="fa fa-plus"></i>
                 </button>
             `);
 		}
 		if (showActions && this.canSettleCashout(req)) {
 			actions.push(`
-                <button class="modern-icon-btn modern-icon-btn-primary btn-quick-confirm" data-request-id="${this.escapeHtml(req.name)}" title="Confirm">
+                <button class="modern-icon-btn modern-icon-btn-primary btn-quick-confirm" data-request-id="${this.escapeHtml(
+					req.name
+				)}" title="Confirm">
                     <i class="fa fa-key"></i>
                 </button>
             `);
 			actions.push(`
-                <button class="modern-icon-btn modern-icon-btn-success btn-quick-complete" data-request-id="${this.escapeHtml(req.name)}" title="Mark as Complete">
+                <button class="modern-icon-btn modern-icon-btn-success btn-quick-complete" data-request-id="${this.escapeHtml(
+					req.name
+				)}" title="Mark as Complete">
                     <i class="fa fa-check"></i>
                 </button>
             `);
@@ -1043,7 +1049,9 @@ class TransferRequestsManager {
                 <td>${this.escapeHtml(this.formatPhone(req.phone_number))}</td>
                 <td><strong>${sendDisplay}</strong></td>
                 <td>${receiveJmdDisplay}</td>
-                <td><span class="modern-badge ${this.escapeHtml(statusBadge)}">${this.escapeHtml(displayStatus)}</span></td>
+                <td><span class="modern-badge ${this.escapeHtml(statusBadge)}">${this.escapeHtml(
+			displayStatus
+		)}</span></td>
                 <td>${this.formatDateTime(req.creation)}</td>
                 ${actionsHtml}
             </tr>
@@ -1289,7 +1297,9 @@ class TransferRequestsManager {
 			panel
 				.find(".detail-journal-entry")
 				.html(
-					`<a class="detail-link" href="/app/journal-entry/${encodeURIComponent(req.journal_entry)}" target="_blank">${this.escapeHtml(req.journal_entry)}</a>`
+					`<a class="detail-link" href="/app/journal-entry/${encodeURIComponent(
+						req.journal_entry
+					)}" target="_blank">${this.escapeHtml(req.journal_entry)}</a>`
 				);
 		} else {
 			panel.find(".detail-journal-entry").text("-");
@@ -1300,7 +1310,9 @@ class TransferRequestsManager {
 			panel
 				.find(".detail-bank-account")
 				.html(
-					`<a class="detail-link" href="/app/bank-account/${encodeURIComponent(req.bank_account)}" target="_blank">${this.escapeHtml(req.bank_account)}</a>`
+					`<a class="detail-link" href="/app/bank-account/${encodeURIComponent(
+						req.bank_account
+					)}" target="_blank">${this.escapeHtml(req.bank_account)}</a>`
 				);
 		} else {
 			panel.find(".detail-bank-account").text("-");
@@ -1315,7 +1327,9 @@ class TransferRequestsManager {
 			panel
 				.find(".detail-payment-entry")
 				.html(
-					`<a class="detail-link" href="/app/journal-entry/${encodeURIComponent(req.payment_entry)}" target="_blank">${this.escapeHtml(req.payment_entry)}</a>`
+					`<a class="detail-link" href="/app/journal-entry/${encodeURIComponent(
+						req.payment_entry
+					)}" target="_blank">${this.escapeHtml(req.payment_entry)}</a>`
 				);
 			panel
 				.find(".detail-pe-amount")
@@ -1407,7 +1421,9 @@ class TransferRequestsManager {
 				: "this cashout";
 
 		frappe.confirm(
-			`Create cashout request for <strong>${this.escapeHtml(req.username)}</strong> worth <strong>${sendDisplay}</strong>?<br><br>This submits the Cashout and payable Journal Entry so the bank transfer can be settled.`,
+			`Create cashout request for <strong>${this.escapeHtml(
+				req.username
+			)}</strong> worth <strong>${sendDisplay}</strong>?<br><br>This submits the Cashout and payable Journal Entry so the bank transfer can be settled.`,
 			() => {
 				this.set_cashout_action_buttons_disabled(true);
 
@@ -1510,7 +1526,9 @@ class TransferRequestsManager {
 				: "this cashout";
 
 		frappe.confirm(
-			`Mark <strong>${this.escapeHtml(req.username)}</strong>'s <strong>${sendDisplay}</strong> cashout as complete?<br><br>This creates the payment Journal Entry if one does not already exist.`,
+			`Mark <strong>${this.escapeHtml(
+				req.username
+			)}</strong>'s <strong>${sendDisplay}</strong> cashout as complete?<br><br>This creates the payment Journal Entry if one does not already exist.`,
 			() => {
 				this.set_cashout_action_buttons_disabled(true);
 

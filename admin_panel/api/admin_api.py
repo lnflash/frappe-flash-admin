@@ -1032,57 +1032,65 @@ def _send_cashout_completion_notification(notification_context):
 	}
 
 
+def _notify_cashout_completion(doc):
+	"""Best-effort Flash notification. Never blocks settlement: by the time an
+	operator confirms here the bank transfer has already happened out-of-band,
+	so a failed account lookup or send must not prevent recording the payment
+	(it used to hard-block settlement when the customer couldn't be matched to
+	a Flash account)."""
+	try:
+		context = _get_cashout_completion_notification_context(doc)
+		if not context.get("success"):
+			return {"success": False, "error": context.get("error")}
+		return _send_cashout_completion_notification(context)
+	except Exception as e:
+		return {"success": False, "error": str(e)}
+
+
 def _settle_cashout(doc, confirmation_code=None):
 	submit_error = _submit_cashout_if_needed(doc)
 	if submit_error:
 		return submit_error
 
-	notification_context = _get_cashout_completion_notification_context(doc)
-	if not notification_context.get("success"):
-		return notification_context
-
 	_append_cashout_confirmation_code(doc, confirmation_code)
 
-	if doc.payment_journal_entry:
+	# Row-lock and re-read before deciding to pay: two concurrent confirms
+	# (double-click, second operator, retry racing a slow request) otherwise
+	# both observe an empty payment_journal_entry and post duplicate journal
+	# entries. The second request blocks here until the first commits, then
+	# sees the entry and takes the already-paid path.
+	existing_payment_entry = frappe.db.get_value(
+		"Cashout", doc.name, "payment_journal_entry", for_update=True
+	)
+	if existing_payment_entry:
+		doc.reload()
 		if doc.status != "Completed":
 			doc.db_set("status", "Completed", update_modified=True)
 			doc.status = "Completed"
-		notification = _send_cashout_completion_notification(notification_context)
-		if not notification.get("success"):
-			return {
-				"success": False,
-				"status": doc.status,
-				"payment_entry": doc.payment_journal_entry,
-				"notification_sent": False,
-				"error": f"Cashout is complete, but Flash notification failed: {notification.get('error')}",
-			}
-		return {
-			"success": True,
-			"status": doc.status,
-			"payment_entry": doc.payment_journal_entry,
-			"notification_sent": True,
-			"message": f"Cashout already has payment journal entry {doc.payment_journal_entry}; Flash notification sent.",
-		}
+		settled_message = f"Cashout already has payment journal entry {doc.payment_journal_entry}"
+	else:
+		doc.create_payment_journal_entry(reference_no=confirmation_code, reference_date=frappe.utils.today())
+		doc.reload()
+		settled_message = f"Payment recorded successfully. Journal Entry {doc.payment_journal_entry} created"
 
-	doc.create_payment_journal_entry(reference_no=confirmation_code, reference_date=frappe.utils.today())
-	doc.reload()
-	notification = _send_cashout_completion_notification(notification_context)
-	if not notification.get("success"):
-		return {
-			"success": False,
-			"status": doc.status,
-			"payment_entry": doc.payment_journal_entry,
-			"notification_sent": False,
-			"error": f"Cashout is complete, but Flash notification failed: {notification.get('error')}",
-		}
+	notification = _notify_cashout_completion(doc)
+	notification_sent = bool(notification.get("success"))
 
-	return {
+	result = {
 		"success": True,
 		"status": doc.status,
 		"payment_entry": doc.payment_journal_entry,
-		"notification_sent": True,
-		"message": f"Payment recorded successfully. Journal Entry {doc.payment_journal_entry} created and Flash notification sent.",
+		"notification_sent": notification_sent,
 	}
+	if notification_sent:
+		result["message"] = f"{settled_message}; Flash notification sent."
+	else:
+		result["notification_error"] = notification.get("error")
+		result["message"] = (
+			f"{settled_message}. Flash notification NOT sent: {notification.get('error')} — "
+			"the cashout is settled; re-run the action to retry the notification."
+		)
+	return result
 
 
 @frappe.whitelist()
@@ -1131,10 +1139,9 @@ def confirm_cashout_payment(cashout_id, confirmation_code=None):
 			doc.name,
 			{"confirmation_code": confirmation_code, "payment_entry": result.get("payment_entry")},
 		)
-		result["message"] = (
-			f"Payment confirmed with code {confirmation_code}. "
-			f"Journal Entry {result.get('payment_entry')} recorded and Flash notification sent."
-		)
+		# Keep _settle_cashout's message — it states truthfully whether the
+		# Flash notification went out; just prefix the confirmation context.
+		result["message"] = f"Payment confirmed with code {confirmation_code}. {result.get('message', '')}"
 	return result
 
 
@@ -1149,8 +1156,11 @@ def complete_cashout(cashout_id):
 
 	result = _settle_cashout(doc)
 	if result.get("success"):
-		result["message"] = (
-			f"Cashout marked complete. Journal Entry {result.get('payment_entry')} recorded and Flash notification sent."
+		audit_log(
+			"complete_cashout",
+			"Cashout",
+			doc.name,
+			{"payment_entry": result.get("payment_entry")},
 		)
 	return result
 

@@ -28,4 +28,6 @@ read -rp "Proceed? [y/N] " CONFIRM
 git tag "$NEW_TAG"
 git push origin "$NEW_TAG"
 
-./ci.sh
+echo "Tag pushed — the publish-image workflow now builds and pushes"
+echo "ghcr.io/lnflash/frappe-flash:${NEW_TAG} and opens the deployments bump PR."
+echo "Watch: https://github.com/lnflash/frappe-flash-admin/actions"

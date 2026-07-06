@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="brh28/frappe-flash"
+# Local fallback only — the publish-image GitHub workflow is the normal path
+# (builds on v* tag push). Requires a PAT with packages:write for ghcr login.
+REPO="ghcr.io/lnflash/frappe-flash"
 
 TAG="$(git describe --tags --exact-match HEAD 2>/dev/null)" || {
   echo "Error: HEAD is not tagged. Tag the commit first (e.g. git tag v1.2.0)." >&2

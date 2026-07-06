@@ -1,12 +1,14 @@
-frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
-    const page = frappe.ui.make_app_page({
-        parent: wrapper,
-        title: 'Dashboard',
-        single_column: true,
-    });
+frappe.pages["admin-dashboard"].on_page_load = function (wrapper) {
+	const page = frappe.ui.make_app_page({
+		parent: wrapper,
+		title: "Dashboard",
+		single_column: true,
+	});
 
-    // ── Inject custom styles ──
-    $('<style>').html(`
+	// ── Inject custom styles ──
+	$("<style>")
+		.html(
+			`
         .ad-wrap {
             max-width: 1200px;
             margin: 0 auto;
@@ -247,13 +249,15 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
             .ad-tool-desc { font-size: 12px; }
             .ad-table td, .ad-table th { padding: 10px 12px; font-size: 12px; }
         }
-    `).appendTo(page.main);
-    // ── ── ── ──
+    `
+		)
+		.appendTo(page.main);
+	// ── ── ── ──
 
-    const $wrap = $('<div class="ad-wrap">').appendTo(page.main);
+	const $wrap = $('<div class="ad-wrap">').appendTo(page.main);
 
-    // ── Loading state ──
-    $wrap.html(`
+	// ── Loading state ──
+	$wrap.html(`
         <div class="ad-loading">
             <div class="frappe-list-loading" style="text-align:center;">
                 <div class="frappe-list-loading-spin"></div>
@@ -262,114 +266,129 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
         </div>
     `);
 
-    // ── Fetch stats & render ──
-    frappe.call({
-        method: 'admin_panel.api.admin_api.get_dashboard_stats',
-        callback: (res) => {
-            const data = res.message;
-            if (!data) {
-                $wrap.html('<p style="text-align:center;padding:40px;color:var(--text-muted);">Could not load dashboard data.</p>');
-                return;
-            }
-            render(data);
-        },
-        error: () => {
-            $wrap.html('<p style="text-align:center;padding:40px;color:var(--text-muted);">Network error loading dashboard.</p>');
-        }
-    });
+	// ── Fetch stats & render ──
+	frappe.call({
+		method: "admin_panel.api.admin_api.get_dashboard_stats",
+		callback: (res) => {
+			const data = res.message;
+			if (!data) {
+				$wrap.html(
+					'<p style="text-align:center;padding:40px;color:var(--text-muted);">Could not load dashboard data.</p>'
+				);
+				return;
+			}
+			render(data);
+		},
+		error: () => {
+			$wrap.html(
+				'<p style="text-align:center;padding:40px;color:var(--text-muted);">Network error loading dashboard.</p>'
+			);
+		},
+	});
 
-    function render(data) {
-        const rq = data.upgrade_requests || {};
-        const requests = data.all_requests || data.recent_requests || [];
+	function render(data) {
+		const rq = data.upgrade_requests || {};
+		const requests = data.all_requests || data.recent_requests || [];
 
-        const levelLabel = (lvl) => {
-            const labels = { ZERO: 'Zero', ONE: 'One', TWO: 'Two', THREE: 'Three' };
-            return labels[lvl] || lvl || '—';
-        };
+		const levelLabel = (lvl) => {
+			const labels = { ZERO: "Zero", ONE: "One", TWO: "Two", THREE: "Three" };
+			return labels[lvl] || lvl || "—";
+		};
 
-        const statusBadge = (s) => {
-            const cls = {
-                'Pending': 'ad-badge-pending',
-                'Approved': 'ad-badge-approved',
-                'Rejected': 'ad-badge-rejected'
-            };
-            return `<span class="ad-badge ${cls[s] || 'ad-badge-default'}">${s || '—'}</span>`;
-        };
+		const statusBadge = (s) => {
+			const cls = {
+				Pending: "ad-badge-pending",
+				Approved: "ad-badge-approved",
+				Rejected: "ad-badge-rejected",
+			};
+			return `<span class="ad-badge ${cls[s] || "ad-badge-default"}">${s || "—"}</span>`;
+		};
 
-        const formatDate = (ts) => {
-            if (!ts) return '—';
-            const d = new Date(ts);
-            if (isNaN(d.getTime())) return ts;
-            const now = new Date();
-            const diff = (now - d) / 1000;
-            if (diff < 60) return 'just now';
-            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        };
+		const formatDate = (ts) => {
+			if (!ts) return "—";
+			const d = new Date(ts);
+			if (isNaN(d.getTime())) return ts;
+			const now = new Date();
+			const diff = (now - d) / 1000;
+			if (diff < 60) return "just now";
+			if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+			if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+			return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+		};
 
+		const normalizeSearch = (value) =>
+			String(value || "")
+				.toLowerCase()
+				.replace(/[^a-z0-9]+/g, "");
 
-        const normalizeSearch = (value) => String(value || '')
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '');
+		const fuzzyIncludes = (value, rawNeedle) => {
+			const haystack = String(value || "").toLowerCase();
+			const needle = String(rawNeedle || "").toLowerCase();
+			if (!needle) return true;
+			if (haystack.includes(needle)) return true;
 
-        const fuzzyIncludes = (value, rawNeedle) => {
-            const haystack = String(value || '').toLowerCase();
-            const needle = String(rawNeedle || '').toLowerCase();
-            if (!needle) return true;
-            if (haystack.includes(needle)) return true;
+			const normalizedHaystack = normalizeSearch(haystack);
+			const normalizedNeedle = normalizeSearch(needle);
+			if (!normalizedNeedle) return true;
+			if (normalizedHaystack.includes(normalizedNeedle)) return true;
 
-            const normalizedHaystack = normalizeSearch(haystack);
-            const normalizedNeedle = normalizeSearch(needle);
-            if (!normalizedNeedle) return true;
-            if (normalizedHaystack.includes(normalizedNeedle)) return true;
+			// Lightweight fuzzy fallback: ordered-character subsequence match.
+			let j = 0;
+			for (const ch of normalizedHaystack) {
+				if (ch === normalizedNeedle[j]) j += 1;
+				if (j === normalizedNeedle.length) return true;
+			}
+			return false;
+		};
 
-            // Lightweight fuzzy fallback: ordered-character subsequence match.
-            let j = 0;
-            for (const ch of normalizedHaystack) {
-                if (ch === normalizedNeedle[j]) j += 1;
-                if (j === normalizedNeedle.length) return true;
-            }
-            return false;
-        };
+		const requestMatchesQuery = (request, query) => {
+			const tokens = String(query || "")
+				.trim()
+				.split(/\s+/)
+				.filter(Boolean);
+			if (!tokens.length) return true;
 
-        const requestMatchesQuery = (request, query) => {
-            const tokens = String(query || '').trim().split(/\s+/).filter(Boolean);
-            if (!tokens.length) return true;
+			const fields = [
+				request.username,
+				request.full_name,
+				request.phone_number,
+				request.email,
+				request.name,
+				request.status,
+				request.requested_level,
+				request.current_level,
+				levelLabel(request.requested_level),
+				levelLabel(request.current_level),
+			];
 
-            const fields = [
-                request.username,
-                request.full_name,
-                request.phone_number,
-                request.email,
-                request.name,
-                request.status,
-                request.requested_level,
-                request.current_level,
-                levelLabel(request.requested_level),
-                levelLabel(request.current_level),
-            ];
+			return tokens.every((token) => fields.some((field) => fuzzyIncludes(field, token)));
+		};
 
-            return tokens.every(token => fields.some(field => fuzzyIncludes(field, token)));
-        };
+		const renderRequestRows = (items) => {
+			if (!items.length) {
+				return '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No upgrade requests match that search.</td></tr>';
+			}
 
-        const renderRequestRows = (items) => {
-            if (!items.length) {
-                return '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No upgrade requests match that search.</td></tr>';
-            }
-
-            return items.map(r => `
-                <tr style="cursor:pointer;" data-username="${frappe.utils.escape_html(r.username || '')}" data-query="${frappe.utils.escape_html(r.username || r.phone_number || r.email || r.name || '')}" class="ad-req-row">
-                    <td><strong>${frappe.utils.escape_html(r.username || '—')}</strong></td>
-                    <td>${frappe.utils.escape_html(r.full_name || '—')}</td>
+			return items
+				.map(
+					(r) => `
+                <tr style="cursor:pointer;" data-username="${frappe.utils.escape_html(
+					r.username || ""
+				)}" data-query="${frappe.utils.escape_html(
+						r.username || r.phone_number || r.email || r.name || ""
+					)}" class="ad-req-row">
+                    <td><strong>${frappe.utils.escape_html(r.username || "—")}</strong></td>
+                    <td>${frappe.utils.escape_html(r.full_name || "—")}</td>
                     <td>${levelLabel(r.requested_level)}</td>
                     <td>${statusBadge(r.status)}</td>
                     <td>${formatDate(r.creation)}</td>
                 </tr>
-            `).join('');
-        };
+            `
+				)
+				.join("");
+		};
 
-        $wrap.html(`
+		$wrap.html(`
             <div class="ad-header">
                 <h1>Admin Dashboard</h1>
                 <p>Welcome, support team. Here's what's happening.</p>
@@ -414,11 +433,11 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
                         <div class="ad-tool-desc">Review ID documents, approve or reject upgrade requests, update user details.</div>
                     </div>
                 </div>
-                <div class="ad-tool-card" data-route="/app/bridge-transfer-request">
+                <div class="ad-tool-card" data-route="/app/transfer-requests">
                     <div class="ad-tool-icon" style="background:#e6f9ed;color:#1a7d36;">💸</div>
                     <div class="ad-tool-content">
                         <div class="ad-tool-title">Transfer Requests</div>
-                        <div class="ad-tool-desc">Review Bridge transfer audit records and investigate failed requests.</div>
+                        <div class="ad-tool-desc">Review cashout payments and Bridge transfer audit records from one operations queue.</div>
                     </div>
                 </div>
                 <div class="ad-tool-card" data-route="/app/alert-users">
@@ -450,40 +469,42 @@ frappe.pages['admin-dashboard'].on_page_load = function (wrapper) {
                         </tr>
                     </thead>
                     <tbody class="ad-requests-body">
-                        ${requests.length === 0
-                            ? '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No upgrade requests yet.</td></tr>'
-                            : renderRequestRows(requests)}
+                        ${
+							requests.length === 0
+								? '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No upgrade requests yet.</td></tr>'
+								: renderRequestRows(requests)
+						}
                     </tbody>
                 </table>
                 </div>
             </div>
         `);
 
-        // ── Click handlers ──
+		// ── Click handlers ──
 
-        // Tool cards
-        $wrap.find('.ad-tool-card').on('click', function () {
-            frappe.set_route($(this).data('route').replace('/app/', ''));
-        });
+		// Tool cards
+		$wrap.find(".ad-tool-card").on("click", function () {
+			frappe.set_route($(this).data("route").replace("/app/", ""));
+		});
 
-        const updateRequestList = () => {
-            const query = $wrap.find('.ad-smart-search').val() || '';
-            const filtered = requests.filter(r => requestMatchesQuery(r, query));
-            $wrap.find('.ad-requests-body').html(renderRequestRows(filtered));
-            $wrap.find('.ad-request-count').text(`${filtered.length} of ${requests.length}`);
-        };
+		const updateRequestList = () => {
+			const query = $wrap.find(".ad-smart-search").val() || "";
+			const filtered = requests.filter((r) => requestMatchesQuery(r, query));
+			$wrap.find(".ad-requests-body").html(renderRequestRows(filtered));
+			$wrap.find(".ad-request-count").text(`${filtered.length} of ${requests.length}`);
+		};
 
-        $wrap.on('input', '.ad-smart-search', updateRequestList);
+		$wrap.on("input", ".ad-smart-search", updateRequestList);
 
-        // Upgrade request rows → open Account Hub with the username selected
-        $wrap.on('click', '.ad-req-row', function () {
-            const query = $(this).data('username') || $(this).data('query');
-            if (query) {
-                frappe.route_options = { account_hub_query: query };
-                frappe.set_route('account-hub');
-            }
-        });
+		// Upgrade request rows → open Account Hub with the username selected
+		$wrap.on("click", ".ad-req-row", function () {
+			const query = $(this).data("username") || $(this).data("query");
+			if (query) {
+				frappe.route_options = { account_hub_query: query };
+				frappe.set_route("account-hub");
+			}
+		});
 
-        updateRequestList();
-    }
+		updateRequestList();
+	}
 };

@@ -79,7 +79,7 @@ class Cashout(Document):
 
 	@frappe.whitelist()
 	@require_financial()
-	def create_payment_journal_entry(self):
+	def create_payment_journal_entry(self, reference_no=None, reference_date=None):
 		if self.payment_journal_entry:
 			frappe.throw("Payment Journal Entry already exists.")
 
@@ -111,6 +111,11 @@ class Cashout(Document):
 		if not company_bank_account:
 			frappe.throw(f"No company Bank Account found for currency {self.currency}.")
 
+		payment_reference_no = reference_no or self.transaction_id or self.name
+		if isinstance(payment_reference_no, str):
+			payment_reference_no = payment_reference_no.strip()
+		payment_reference_date = reference_date or frappe.utils.today()
+
 		payout_entry = {
 			"account_currency": self.currency,
 			"debit_in_account_currency": self.user_receives,
@@ -126,6 +131,8 @@ class Cashout(Document):
 				"company": company,
 				"multi_currency": 1,
 				"posting_date": frappe.utils.today(),
+				"cheque_no": payment_reference_no,
+				"cheque_date": payment_reference_date,
 				"user_remark": f'{{"transactionId": "{self.transaction_id}", "walletId": "{self.wallet_id}"}}',
 				"accounts": [
 					{

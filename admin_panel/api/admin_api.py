@@ -1,5 +1,6 @@
 import functools
 import re
+from decimal import ROUND_HALF_UP, Decimal
 
 import frappe
 import requests as requests_lib
@@ -634,3 +635,539 @@ def get_dashboard_stats():
 		"all_requests": all_records,
 		"total_requests": pending + approved + rejected,
 	}
+
+
+# ── Cashout Requests API ──────────────────────────────────────────
+
+
+CASHOUT_STATUS_DISPLAY_MAP = {
+	"Pending": "Pending",
+	"Draft": "Pending",
+	"In Progress": "In Progress",
+	"Completed": "Paid",
+	"Canceled": "Canceled",
+}
+
+
+def _enrich_cashout(cashout_doc) -> dict:
+	"""Enrich a Cashout doctype record with Customer and Bank Account fields."""
+	row = dict(cashout_doc)
+
+	# Resolve Customer display fields
+	customer_info = {}
+	if row.get("customer"):
+		customer_info = (
+			frappe.db.get_value(
+				"Customer",
+				row["customer"],
+				["customer_name", "mobile_no", "email_id"],
+				as_dict=True,
+			)
+			or {}
+		)
+	row["username"] = row.get("customer", "")
+	row["full_name"] = customer_info.get("customer_name", "")
+	row["phone_number"] = customer_info.get("mobile_no", "")
+	row["email"] = customer_info.get("email_id", "")
+
+	# Resolve Bank Account display fields
+	bank_info = {}
+	if row.get("bank_account"):
+		bank_info = (
+			frappe.db.get_value(
+				"Bank Account",
+				row["bank_account"],
+				["bank", "bank_account_no", "account_type", "account_name"],
+				as_dict=True,
+			)
+			or {}
+		)
+	# Mask account number for display
+	raw_no = bank_info.get("bank_account_no") or ""
+	row["bank_name"] = bank_info.get("bank", "")
+	row["account_number"] = f"****{raw_no[-4:]}" if len(raw_no) >= 4 else raw_no
+	row["account_type"] = bank_info.get("account_type", "")
+	row["bank_label"] = bank_info.get("account_name", "")
+
+	# Map fields to match JS expectations
+	row["send"] = row.get("user_pays")
+	row["flash_fee"] = row.get("flash_fee")
+	row["exchange_rate"] = row.get("exchange_rate")
+	row["offer_id"] = row.get("transaction_id", "")
+	row["journal_entry"] = row.get("journal_entry", "")
+	row["payment_entry"] = row.get("payment_journal_entry", "")
+
+	# Derive receive amounts by currency
+	currency = row.get("currency", "USD")
+	receives = row.get("user_receives", 0)
+	rate = row.get("exchange_rate", 1) or 1
+	if currency == "JMD":
+		row["receive_jmd"] = receives
+		row["receive_usd"] = round(row.get("user_pays", 0) - row.get("flash_fee", 0), 2)
+	else:
+		row["receive_jmd"] = round(receives * rate, 2) if receives else 0
+		row["receive_usd"] = receives
+
+	# Payment entry fields (populated when payment_journal_entry exists)
+	if row.get("payment_journal_entry"):
+		pe = frappe.db.get_value(
+			"Journal Entry",
+			row["payment_journal_entry"],
+			["total_debit", "posting_date"],
+			as_dict=True,
+		)
+		if pe:
+			row["pe_paid_amount"] = pe.get("total_debit")
+			row["pe_posting_date"] = str(pe.get("posting_date", ""))
+			row["pe_currency"] = currency
+			row["pe_mode_of_payment"] = "Bank Transfer"
+
+	# Display status
+	original_status = row.get("status", "Pending")
+	row["display_status"] = CASHOUT_STATUS_DISPLAY_MAP.get(original_status, "Pending")
+
+	return row
+
+
+@frappe.whitelist()
+@require_admin()
+@handle_api_errors
+def get_cashout_requests(status=None, page=1, page_size=10):
+	"""Get paginated cashout requests from the Cashout doctype."""
+	page = int(page)
+	page_size = min(int(page_size), 100)
+	offset = (page - 1) * page_size
+
+	# Map JS statuses back to doctype statuses
+	status_map = {
+		"Pending": ["Pending", "Draft", "In Progress"],
+		"Paid": ["Completed"],
+		"Canceled": ["Canceled"],
+		"Cancelled": ["Canceled"],  # JS spelling variant from PR
+	}
+
+	doc_filters = []
+	if status:
+		mapped = status_map.get(status, [status])
+		doc_filters = [["status", "in", mapped]]
+
+	total_count = frappe.db.count("Cashout", filters=doc_filters or None)
+	records = frappe.get_all(
+		"Cashout",
+		filters=doc_filters or None,
+		fields=["*"],
+		order_by="creation desc",
+		limit_start=offset,
+		limit_page_length=page_size,
+	)
+
+	data = [_enrich_cashout(r) for r in records]
+
+	return {
+		"data": data,
+		"total": total_count,
+		"page": page,
+		"page_size": page_size,
+		"total_pages": max(1, (total_count + page_size - 1) // page_size),
+	}
+
+
+@frappe.whitelist()
+@require_admin()
+@handle_api_errors
+def search_cashout_account(id: str):
+	"""Search cashout requests by customer name or phone number."""
+	if not id:
+		frappe.response["http_status_code"] = 400
+		return {"error": "Phone number or Username is required"}
+
+	# Find Customer doctypes matching the query
+	import re as _re
+
+	has_digits = len(_re.sub(r"\D", "", id)) >= 3
+
+	digits_only = _re.sub(r"\D", "", id) if has_digits else ""
+	customer_filters = []
+	if has_digits:
+		customer_filters.append(["mobile_no", "like", f"%{digits_only}%"])
+	customer_filters.append(["customer_name", "like", f"%{id}%"])
+
+	matching_customers = frappe.get_all(
+		"Customer",
+		filters=customer_filters,
+		pluck="name",
+		limit_page_length=50,
+	)
+
+	if not matching_customers:
+		frappe.response["http_status_code"] = 404
+		return {"error": "No cashout requests found for this customer"}
+
+	records = frappe.get_all(
+		"Cashout",
+		filters=[["customer", "in", matching_customers]],
+		fields=["*"],
+		order_by="creation desc",
+		limit_page_length=50,
+	)
+
+	if not records:
+		frappe.response["http_status_code"] = 404
+		return {"error": "No cashout requests found for this customer"}
+
+	return [_enrich_cashout(r) for r in records]
+
+
+@frappe.whitelist()
+@require_admin()
+@handle_api_errors
+def get_bridge_transfer_requests(status=None, transaction_type=None, query=None, page=1, page_size=10):
+	"""Get paginated Bridge transfer audit records for the Transfer Requests page."""
+	page = max(int(page or 1), 1)
+	page_size = min(max(int(page_size or 10), 1), 100)
+	offset = (page - 1) * page_size
+
+	filters = {}
+	if status:
+		filters["status"] = status
+	if transaction_type:
+		filters["transaction_type"] = transaction_type
+
+	or_filters = None
+	if query:
+		like_query = f"%{query}%"
+		or_filters = [
+			["request_id", "like", like_query],
+			["bridge_transfer_id", "like", like_query],
+			["bridge_customer_id", "like", like_query],
+			["account_id", "like", like_query],
+			["wallet_id", "like", like_query],
+			["ibex_tx_hash", "like", like_query],
+			["source_event_id", "like", like_query],
+		]
+
+	fields = [
+		"name",
+		"request_id",
+		"transaction_type",
+		"status",
+		"provider",
+		"asset",
+		"network",
+		"amount",
+		"currency",
+		"developer_fee",
+		"initial_amount",
+		"subtotal_amount",
+		"final_amount",
+		"account_id",
+		"wallet_id",
+		"bridge_customer_id",
+		"bridge_transfer_id",
+		"ibex_tx_hash",
+		"address",
+		"source_event_id",
+		"source_event_type",
+		"source_systems_seen",
+		"first_seen_at",
+		"last_seen_at",
+		"raw_payload_json",
+		"failure_reason",
+		"creation",
+		"modified",
+	]
+
+	count_rows = frappe.get_all(
+		"Bridge Transfer Request",
+		filters=filters or None,
+		or_filters=or_filters,
+		fields=["name"],
+	)
+	records = frappe.get_all(
+		"Bridge Transfer Request",
+		filters=filters or None,
+		or_filters=or_filters,
+		fields=fields,
+		order_by="modified desc",
+		limit_start=offset,
+		limit_page_length=page_size,
+	)
+
+	total_count = len(count_rows)
+	return {
+		"data": [dict(record) for record in records],
+		"total": total_count,
+		"page": page,
+		"page_size": page_size,
+		"total_pages": max(1, (total_count + page_size - 1) // page_size),
+	}
+
+
+def _get_cashout_for_action(cashout_id):
+	if not cashout_id:
+		frappe.response["http_status_code"] = 400
+		return None, {"success": False, "error": "Cashout ID is required"}
+
+	try:
+		return frappe.get_doc("Cashout", cashout_id), None
+	except frappe.DoesNotExistError:
+		frappe.response["http_status_code"] = 404
+		return None, {"success": False, "error": "Cashout request not found"}
+
+
+def _submit_cashout_if_needed(doc):
+	if doc.docstatus == 2 or doc.status == "Canceled":
+		return {"success": False, "error": "Canceled cashout requests cannot be modified"}
+
+	if doc.status == "Completed":
+		return {"success": False, "error": "Completed cashout requests cannot be modified"}
+
+	if doc.docstatus == 0:
+		doc.submit()
+		doc.reload()
+
+	return None
+
+
+def _append_cashout_confirmation_code(doc, confirmation_code):
+	code = (confirmation_code or "").strip()
+	if not code:
+		return
+
+	timestamp = frappe.utils.now_datetime().strftime("%Y-%m-%d %H:%M:%S")
+	line = f"Bank confirmation code: {code} ({frappe.session.user}, {timestamp})"
+	remarks = (doc.remarks or "").strip()
+	updated_remarks = f"{remarks}\n{line}" if remarks else line
+	doc.db_set("remarks", updated_remarks, update_modified=True)
+	doc.remarks = updated_remarks
+
+
+def _cashout_notification_amount_cents(doc):
+	amount = Decimal(str(doc.user_receives or 0)) * Decimal("100")
+	return int(amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _is_flash_username_candidate(value):
+	return bool(value and re.match(r"^[a-zA-Z0-9_-]{3,}$", str(value).strip()))
+
+
+def _first_cashout_account_match(client, doc):
+	customer_info = {}
+	if doc.customer:
+		customer_info = (
+			frappe.db.get_value(
+				"Customer",
+				doc.customer,
+				["customer_name", "mobile_no", "email_id"],
+				as_dict=True,
+			)
+			or {}
+		)
+
+	username_candidates = []
+	for value in (doc.customer, customer_info.get("customer_name")):
+		if value and value not in username_candidates:
+			username_candidates.append(value)
+
+	for username in username_candidates:
+		if not _is_flash_username_candidate(username):
+			continue
+		account = client.get_account_by_username(username)
+		if account:
+			return account
+
+	phone = customer_info.get("mobile_no")
+	if phone:
+		account = client.get_account_by_phone(phone)
+		if account:
+			return account
+
+	email = customer_info.get("email_id")
+	if email:
+		account = client.get_account_by_email(email)
+		if account:
+			return account
+
+	return None
+
+
+def _get_cashout_completion_notification_context(doc):
+	client = GraphQLClient()
+	account = _first_cashout_account_match(client, doc)
+	if not account:
+		return {"success": False, "error": "Flash account not found for this Cashout customer"}
+
+	account_uuid = account.get("uuid") or account.get("id")
+	if not account_uuid:
+		return {"success": False, "error": "Flash account is missing UUID"}
+
+	return {
+		"success": True,
+		"client": client,
+		"account_id": account_uuid,
+		"amount": _cashout_notification_amount_cents(doc),
+		"currency": doc.currency,
+	}
+
+
+def _send_cashout_completion_notification(notification_context):
+	result = notification_context["client"].send_cashout_notification(
+		account_id=notification_context["account_id"],
+		amount=notification_context["amount"],
+		currency=notification_context["currency"],
+	)
+
+	if result.get("errors"):
+		error_messages = [err.get("message", "Unknown error") for err in result["errors"]]
+		return {"success": False, "error": "; ".join(error_messages)}
+
+	if not result.get("success"):
+		return {"success": False, "error": "Flash cashout notification mutation returned success=false"}
+
+	return {
+		"success": True,
+		"account_id": notification_context["account_id"],
+		"amount": notification_context["amount"],
+		"currency": notification_context["currency"],
+	}
+
+
+def _notify_cashout_completion(doc):
+	"""Best-effort Flash notification. Never blocks settlement: by the time an
+	operator confirms here the bank transfer has already happened out-of-band,
+	so a failed account lookup or send must not prevent recording the payment
+	(it used to hard-block settlement when the customer couldn't be matched to
+	a Flash account)."""
+	try:
+		context = _get_cashout_completion_notification_context(doc)
+		if not context.get("success"):
+			return {"success": False, "error": context.get("error")}
+		return _send_cashout_completion_notification(context)
+	except Exception as e:
+		return {"success": False, "error": str(e)}
+
+
+def _settle_cashout(doc, confirmation_code=None):
+	submit_error = _submit_cashout_if_needed(doc)
+	if submit_error:
+		return submit_error
+
+	_append_cashout_confirmation_code(doc, confirmation_code)
+
+	# Row-lock and re-read before deciding to pay: two concurrent confirms
+	# (double-click, second operator, retry racing a slow request) otherwise
+	# both observe an empty payment_journal_entry and post duplicate journal
+	# entries. The second request blocks here until the first commits, then
+	# sees the entry and takes the already-paid path.
+	existing_payment_entry = frappe.db.get_value(
+		"Cashout", doc.name, "payment_journal_entry", for_update=True
+	)
+	if existing_payment_entry:
+		doc.reload()
+		if doc.status != "Completed":
+			doc.db_set("status", "Completed", update_modified=True)
+			doc.status = "Completed"
+		settled_message = f"Cashout already has payment journal entry {doc.payment_journal_entry}"
+	else:
+		doc.create_payment_journal_entry(reference_no=confirmation_code, reference_date=frappe.utils.today())
+		doc.reload()
+		settled_message = f"Payment recorded successfully. Journal Entry {doc.payment_journal_entry} created"
+
+	notification = _notify_cashout_completion(doc)
+	notification_sent = bool(notification.get("success"))
+
+	result = {
+		"success": True,
+		"status": doc.status,
+		"payment_entry": doc.payment_journal_entry,
+		"notification_sent": notification_sent,
+	}
+	if notification_sent:
+		result["message"] = f"{settled_message}; Flash notification sent."
+	else:
+		result["notification_error"] = notification.get("error")
+		result["message"] = (
+			f"{settled_message}. Flash notification NOT sent: {notification.get('error')} — "
+			"the cashout is settled; re-run the action to retry the notification."
+		)
+	return result
+
+
+@frappe.whitelist()
+@require_financial()
+@handle_api_errors
+def create_cashout_request(cashout_id):
+	"""Submit a draft cashout so it is ready for out-of-band bank settlement."""
+	doc, error = _get_cashout_for_action(cashout_id)
+	if error:
+		return error
+
+	if doc.status in ("Completed", "Canceled") or doc.docstatus == 2:
+		return {"success": False, "error": f"Cashout request status is '{doc.status}'; cannot create"}
+
+	if doc.docstatus == 0:
+		doc.submit()
+		doc.reload()
+
+	return {
+		"success": True,
+		"status": doc.status,
+		"journal_entry": doc.journal_entry,
+		"message": f"Cashout request {doc.name} is ready for settlement.",
+	}
+
+
+@frappe.whitelist()
+@require_financial()
+@handle_api_errors
+def confirm_cashout_payment(cashout_id, confirmation_code=None):
+	"""Record a bank confirmation code and settle the cashout payment."""
+	confirmation_code = (confirmation_code or "").strip()
+	if not confirmation_code:
+		frappe.response["http_status_code"] = 400
+		return {"success": False, "error": "Confirmation code is required"}
+
+	doc, error = _get_cashout_for_action(cashout_id)
+	if error:
+		return error
+
+	result = _settle_cashout(doc, confirmation_code=confirmation_code)
+	if result.get("success"):
+		audit_log(
+			"confirm_cashout_payment",
+			"Cashout",
+			doc.name,
+			{"confirmation_code": confirmation_code, "payment_entry": result.get("payment_entry")},
+		)
+		# Keep _settle_cashout's message — it states truthfully whether the
+		# Flash notification went out; just prefix the confirmation context.
+		result["message"] = f"Payment confirmed with code {confirmation_code}. {result.get('message', '')}"
+	return result
+
+
+@frappe.whitelist()
+@require_financial()
+@handle_api_errors
+def complete_cashout(cashout_id):
+	"""Settle a cashout without requiring a bank confirmation code."""
+	doc, error = _get_cashout_for_action(cashout_id)
+	if error:
+		return error
+
+	result = _settle_cashout(doc)
+	if result.get("success"):
+		audit_log(
+			"complete_cashout",
+			"Cashout",
+			doc.name,
+			{"payment_entry": result.get("payment_entry")},
+		)
+	return result
+
+
+@frappe.whitelist()
+@require_financial()
+@handle_api_errors
+def record_cashout_payment(cashout_id):
+	"""Record payment for a cashout by calling create_payment_journal_entry."""
+	return complete_cashout(cashout_id)

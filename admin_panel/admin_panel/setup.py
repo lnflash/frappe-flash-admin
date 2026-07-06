@@ -6,6 +6,7 @@ from admin_panel.admin_panel.doctype.allowed_country.seed import seed_allowed_co
 def after_migrate():
 	ensure_roles()
 	sync_pages()
+	delete_legacy_pages()
 	seed_allowed_countries()
 
 
@@ -55,6 +56,13 @@ def sync_pages():
 			"standard": "Yes",
 			"roles": [],
 		},
+		{
+			"name": "transfer-requests",
+			"title": "Transfer Requests",
+			"module": "Admin Panel",
+			"standard": "Yes",
+			"roles": [],
+		},
 	]
 
 	for page_data in pages:
@@ -71,3 +79,9 @@ def sync_pages():
 		doc.save()
 
 	frappe.db.commit()
+
+
+def delete_legacy_pages():
+	if frappe.db.exists("Page", "cashout-requests"):
+		frappe.delete_doc("Page", "cashout-requests", ignore_permissions=True, force=True)
+		frappe.db.commit()

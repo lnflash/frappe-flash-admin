@@ -1,32 +1,16 @@
-[
- {
-  "charts": [
-   {
-    "chart_name": "Bridge Volume",
-    "label": "Bridge Volume",
-    "parent": "Admin Panel",
-    "parentfield": "charts",
-    "parenttype": "Workspace"
-   },
-   {
-    "chart_name": "Bridge Audit Failures",
-    "label": "Bridge Audit Failures",
-    "parent": "Admin Panel",
-    "parentfield": "charts",
-    "parenttype": "Workspace"
-   }
-  ],
-  "content": "[{\"id\":\"_EYFml0tr6\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Admin Panel</b></span>\",\"col\":12}},{\"id\":\"_bridgeTotalCard\",\"type\":\"number_card\",\"data\":{\"card_name\":\"Bridge Total\",\"col\":4}},{\"id\":\"_bridgeFailedCard\",\"type\":\"number_card\",\"data\":{\"card_name\":\"Bridge Failed Audits\",\"col\":4}},{\"id\":\"_bridgeVolumeChart\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Bridge Volume\",\"col\":6}},{\"id\":\"_bridgeFailureChart\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Bridge Audit Failures\",\"col\":6}},{\"id\":\"_operationsCard\",\"type\":\"card\",\"data\":{\"card_name\":\"Operations\",\"col\":12}},{\"id\":\"_adminCard\",\"type\":\"card\",\"data\":{\"card_name\":\"Administration\",\"col\":12}},{\"id\":\"_Eng390ComplianceCard\",\"type\":\"card\",\"data\":{\"card_name\":\"Compliance\",\"col\":12}}]",
-  "custom_blocks": [],
-  "docstatus": 0,
-  "doctype": "Workspace",
-  "for_user": "",
-  "hide_custom": 1,
-  "icon": "tool",
-  "indicator_color": null,
-  "is_hidden": 0,
-  "label": "Admin Panel",
-  "links": [
+{
+ "doctype": "Workspace",
+ "charts": [{"chart_name": "Bridge Volume", "label": "Bridge Volume"}, {"chart_name": "Bridge Audit Failures", "label": "Bridge Audit Failures"}],
+ "charts_data": null,
+ "content": "[{\"id\": \"_EYFml0tr6\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Admin Panel</b></span>\", \"col\": 12}}, {\"id\": \"_bridgeTotalCard\", \"type\": \"number_card\", \"data\": {\"card_name\": \"Bridge Total\", \"col\": 4}}, {\"id\": \"_bridgeFailedCard\", \"type\": \"number_card\", \"data\": {\"card_name\": \"Bridge Failed Audits\", \"col\": 4}}, {\"id\": \"_bridgeVolumeChart\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Bridge Volume\", \"col\": 6}}, {\"id\": \"_bridgeFailureChart\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Bridge Audit Failures\", \"col\": 6}}, {\"id\": \"_operationsCard\", \"type\": \"card\", \"data\": {\"card_name\": \"Operations\", \"col\": 12}}, {\"id\": \"_adminCard\", \"type\": \"card\", \"data\": {\"card_name\": \"Administration\", \"col\": 12}}, {\"id\": \"_Eng390ComplianceCard\", \"type\": \"card\", \"data\": {\"card_name\": \"Compliance\", \"col\": 12}}]",
+ "custom_app": null,
+ "for_user": null,
+ "hide_custom": 0,
+ "icon": "tool",
+ "indicator_color": null,
+ "is_hidden": 0,
+ "label": "Admin Panel",
+ "links": [
    {
     "dependencies": null,
     "description": "Primary cashout and Bridge work queues",
@@ -55,6 +39,24 @@
     "link_count": 0,
     "link_to": "Cashout",
     "link_type": "DocType",
+    "onboard": 0,
+    "only_for": null,
+    "parent": "Admin Panel",
+    "parentfield": "links",
+    "parenttype": "Workspace",
+    "report_ref_doctype": null,
+    "type": "Link"
+   },
+   {
+    "dependencies": null,
+    "description": "Review cashout payments and Bridge transfer audit records",
+    "hidden": 0,
+    "icon": "money",
+    "is_query_report": 0,
+    "label": "Transfer Requests",
+    "link_count": 0,
+    "link_to": "transfer-requests",
+    "link_type": "Page",
     "onboard": 0,
     "only_for": null,
     "parent": "Admin Panel",
@@ -209,9 +211,9 @@
    },
    {
     "dependencies": null,
-    "description": "Manage Bridge country allowlist",
+    "description": null,
     "hidden": 0,
-    "icon": "globe",
+    "icon": null,
     "is_query_report": 0,
     "label": "Allowed Country",
     "link_count": 0,
@@ -225,33 +227,22 @@
     "report_ref_doctype": null,
     "type": "Link"
    }
-  ],
-  "modified": "2026-05-08 11:55:00.000000",
-  "module": "Admin Panel",
-  "name": "Admin Panel",
-  "number_cards": [
-   {
-    "label": "Failed Audits",
-    "number_card_name": "Bridge Failed Audits",
-    "parent": "Admin Panel",
-    "parentfield": "number_cards",
-    "parenttype": "Workspace"
-   },
-   {
-    "label": "Total Requests",
-    "number_card_name": "Bridge Total",
-    "parent": "Admin Panel",
-    "parentfield": "number_cards",
-    "parenttype": "Workspace"
-   }
-  ],
-  "parent_page": "",
-  "public": 1,
-  "quick_lists": [],
-  "restrict_to_domain": null,
-  "roles": [],
-  "sequence_id": 1.0,
-  "shortcuts": [],
-  "title": "Admin Panel"
- }
-]
+ ],
+ "modified_by": "Administrator",
+ "module": "Admin Panel",
+ "module_name": "Admin Panel",
+ "name": "Admin Panel",
+ "number_cards": [{"number_card_name": "Bridge Total", "label": "Bridge Total"}, {"number_card_name": "Bridge Failed Audits", "label": "Bridge Failed Audits"}],
+ "owner": "Administrator",
+ "public": 1,
+ "restrict_to_domain": null,
+ "roles": [],
+ "shortcuts": [],
+ "sort_field": "modified",
+ "sort_order": "ASC",
+ "starts_with": null,
+ "title": "Admin Panel",
+ "track_views": 0,
+ "type": "Workspace",
+ "workspace_name": "Admin Panel"
+}

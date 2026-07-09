@@ -28,6 +28,7 @@ __all__ = [
 	"get_census_status",
 	"get_latest_census",
 	"run_census_job",
+	"run_census_now",
 	"start_census",
 ]
 
@@ -60,6 +61,26 @@ def start_census():
 		snapshot_name=snapshot.name,
 	)
 	return {"snapshot": snapshot.name, "status": "Running"}
+
+
+@frappe.whitelist()
+@require_admin()
+def run_census_now():
+	"""Create a snapshot and run the scan **synchronously** (no worker needed).
+
+	`start_census` enqueues onto the `long` queue, which requires a background
+	worker. Deployments without one (e.g. the local docker-compose, or a
+	`bench execute` smoke test) can call this instead — it blocks until the
+	scan finishes and returns the resulting status. Fine for sandbox / small
+	orgs; a full prod scan takes minutes and should use the queued path.
+	"""
+	snapshot = frappe.new_doc("Wallet Census Snapshot")
+	snapshot.status = "Running"
+	snapshot.started_at = frappe.utils.now_datetime()
+	snapshot.insert(ignore_permissions=True)
+	frappe.db.commit()
+	run_census_job(snapshot.name)
+	return get_census_status(snapshot.name)
 
 
 @frappe.whitelist()

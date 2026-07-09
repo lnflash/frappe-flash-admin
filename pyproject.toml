@@ -9,6 +9,9 @@ readme = "README.md"
 dynamic = ["version"]
 dependencies = [
     # "frappe~=15.0.0" # Installed and managed by bench.
+    # Read-only driver for the customer MongoDB (wallet census, ENG-487).
+    # requests + PyJWT ship with Frappe; pymongo does not.
+    "pymongo>=4.6,<5",
 ]
 
 [build-system]

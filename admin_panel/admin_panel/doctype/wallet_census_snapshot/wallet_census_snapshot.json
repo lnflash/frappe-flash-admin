@@ -1,0 +1,161 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:CENSUS-{#####}",
+ "creation": "2026-07-09 00:00:00.000000",
+ "custom": 0,
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "status",
+  "started_at",
+  "completed_at",
+  "duration_seconds",
+  "progress_section",
+  "scanned_pages",
+  "scanned_accounts",
+  "summary_section",
+  "total_accounts",
+  "funded_count",
+  "zero_count",
+  "usd_total",
+  "usdt_total",
+  "error",
+  "data_section",
+  "totals_json",
+  "bucket_counts_json",
+  "rows_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Running\nComplete\nFailed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "started_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Started At"
+  },
+  {
+   "fieldname": "completed_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Completed At"
+  },
+  {
+   "fieldname": "duration_seconds",
+   "fieldtype": "Float",
+   "label": "Duration (s)"
+  },
+  {
+   "fieldname": "progress_section",
+   "fieldtype": "Section Break",
+   "label": "Progress"
+  },
+  {
+   "fieldname": "scanned_pages",
+   "fieldtype": "Int",
+   "label": "Scanned Pages"
+  },
+  {
+   "fieldname": "scanned_accounts",
+   "fieldtype": "Int",
+   "label": "Scanned Accounts"
+  },
+  {
+   "fieldname": "summary_section",
+   "fieldtype": "Section Break",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "total_accounts",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Total Accounts"
+  },
+  {
+   "fieldname": "funded_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Funded"
+  },
+  {
+   "fieldname": "zero_count",
+   "fieldtype": "Int",
+   "label": "Zero Balance"
+  },
+  {
+   "fieldname": "usd_total",
+   "fieldtype": "Float",
+   "label": "USD Total"
+  },
+  {
+   "fieldname": "usdt_total",
+   "fieldtype": "Float",
+   "label": "USDT Total"
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Error"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "data_section",
+   "fieldtype": "Section Break",
+   "label": "Data"
+  },
+  {
+   "fieldname": "totals_json",
+   "fieldtype": "Code",
+   "label": "Totals JSON",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "bucket_counts_json",
+   "fieldtype": "Code",
+   "label": "Bucket Counts JSON",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "rows_json",
+   "fieldtype": "Long Text",
+   "label": "Rows JSON"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-07-09 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Admin Panel",
+ "name": "Wallet Census Snapshot",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "role": "System Manager",
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "read": 1,
+   "role": "Flash Admin"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

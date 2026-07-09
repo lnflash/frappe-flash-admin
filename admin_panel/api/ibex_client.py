@@ -14,8 +14,9 @@ Verified against the ibex-client library and the Flash backend:
 
 Config (site_config.json / frappe.conf):
   ibex_client_id, ibex_client_secret          (required)
-  ibex_environment                             (optional, default "production")
-  ibex_auth_domain, ibex_hub_url, ibex_audience(optional overrides)
+  ibex_environment                             (optional, "production" | "sandbox";
+                                                default "production" — URLs baked in)
+  ibex_auth_domain, ibex_hub_url, ibex_audience(optional per-field overrides)
 """
 
 import time
@@ -23,12 +24,20 @@ import time
 import frappe
 import requests
 
-# Only the production environment is baked in with verified URLs. Any field can
-# be overridden via config for sandbox / staging without a code change.
-_PRODUCTION = {
-	"auth_domain": "https://auth.hub.poweredbyibex.io",
-	"hub_url": "https://ibexhub-api.poweredbyibex.io",
-	"audience": "https://ibexhub.ibexmercado.com",
+# Verified URLs per environment (from the ibex-client library). Any field can
+# still be overridden via config for a bespoke staging setup. Note the sandbox
+# audience is a different host from production.
+_ENVIRONMENTS = {
+	"production": {
+		"auth_domain": "https://auth.hub.poweredbyibex.io",
+		"hub_url": "https://ibexhub-api.poweredbyibex.io",
+		"audience": "https://ibexhub.ibexmercado.com",
+	},
+	"sandbox": {
+		"auth_domain": "https://auth.hub.sandbox.poweredbyibex.io",
+		"hub_url": "https://ibexhub-api.sandbox.poweredbyibex.io",
+		"audience": "https://api-sandbox.poweredbyibex.io",
+	},
 }
 
 # Bulk-endpoint page size. Valid range is [10, 100]; 100 minimizes round-trips.
@@ -57,7 +66,7 @@ class IbexClient:
 
 	def __init__(self):
 		env = frappe.conf.get("ibex_environment") or "production"
-		defaults = _PRODUCTION if env == "production" else {}
+		defaults = _ENVIRONMENTS.get(env, {})
 
 		self.auth_domain = frappe.conf.get("ibex_auth_domain") or defaults.get("auth_domain")
 		self.hub_url = frappe.conf.get("ibex_hub_url") or defaults.get("hub_url")

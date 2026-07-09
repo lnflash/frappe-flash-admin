@@ -134,9 +134,19 @@ def run_census_job(snapshot_name):
 
 		ibex_accounts = list(client.iter_all_accounts(progress_cb=_progress))
 
-		wallets = load_wallets()
-		accounts = load_accounts()
-		migrations = load_migrations()
+		# The mongo join enriches rows with username / status / migration state.
+		# If it isn't configured (e.g. an IBEX-only sandbox smoke test), still
+		# produce the census from IBEX alone — rows just lack those fields.
+		if frappe.conf.get("customer_mongo_uri"):
+			wallets = load_wallets()
+			accounts = load_accounts()
+			migrations = load_migrations()
+		else:
+			frappe.logger().warning(
+				f"Wallet census {snapshot_name}: customer_mongo_uri not configured — "
+				"running IBEX-only (no username/status/migration join)."
+			)
+			wallets, accounts, migrations = {}, {}, {}
 
 		result = build_census(ibex_accounts, wallets, accounts, migrations)
 		totals = result["totals"]

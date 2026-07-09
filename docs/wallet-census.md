@@ -82,15 +82,38 @@ Add to the site's `site_config.json` (`frappe.conf`):
 }
 ```
 
-Optional overrides (production URLs are baked in; set these only for
-sandbox/staging):
+Optional:
 
-- `ibex_environment` — defaults to `"production"`
-- `ibex_auth_domain`, `ibex_hub_url`, `ibex_audience`
-- `customer_mongo_db` — defaults to `"galoy"`
+- `ibex_environment` — `"production"` (default) or `"sandbox"`. Both have their
+  URLs baked in, so sandbox only needs `ibex_environment: "sandbox"` plus
+  sandbox `ibex_client_id` / `ibex_client_secret`.
+- `ibex_auth_domain`, `ibex_hub_url`, `ibex_audience` — per-field overrides for
+  a bespoke staging setup.
+- `customer_mongo_db` — defaults to `"galoy"`.
 
 The `customer_mongo_uri` value is the same connection string the Flash backend
-uses as `MONGODB_CON`.
+uses as `MONGODB_CON`. **It is optional:** if unset, the census runs from IBEX
+alone (totals + balances work; rows lack username / status / migration state).
+Useful for an IBEX-only sandbox smoke test.
+
+### Local sandbox smoke test
+
+```bash
+# from the bench dir (…/frappe-bench-v15)
+env/bin/pip install "pymongo>=4.6,<5"          # new dep; workers need it too
+bench --site flashapp.me.localhost set-config ibex_environment sandbox
+bench --site flashapp.me.localhost set-config ibex_client_id     <sandbox-id>
+bench --site flashapp.me.localhost set-config ibex_client_secret <sandbox-secret>
+# (optional) point at a sandbox galoy mongo to get the join:
+# bench --site flashapp.me.localhost set-config customer_mongo_uri "mongodb://…/galoy"
+bench --site flashapp.me.localhost migrate      # creates the DocType + page
+bench build --app admin_panel && bench --site flashapp.me.localhost clear-cache
+bench start
+```
+
+Then open `/app/wallet-census`, click **Run Census**, and watch the worker log
+(`tail -f logs/worker.log`). The user needs the `Accounts Manager` role (same
+gate as Account Hub).
 
 ## Code map
 

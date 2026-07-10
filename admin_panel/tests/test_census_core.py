@@ -124,13 +124,16 @@ def test_bucket_assignment():
 	# dave: migrated + funded on a non-default wallet
 	assert "migrated" in rows["acc-dave"]["buckets"]
 	assert "non_default_wallet" in rows["acc-dave"]["buckets"]
+	# orphan has no mongo account -> unmatched (unknown status, NOT "closed")
+	assert rows["acc-orphan"]["buckets"] == ["unmatched"]
 
 	# Buckets are overlapping tags: dave is active+funded AND migrated AND
-	# non-default. Orphan is funded with unknown status (no mongo account).
+	# non-default.
 	counts = result["bucket_counts"]
 	assert counts["active_funded"] == 2  # alice, dave
 	assert counts["active_zero"] == 1  # bob
-	assert counts["closed_with_dust"] == 2  # carol, orphan (unknown status)
+	assert counts["closed_with_dust"] == 1  # carol (known Closed status)
+	assert counts["unmatched"] == 1  # orphan (no mongo record)
 	assert counts["system"] == 1  # dealer
 	assert counts["migrated"] == 1  # dave
 	assert counts["non_default_wallet"] == 1  # dave
@@ -155,3 +158,23 @@ def test_empty_input():
 	assert result["totals"]["accounts"] == 0
 	assert result["rows"] == []
 	assert result["bucket_counts"]["active_funded"] == 0
+
+
+def test_ibex_only_run_is_unmatched_not_closed():
+	"""IBEX-only run (no mongo): funded accounts are 'unmatched', not 'closed'.
+
+	Regression for the sandbox smoke test — status is unknown without a mongo
+	account record, so funded accounts must not be labeled Closed w/ Dust.
+	"""
+	ibex = [
+		{"id": "w1", "name": "a1", "currencyId": 29, "balance": 3.0},  # funded
+		{"id": "w2", "name": "a2", "currencyId": 29},  # zero
+	]
+	result = build_census(ibex, {}, {}, {})
+	counts = result["bucket_counts"]
+	assert counts["unmatched"] == 2
+	assert counts["closed_with_dust"] == 0
+	assert counts["active_funded"] == 0
+	# totals still computed from IBEX alone
+	assert result["totals"]["usdt"]["balance"] == 3.0
+	assert result["totals"]["funded"] == 1

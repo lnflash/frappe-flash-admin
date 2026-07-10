@@ -39,6 +39,7 @@ const BUCKETS = [
 	{ key: "active_funded", label: "Active + Funded" },
 	{ key: "active_zero", label: "Active + Zero" },
 	{ key: "closed_with_dust", label: "Closed w/ Dust" },
+	{ key: "unmatched", label: "Unmatched" },
 	{ key: "migrated", label: "Migrated" },
 	{ key: "system", label: "System" },
 	{ key: "non_default_wallet", label: "Non-default Wallet" },

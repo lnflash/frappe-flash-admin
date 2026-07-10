@@ -50,6 +50,7 @@ def build_census(ibex_accounts, wallets, accounts, migrations) -> dict:
 		"active_funded": 0,
 		"active_zero": 0,
 		"closed_with_dust": 0,
+		"unmatched": 0,
 		"migrated": 0,
 		"system": 0,
 		"non_default_wallet": 0,
@@ -60,7 +61,12 @@ def build_census(ibex_accounts, wallets, accounts, migrations) -> dict:
 		# IBEX account name IS the mongo account _id string — the join key.
 		account_id = account.get("name")
 		wallet = wallets.get(wallet_id) or {}
-		acct = accounts.get(account_id) or {}
+		acct_record = accounts.get(account_id)
+		acct = acct_record or {}
+		# "matched" = this IBEX account has a mongo account record. When the
+		# census runs IBEX-only (no customer_mongo_uri), nothing is matched;
+		# when mongo is wired, an unmatched account is a genuine anomaly.
+		matched = acct_record is not None
 		migration = migrations.get(account_id)
 
 		raw_balance = account.get("balance")
@@ -76,20 +82,25 @@ def build_census(ibex_accounts, wallets, accounts, migrations) -> dict:
 		default_wallet_id = acct.get("default_wallet_id")
 		non_default = bool(funded and default_wallet_id and wallet_id != default_wallet_id)
 
+		# Status-based buckets require a known status. An account with no mongo
+		# record (unknown status) is "unmatched", NOT "closed" — don't conflate
+		# "status not active" with "status unknown".
 		row_buckets = []
 		if is_system:
 			row_buckets.append("system")
 			buckets["system"] += 1
-		else:
-			if status_active and funded:
-				row_buckets.append("active_funded")
-				buckets["active_funded"] += 1
-			elif status_active and not funded:
-				row_buckets.append("active_zero")
-				buckets["active_zero"] += 1
-			elif not status_active and funded:
-				row_buckets.append("closed_with_dust")
-				buckets["closed_with_dust"] += 1
+		elif not matched:
+			row_buckets.append("unmatched")
+			buckets["unmatched"] += 1
+		elif status_active and funded:
+			row_buckets.append("active_funded")
+			buckets["active_funded"] += 1
+		elif status_active and not funded:
+			row_buckets.append("active_zero")
+			buckets["active_zero"] += 1
+		elif not status_active and funded:
+			row_buckets.append("closed_with_dust")
+			buckets["closed_with_dust"] += 1
 		if migrated:
 			row_buckets.append("migrated")
 			buckets["migrated"] += 1

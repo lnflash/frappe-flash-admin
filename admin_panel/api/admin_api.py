@@ -1,4 +1,3 @@
-import functools
 import re
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -6,34 +5,8 @@ import frappe
 import requests as requests_lib
 
 from .auth import audit_log, require_admin, require_financial, require_roles
+from .common import handle_api_errors
 from .graphql_client import GraphQLClient, GraphQLError
-
-
-def handle_api_errors(func):
-	"""Decorator to handle common API errors consistently"""
-
-	@functools.wraps(func)
-	def wrapper(*args, **kwargs):
-		try:
-			return func(*args, **kwargs)
-		except GraphQLError as e:
-			frappe.logger().error(f"GraphQL error in {func.__name__}: {e}")
-			frappe.response["http_status_code"] = 500
-			return {"success": False, "error": str(e)}
-		except requests_lib.exceptions.RequestException as e:
-			frappe.logger().error(f"Request error in {func.__name__}: {e}")
-			frappe.response["http_status_code"] = 500
-			return {"success": False, "error": str(e)}
-		except ValueError as e:
-			frappe.logger().error(f"Configuration error in {func.__name__}: {e}")
-			frappe.response["http_status_code"] = 500
-			return {"success": False, "error": str(e)}
-		except Exception as e:
-			frappe.logger().error(f"Unexpected error in {func.__name__}: {e}")
-			frappe.response["http_status_code"] = 500
-			return {"success": False, "error": "An internal error occurred"}
-
-	return wrapper
 
 
 @frappe.whitelist()

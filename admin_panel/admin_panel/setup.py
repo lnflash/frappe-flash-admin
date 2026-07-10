@@ -63,6 +63,13 @@ def sync_pages():
 			"standard": "Yes",
 			"roles": [],
 		},
+		{
+			"name": "wallet-census",
+			"title": "Wallet Census",
+			"module": "Admin Panel",
+			"standard": "Yes",
+			"roles": [],
+		},
 	]
 
 	for page_data in pages:

@@ -69,15 +69,23 @@ class WalletCensus {
 	render_shell() {
 		this.page.main.html(`
             <div class="wallet-census">
-                <div id="wc-status" class="text-muted small mb-3"></div>
-                <div id="wc-summary" class="row mb-3"></div>
-                <div id="wc-buckets" class="mb-2"></div>
-                <div class="mb-2">
-                    <input type="text" id="wc-search" class="form-control" style="max-width:320px;display:inline-block"
-                        placeholder="Filter by username / accountId…">
-                    <button class="btn btn-default btn-sm ml-2" id="wc-export">Export CSV</button>
+                <div class="mb-3">
+                    <input type="text" id="wc-lookup" class="form-control" style="max-width:360px;display:inline-block"
+                        placeholder="Look up a customer: username / phone / accountId…">
+                    <button class="btn btn-primary btn-sm ml-2" id="wc-lookup-btn">Look up</button>
                 </div>
-                <div id="wc-table" class="table-responsive"></div>
+                <div id="wc-detail" style="display:none"></div>
+                <div id="wc-census">
+                    <div id="wc-status" class="text-muted small mb-3"></div>
+                    <div id="wc-summary" class="row mb-3"></div>
+                    <div id="wc-buckets" class="mb-2"></div>
+                    <div class="mb-2">
+                        <input type="text" id="wc-search" class="form-control" style="max-width:320px;display:inline-block"
+                            placeholder="Filter loaded rows by username / accountId…">
+                        <button class="btn btn-default btn-sm ml-2" id="wc-export">Export CSV</button>
+                    </div>
+                    <div id="wc-table" class="table-responsive"></div>
+                </div>
             </div>
         `);
 
@@ -87,6 +95,16 @@ class WalletCensus {
 			wc_debounce(() => this.render_table(), 200)
 		);
 		this.page.main.find("#wc-export").on("click", () => this.export_csv());
+
+		const lookup = this.page.main.find("#wc-lookup");
+		const doLookup = () => {
+			const q = (lookup.val() || "").trim();
+			if (q) this.open_detail(q);
+		};
+		this.page.main.find("#wc-lookup-btn").on("click", doLookup);
+		lookup.on("keydown", (e) => {
+			if (e.key === "Enter") doLookup();
+		});
 	}
 
 	set_status(text) {
@@ -276,7 +294,9 @@ class WalletCensus {
 		const body = rows
 			.map(
 				(r) => `
-            <tr>
+            <tr class="wc-row" data-q="${frappe.utils.escape_html(
+				r.account_id || r.username || ""
+			)}" style="cursor:pointer">
                 <td>${frappe.utils.escape_html(r.username || "—")}</td>
                 <td style="text-align:right">${
 					r.balance
@@ -310,6 +330,147 @@ class WalletCensus {
 				this.sort_dir = "desc";
 			}
 			this.render_table();
+		});
+		this.page.main.find(".wc-row").on("click", (e) => {
+			const q = e.currentTarget.dataset.q;
+			if (q) this.open_detail(q);
+		});
+	}
+
+	// ── Per-customer detail ───────────────────────────────────────
+	open_detail(query) {
+		const detail = this.page.main.find("#wc-detail");
+		this.page.main.find("#wc-census").hide();
+		detail.show().html('<div class="text-muted">Loading customer…</div>');
+		frappe.call({
+			method: "admin_panel.api.customer.get_customer_detail",
+			args: { query: query },
+			callback: (res) => this.render_detail(res.message || {}, query),
+		});
+	}
+
+	close_detail() {
+		this.page.main.find("#wc-detail").hide().empty();
+		this.page.main.find("#wc-census").show();
+	}
+
+	render_detail(d, query) {
+		const detail = this.page.main.find("#wc-detail");
+		const backBtn = `<button class="btn btn-default btn-sm" id="wc-back">← Back to census</button>`;
+		if (!d.found) {
+			detail.html(
+				`<div class="mb-2">${backBtn}</div>
+                 <div class="alert alert-warning">No customer found for “${frappe.utils.escape_html(
+						query
+					)}”. ${frappe.utils.escape_html(d.error || "")}</div>`
+			);
+			this.page.main.find("#wc-back").on("click", () => this.close_detail());
+			return;
+		}
+
+		const i = d.identity;
+		const kv = (label, val) =>
+			`<div class="col-sm-4 mb-2"><div class="text-muted small">${label}</div><div>${
+				val === null || val === undefined || val === ""
+					? "—"
+					: frappe.utils.escape_html(String(val))
+			}</div></div>`;
+
+		const walletRows = (d.wallets || [])
+			.map(
+				(w) => `<tr>
+                <td>${w.currency || "—"}</td>
+                <td>${w.type || "—"}</td>
+                <td style="text-align:right">${Number(w.live_balance || 0).toLocaleString(
+					undefined,
+					{
+						minimumFractionDigits: 2,
+						maximumFractionDigits: 8,
+					}
+				)}${w.balance_not_found ? ' <span class="text-muted">(drained)</span>' : ""}</td>
+                <td>${w.is_default ? "✓" : ""}</td>
+                <td><code>${frappe.utils.escape_html(w.wallet_id || "")}</code></td>
+            </tr>`
+			)
+			.join("");
+
+		const migRows = (d.migrations || []).length
+			? d.migrations
+					.map(
+						(m) => `<tr>
+                <td>${frappe.utils.escape_html(m.status || "—")}</td>
+                <td>${frappe.utils.escape_html(m.run_id || "—")}</td>
+                <td>${frappe.utils.escape_html(m.completed_at || m.started_at || "—")}</td>
+                <td>${frappe.utils.escape_html(m.last_error || "")}</td>
+            </tr>`
+					)
+					.join("")
+			: '<tr><td colspan="4" class="text-muted">No migration records</td></tr>';
+
+		const txRows = (d.transactions || []).length
+			? d.transactions
+					.map(
+						(t) => `<tr>
+                <td>${frappe.utils.escape_html(t.created_at || "—")}</td>
+                <td style="text-align:right">${t.amount != null ? t.amount : "—"}</td>
+                <td>${t.currency || "—"}</td>
+                <td>${t.type_id != null ? t.type_id : "—"}</td>
+            </tr>`
+					)
+					.join("")
+			: '<tr><td colspan="4" class="text-muted">No recent transactions</td></tr>';
+
+		detail.html(`
+            <div class="d-flex mb-3" style="justify-content:space-between;align-items:center">
+                <div>${backBtn}</div>
+                <div>
+                    <span class="badge badge-info">${frappe.utils.escape_html(
+						i.status || "unknown"
+					)}</span>
+                    <button class="btn btn-default btn-sm ml-2" id="wc-hub">View in Account Hub</button>
+                </div>
+            </div>
+            <h4>${frappe.utils.escape_html(i.username || i.account_id || "Customer")}</h4>
+            <div class="row mb-3">
+                ${kv("Username", i.username)}${kv("Phone", i.phone)}${kv("Status", i.status)}
+                ${kv("Level", i.level)}${kv("Role", i.role)}${kv(
+			"Display currency",
+			i.display_currency
+		)}
+                ${kv("Account ID", i.account_id)}${kv("UUID", i.uuid)}${kv(
+			"Created",
+			i.created_at
+		)}
+                ${kv("npub", i.npub)}${kv("Push tokens", d.devices && d.devices.push_tokens)}
+                ${kv("Contacts", (d.contacts || []).length)}
+            </div>
+            <h5>Wallets <small class="text-muted">(live IBEX balance)</small></h5>
+            <table class="table table-bordered">
+                <thead><tr><th>Currency</th><th>Type</th><th style="text-align:right">Live balance</th><th>Default</th><th>Wallet ID</th></tr></thead>
+                <tbody>${walletRows}</tbody>
+            </table>
+            <h5>Migration</h5>
+            <table class="table table-bordered">
+                <thead><tr><th>Status</th><th>Run ID</th><th>When</th><th>Error</th></tr></thead>
+                <tbody>${migRows}</tbody>
+            </table>
+            <h5>Recent transactions ${
+				d.tx_wallet_id
+					? `<small class="text-muted">(${frappe.utils.escape_html(
+							d.tx_wallet_id
+					  )})</small>`
+					: ""
+			}</h5>
+            <table class="table table-bordered">
+                <thead><tr><th>When</th><th style="text-align:right">Amount</th><th>Currency</th><th>Type</th></tr></thead>
+                <tbody>${txRows}</tbody>
+            </table>
+        `);
+
+		this.page.main.find("#wc-back").on("click", () => this.close_detail());
+		this.page.main.find("#wc-hub").on("click", () => {
+			frappe.route_options = { account_hub_query: i.username || i.account_id };
+			frappe.set_route("account-hub");
 		});
 	}
 

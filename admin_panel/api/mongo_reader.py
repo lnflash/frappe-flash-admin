@@ -117,3 +117,111 @@ def load_migrations() -> dict:
 	for value in out.values():
 		value.pop("_stamp", None)
 	return out
+
+
+def _iso(dt):
+	return dt.isoformat() if dt else None
+
+
+def find_account(query: str):
+	"""Resolve a single account doc by accountId / username / phone / wallet id.
+
+	Resolution order: mongo _id (== IBEX account name) → username → phone
+	(via the users collection + kratosUserId) → wallet id. Returns the raw
+	account doc or None.
+	"""
+	from bson import ObjectId
+
+	db = _get_db()
+	query = (query or "").strip()
+	if not query:
+		return None
+
+	if ObjectId.is_valid(query):
+		acct = db.accounts.find_one({"_id": ObjectId(query)})
+		if acct:
+			return acct
+
+	acct = db.accounts.find_one({"username": query})
+	if acct:
+		return acct
+
+	user = db.users.find_one({"phone": query})
+	if user and user.get("kratosUserId"):
+		acct = db.accounts.find_one({"kratosUserId": user["kratosUserId"]})
+		if acct:
+			return acct
+
+	wallet = db.wallets.find_one({"id": query})
+	if wallet and wallet.get("_accountId"):
+		return db.accounts.find_one({"_id": wallet["_accountId"]})
+
+	return None
+
+
+def customer_bundle(account: dict) -> dict:
+	"""Assemble the mongo-side per-customer detail for a resolved account doc.
+
+	Returns identity, wallets, migration history, and device/contact state.
+	Live IBEX balances and transactions are layered on by the caller.
+	"""
+	db = _get_db()
+	_id = account["_id"]
+	account_id = str(_id)
+
+	wallets = [
+		{
+			"wallet_id": w.get("id"),
+			"currency": w.get("currency"),
+			"type": w.get("type"),
+			"is_default": w.get("id") == account.get("defaultWalletId"),
+		}
+		for w in db.wallets.find({"_accountId": _id}, {"id": 1, "currency": 1, "type": 1})
+	]
+
+	migrations = [
+		{
+			"status": m.get("status"),
+			"run_id": m.get("runId"),
+			"cutover_version": m.get("cutoverVersion"),
+			"started_at": _iso(m.get("startedAt")),
+			"completed_at": _iso(m.get("completedAt")),
+			"last_error": m.get("lastError"),
+		}
+		for m in db.cashwalletmigrations.find({"accountId": account_id}).sort("updatedAt", -1)
+	]
+
+	user = None
+	if account.get("kratosUserId"):
+		user = db.users.find_one(
+			{"kratosUserId": account["kratosUserId"]},
+			{"phone": 1, "deviceId": 1, "deviceTokens": 1, "phoneMetadata": 1},
+		)
+	user = user or {}
+
+	status_history = account.get("statusHistory") or []
+	return {
+		"identity": {
+			"account_id": account_id,
+			"uuid": account.get("id"),
+			"username": account.get("username"),
+			"phone": user.get("phone"),
+			"level": account.get("level"),
+			"status": _latest_status(status_history),
+			"role": account.get("role") or "user",
+			"created_at": _iso(account.get("created_at")),
+			"npub": account.get("npub"),
+			"display_currency": account.get("displayCurrency"),
+			"default_wallet_id": account.get("defaultWalletId"),
+		},
+		"wallets": wallets,
+		"migrations": migrations,
+		"devices": {
+			"device_id": user.get("deviceId"),
+			"push_tokens": len(user.get("deviceTokens") or []),
+		},
+		"contacts": [
+			{"handle": c.get("id"), "name": c.get("name"), "tx_count": c.get("transactionsCount")}
+			for c in (account.get("contacts") or [])
+		],
+	}

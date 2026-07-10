@@ -47,6 +47,9 @@ PAGE_LIMIT = 100
 # as tightly as account creation, but we stay polite (~1 req/s).
 REQUEST_INTERVAL_SECONDS = 1.0
 
+# One-shot backoff before retrying a request that hit a 429.
+RATE_LIMIT_BACKOFF_SECONDS = 2.0
+
 _session = None
 
 
@@ -121,8 +124,13 @@ class IbexClient:
 			return self._fetch_token()
 		return self._token
 
-	def _get(self, path: str, params: dict) -> requests.Response:
-		"""GET with a raw-token Authorization header; refetch + retry once on 401."""
+	def _get(self, path: str, params: dict, allow_not_found: bool = False) -> requests.Response:
+		"""GET with a raw-token Authorization header.
+
+		Refetches + retries once on 401 (expired token) and backs off once on
+		429 (rate limit). When allow_not_found is set, a 404 is returned to the
+		caller instead of raising (drained IBEX accounts can 404 on reads).
+		"""
 		url = f"{self.hub_url}{path}"
 		resp = self._session.get(url, params=params, headers={"Authorization": self._get_token()}, timeout=30)
 		if resp.status_code == 401:
@@ -130,9 +138,45 @@ class IbexClient:
 			resp = self._session.get(
 				url, params=params, headers={"Authorization": self._get_token()}, timeout=30
 			)
+		if resp.status_code == 429:
+			time.sleep(RATE_LIMIT_BACKOFF_SECONDS)
+			resp = self._session.get(
+				url, params=params, headers={"Authorization": self._get_token()}, timeout=30
+			)
+		if allow_not_found and resp.status_code == 404:
+			return resp
 		if not resp.ok:
 			raise IbexError(f"IBEX GET {path} failed: {resp.status_code} {resp.text[:200]}")
 		return resp
+
+	def get_account_details(self, account_id: str) -> dict:
+		"""Live single-account read: GET /v2/account/{id}. balance in dollars.
+
+		Drained/empty accounts can 404 ("Balance not found") — treated as zero.
+		"""
+		resp = self._get(f"/v2/account/{account_id}", {}, allow_not_found=True)
+		if resp.status_code == 404:
+			return {"id": account_id, "balance": 0.0, "not_found": True}
+		return resp.json()
+
+	def get_account_transactions(
+		self, account_id: str, limit: int = 25, page: int = 0, sort: str = "settledAt"
+	) -> list[dict]:
+		"""Recent transactions for an account, newest first. Paged.
+
+		NOTE: this endpoint is **0-indexed** (page 0 is the first page), unlike
+		the 1-indexed bulk /v2/account endpoint. Getting this wrong silently
+		returns an empty list.
+		"""
+		resp = self._get(
+			f"/v2/transaction/account/{account_id}/all",
+			{"limit": limit, "page": page, "sort": sort},
+			allow_not_found=True,
+		)
+		if resp.status_code == 404:
+			return []
+		data = resp.json()
+		return data if isinstance(data, list) else []
 
 	def list_accounts_page(self, page: int, limit: int = PAGE_LIMIT) -> list[dict]:
 		"""Return one page of org accounts, balances included (dollars)."""

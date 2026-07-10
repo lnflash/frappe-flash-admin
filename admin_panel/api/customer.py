@@ -13,6 +13,7 @@ import frappe
 
 from .auth import require_admin
 from .census_core import CURRENCY_BY_ID
+from .common import handle_api_errors
 from .ibex_client import IbexClient
 from .mongo_reader import customer_bundle, find_account
 
@@ -21,11 +22,15 @@ __all__ = ["get_customer_detail"]
 
 @frappe.whitelist()
 @require_admin()
+@handle_api_errors
 def get_customer_detail(query, tx_limit=25):
 	"""Resolve a customer by username / phone / accountId / wallet id and return
 	identity + wallets (with live IBEX balance) + migration state + recent
 	transactions. `{"found": False}` if no account matches.
 	"""
+	query = frappe.utils.cstr(query).strip()
+	tx_limit = max(1, min(frappe.utils.cint(tx_limit) or 25, 100))
+
 	if not frappe.conf.get("customer_mongo_uri"):
 		return {"found": False, "error": "customer_mongo_uri is not configured"}
 
@@ -48,7 +53,7 @@ def get_customer_detail(query, tx_limit=25):
 	tx_wallet = default_wallet_id or (bundle["wallets"][0]["wallet_id"] if bundle["wallets"] else None)
 	transactions = []
 	if tx_wallet:
-		for tx in client.get_account_transactions(tx_wallet, limit=int(tx_limit)):
+		for tx in client.get_account_transactions(tx_wallet, limit=tx_limit):
 			transactions.append(
 				{
 					"id": tx.get("id"),

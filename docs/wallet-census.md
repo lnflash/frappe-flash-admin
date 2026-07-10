@@ -28,6 +28,25 @@ and a **Run Census** button; while a run is in flight it polls for progress.
 - **Sortable table** — click any header; default sort is balance descending.
 - **CSV export** — exports the currently filtered/sorted view, client-side.
 
+## Operational notes
+
+- **Stale runs** — a `Running` snapshot whose worker died (deploy, OOM, kill)
+  would otherwise block new scans forever. The next start marks any `Running`
+  snapshot older than 45 minutes (`STALE_RUN_SECONDS`) as `Failed` and starts
+  fresh.
+- **Retention** — only the last 20 snapshots are kept (`KEEP_SNAPSHOTS`);
+  older ones are purged **permanently** after each successful run, since
+  `rows_json` holds the full per-account table.
+- **`run_census_now`** — synchronous variant for deployments without a `long`
+  worker (local docker-compose, smoke tests). Deliberately **not whitelisted**
+  — bench-execute / console only — because it blocks the caller for the full
+  scan. The page always goes through the queued `start_census`.
+- **Table paging vs CSV** — the table renders 200 rows at a time (**Show
+  more** / **Show all** to expand), but **Export CSV** always exports the full
+  filtered set regardless of how many rows are rendered.
+- **Access** — the page is gated to the `Accounts Manager`, `Flash Admin`,
+  and `System Manager` roles (plus `Administrator`).
+
 ## Data sources
 
 This page talks **directly** to IBEX and the customer MongoDB (it does not go

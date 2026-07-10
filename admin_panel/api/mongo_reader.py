@@ -15,6 +15,8 @@ Config (site_config.json / frappe.conf):
   customer_mongo_db    (optional) — database name, defaults to "galoy"
 """
 
+import re
+
 import frappe
 
 _client = None
@@ -146,7 +148,17 @@ def find_account(query: str):
 	if acct:
 		return acct
 
-	user = db.users.find_one({"phone": query})
+	# Support pastes of formatted numbers ("876 555-1234", "(876) 5551234"):
+	# try the raw query, a compacted form, and a "+"-prefixed compacted form.
+	compact = re.sub(r"[\s\-().]", "", query)
+	candidates = [query, compact]
+	if compact and not compact.startswith("+"):
+		candidates.append("+" + compact)
+	user = None
+	for candidate in dict.fromkeys(c for c in candidates if c):
+		user = db.users.find_one({"phone": candidate})
+		if user:
+			break
 	if user and user.get("kratosUserId"):
 		acct = db.accounts.find_one({"kratosUserId": user["kratosUserId"]})
 		if acct:

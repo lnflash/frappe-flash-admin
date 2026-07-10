@@ -20,6 +20,7 @@ import frappe
 
 from .auth import require_admin
 from .census_core import build_census
+from .common import handle_api_errors
 from .ibex_client import IbexClient
 from .mongo_reader import load_accounts, load_migrations, load_wallets
 
@@ -32,19 +33,28 @@ __all__ = [
 	"start_census",
 ]
 
+# A Running snapshot older than this is a dead run (beyond the 30-min job
+# timeout) — mark it Failed instead of blocking new scans forever.
+STALE_RUN_SECONDS = 2700
+
+# How many snapshots to retain; older ones are purged after a successful run
+# (rows_json holds the full per-account table, so rows are large).
+KEEP_SNAPSHOTS = 20
+
 
 # ── Whitelisted endpoints ─────────────────────────────────────────────────
 
 
 @frappe.whitelist()
 @require_admin()
+@handle_api_errors
 def start_census():
 	"""Create a snapshot row and enqueue the long-running scan. Returns its name.
 
 	If a run is already in flight, return it instead of starting a duplicate
 	(the scan takes minutes and hits the IBEX API for every account).
 	"""
-	running = _latest_snapshot_name(status="Running")
+	running = _resolve_running_snapshot()
 	if running:
 		return {"snapshot": running, "status": "Running", "already_running": True}
 
@@ -63,17 +73,21 @@ def start_census():
 	return {"snapshot": snapshot.name, "status": "Running"}
 
 
-@frappe.whitelist()
-@require_admin()
 def run_census_now():
 	"""Create a snapshot and run the scan **synchronously** (no worker needed).
 
-	`start_census` enqueues onto the `long` queue, which requires a background
-	worker. Deployments without one (e.g. the local docker-compose, or a
-	`bench execute` smoke test) can call this instead — it blocks until the
-	scan finishes and returns the resulting status. Fine for sandbox / small
-	orgs; a full prod scan takes minutes and should use the queued path.
+	Deliberately NOT whitelisted — bench-execute / console only, because it
+	blocks the caller for the full scan. `start_census` enqueues onto the
+	`long` queue, which requires a background worker. Deployments without one
+	(e.g. the local docker-compose, or a `bench execute` smoke test) can call
+	this instead — it blocks until the scan finishes and returns the resulting
+	status. Fine for sandbox / small orgs; a full prod scan takes minutes and
+	should use the queued path.
 	"""
+	running = _resolve_running_snapshot()
+	if running:
+		return get_census_status(running)
+
 	snapshot = frappe.new_doc("Wallet Census Snapshot")
 	snapshot.status = "Running"
 	snapshot.started_at = frappe.utils.now_datetime()
@@ -85,6 +99,7 @@ def run_census_now():
 
 @frappe.whitelist()
 @require_admin()
+@handle_api_errors
 def get_census_status(snapshot=None):
 	"""Return status + progress for a snapshot (latest if none given)."""
 	name = snapshot or _latest_snapshot_name()
@@ -104,6 +119,7 @@ def get_census_status(snapshot=None):
 
 @frappe.whitelist()
 @require_admin()
+@handle_api_errors
 def get_latest_census():
 	"""Return the most recent completed snapshot's full result payload."""
 	name = _latest_snapshot_name(status="Complete")
@@ -131,6 +147,51 @@ def _latest_snapshot_name(status=None):
 		pluck="name",
 	)
 	return names[0] if names else None
+
+
+def _resolve_running_snapshot():
+	"""Return the name of a genuinely live Running snapshot, or None.
+
+	A Running row whose worker died (deploy, OOM, kill) never flips to Failed
+	and would block new runs forever. If the latest Running snapshot is older
+	than STALE_RUN_SECONDS (or has no started_at), mark it Failed so the
+	caller can start a fresh scan.
+	"""
+	running = _latest_snapshot_name(status="Running")
+	if not running:
+		return None
+
+	started_at = frappe.db.get_value("Wallet Census Snapshot", running, "started_at")
+	if started_at:
+		age = frappe.utils.time_diff_in_seconds(frappe.utils.now_datetime(), started_at)
+		if age <= STALE_RUN_SECONDS:
+			return running
+
+	frappe.db.set_value(
+		"Wallet Census Snapshot",
+		running,
+		{
+			"status": "Failed",
+			"error": "Marked stale by start_census: run exceeded timeout",
+			"completed_at": frappe.utils.now_datetime(),
+		},
+		update_modified=False,
+	)
+	frappe.db.commit()
+	return None
+
+
+def _purge_old_snapshots(keep=KEEP_SNAPSHOTS):
+	"""Hard-delete snapshots beyond the newest `keep` to bound table growth."""
+	names = frappe.get_all(
+		"Wallet Census Snapshot",
+		order_by="creation desc",
+		pluck="name",
+	)
+	for name in names[keep:]:
+		frappe.delete_doc(
+			"Wallet Census Snapshot", name, ignore_permissions=True, force=True, delete_permanently=True
+		)
 
 
 # ── Background job (IO) ───────────────────────────────────────────────────
@@ -185,6 +246,13 @@ def run_census_job(snapshot_name):
 		doc.bucket_counts_json = json.dumps(result["bucket_counts"])
 		doc.rows_json = json.dumps(result["rows"])
 		doc.save(ignore_permissions=True)
+		frappe.db.commit()
+
+		# Best-effort retention — a purge failure must not fail the run.
+		try:
+			_purge_old_snapshots()
+		except Exception as purge_exc:
+			frappe.logger().warning(f"Wallet census {snapshot_name}: snapshot purge failed: {purge_exc}")
 		frappe.db.commit()
 	except Exception as exc:
 		frappe.logger().error(f"Wallet census {snapshot_name} failed: {exc}")

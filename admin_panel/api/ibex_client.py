@@ -50,6 +50,10 @@ REQUEST_INTERVAL_SECONDS = 1.0
 # One-shot backoff before retrying a request that hit a 429.
 RATE_LIMIT_BACKOFF_SECONDS = 2.0
 
+# Hard cap on bulk-list pagination — defensive against a misbehaving API
+# paging forever (10k pages * 100/page = 1M accounts, far above org size).
+MAX_PAGES = 10000
+
 _session = None
 
 
@@ -195,6 +199,8 @@ class IbexClient:
 		page = 1
 		seen = 0
 		while True:
+			if page > MAX_PAGES:
+				raise IbexError("IBEX account list exceeded MAX_PAGES — aborting scan")
 			batch = self.list_accounts_page(page, PAGE_LIMIT)
 			if not batch:
 				break

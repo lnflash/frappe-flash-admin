@@ -1,3 +1,5 @@
+const WC_ALLOWED_ROLES = ["Accounts Manager", "Flash Admin", "System Manager"];
+
 frappe.pages["wallet-census"].on_page_load = function (wrapper) {
 	var page = frappe.ui.make_app_page({
 		parent: wrapper,
@@ -5,12 +7,15 @@ frappe.pages["wallet-census"].on_page_load = function (wrapper) {
 		single_column: true,
 	});
 
-	if (!frappe.user_roles.includes("Accounts Manager")) {
+	const allowed =
+		frappe.session.user === "Administrator" ||
+		WC_ALLOWED_ROLES.some((r) => frappe.user_roles.includes(r));
+	if (!allowed) {
 		page.main.html(`
             <div class="text-center mt-5">
                 <div class="alert alert-warning">
                     <h4>Access Denied</h4>
-                    <p>You do not have permission to access this page. Please contact your administrator to get the "Accounts Manager" role.</p>
+                    <p>You do not have permission to access this page. Please contact your administrator to get one of the "Accounts Manager", "Flash Admin", or "System Manager" roles.</p>
                 </div>
             </div>
         `);
@@ -34,6 +39,9 @@ function wc_debounce(func, wait) {
 	};
 }
 
+const WC_PAGE_SIZE = 200;
+const WC_PAGE_STEP = 500;
+
 const BUCKETS = [
 	{ key: "all", label: "All" },
 	{ key: "active_funded", label: "Active + Funded" },
@@ -52,6 +60,7 @@ class WalletCensus {
 		this.totals = {};
 		this.bucket_counts = {};
 		this.active_bucket = "all";
+		this.render_limit = WC_PAGE_SIZE;
 		this.sort_key = "balance";
 		this.sort_dir = "desc";
 		this.poll_timer = null;
@@ -92,7 +101,10 @@ class WalletCensus {
 		const search = this.page.main.find("#wc-search");
 		search.on(
 			"input",
-			wc_debounce(() => this.render_table(), 200)
+			wc_debounce(() => {
+				this.render_limit = WC_PAGE_SIZE;
+				this.render_table();
+			}, 200)
 		);
 		this.page.main.find("#wc-export").on("click", () => this.export_csv());
 
@@ -243,6 +255,7 @@ class WalletCensus {
 		el.html(html);
 		el.find(".wc-bucket").on("click", (e) => {
 			this.active_bucket = e.currentTarget.dataset.bucket;
+			this.render_limit = WC_PAGE_SIZE;
 			this.render_buckets();
 			this.render_table();
 		});
@@ -276,6 +289,7 @@ class WalletCensus {
 
 	render_table() {
 		const rows = this.filtered_rows();
+		const visible = rows.slice(0, this.render_limit);
 		const cols = [
 			{ key: "username", label: "Username" },
 			{ key: "balance", label: "Balance" },
@@ -291,7 +305,7 @@ class WalletCensus {
 				return `<th class="wc-sort" data-key="${c.key}" style="cursor:pointer">${c.label}${arrow}</th>`;
 			})
 			.join("");
-		const body = rows
+		const body = visible
 			.map(
 				(r) => `
             <tr class="wc-row" data-q="${frappe.utils.escape_html(
@@ -306,22 +320,31 @@ class WalletCensus {
 						  })
 						: "0.00"
 				}</td>
-                <td>${r.currency || "—"}</td>
+                <td>${frappe.utils.escape_html(r.currency || "—")}</td>
                 <td>${frappe.utils.escape_html(r.status || "—")}</td>
                 <td>${frappe.utils.escape_html(r.migration_status || "—")}</td>
                 <td><code>${frappe.utils.escape_html(r.account_id || "")}</code></td>
             </tr>`
 			)
 			.join("");
+		const moreBtns =
+			rows.length > visible.length
+				? `<div class="mb-2">
+                    <button class="btn btn-default btn-sm" id="wc-more">Show ${WC_PAGE_STEP} more</button>
+                    <button class="btn btn-default btn-sm ml-2" id="wc-all">Show all</button>
+                </div>`
+				: "";
 		this.page.main.find("#wc-table").html(`
-            <div class="text-muted small mb-1">${rows.length} accounts</div>
+            <div class="text-muted small mb-1">Showing ${visible.length} of ${
+			rows.length
+		} accounts</div>
             <table class="table table-bordered table-hover">
                 <thead><tr>${head}</tr></thead>
                 <tbody>${
 					body ||
 					'<tr><td colspan="6" class="text-center text-muted">No accounts</td></tr>'
 				}</tbody>
-            </table>`);
+            </table>${moreBtns}`);
 		this.page.main.find(".wc-sort").on("click", (e) => {
 			const key = e.currentTarget.dataset.key;
 			if (this.sort_key === key) this.sort_dir = this.sort_dir === "desc" ? "asc" : "desc";
@@ -335,6 +358,14 @@ class WalletCensus {
 			const q = e.currentTarget.dataset.q;
 			if (q) this.open_detail(q);
 		});
+		this.page.main.find("#wc-more").on("click", () => {
+			this.render_limit += WC_PAGE_STEP;
+			this.render_table();
+		});
+		this.page.main.find("#wc-all").on("click", () => {
+			this.render_limit = rows.length;
+			this.render_table();
+		});
 	}
 
 	// ── Per-customer detail ───────────────────────────────────────
@@ -346,6 +377,14 @@ class WalletCensus {
 			method: "admin_panel.api.customer.get_customer_detail",
 			args: { query: query },
 			callback: (res) => this.render_detail(res.message || {}, query),
+			error: () => {
+				const backBtn = `<button class="btn btn-default btn-sm" id="wc-back">← Back to census</button>`;
+				detail.html(
+					`<div class="mb-2">${backBtn}</div>
+                     <div class="alert alert-danger">Failed to load customer — the server returned an error. Check logs or try again.</div>`
+				);
+				this.page.main.find("#wc-back").on("click", () => this.close_detail());
+			},
 		});
 	}
 
@@ -358,11 +397,42 @@ class WalletCensus {
 		const detail = this.page.main.find("#wc-detail");
 		const backBtn = `<button class="btn btn-default btn-sm" id="wc-back">← Back to census</button>`;
 		if (!d.found) {
+			// The census row may still carry IBEX-side facts even when the DB has no match.
+			const row = (this.rows || []).find(
+				(r) => r.account_id === query || r.username === query
+			);
+			const censusFacts = row
+				? `<h5>IBEX-side facts from the last census</h5>
+                 <table class="table table-bordered table-sm" style="max-width:560px">
+                    <tbody>
+                        <tr><td class="text-muted">Wallet ID</td><td><code>${frappe.utils.escape_html(
+							row.wallet_id || ""
+						)}</code></td></tr>
+                        <tr><td class="text-muted">Currency</td><td>${frappe.utils.escape_html(
+							row.currency || "—"
+						)}</td></tr>
+                        <tr><td class="text-muted">Balance</td><td style="text-align:right">${
+							row.balance
+								? Number(row.balance).toLocaleString(undefined, {
+										minimumFractionDigits: 2,
+										maximumFractionDigits: 2,
+								  })
+								: "0.00"
+						}</td></tr>
+                        <tr><td class="text-muted">Status</td><td>${frappe.utils.escape_html(
+							row.status || "—"
+						)}</td></tr>
+                        <tr><td class="text-muted">Buckets</td><td>${frappe.utils.escape_html(
+							(row.buckets || []).join(", ")
+						)}</td></tr>
+                    </tbody>
+                 </table>`
+				: "";
 			detail.html(
 				`<div class="mb-2">${backBtn}</div>
                  <div class="alert alert-warning">No customer found for “${frappe.utils.escape_html(
 						query
-					)}”. ${frappe.utils.escape_html(d.error || "")}</div>`
+					)}”. ${frappe.utils.escape_html(d.error || "")}</div>${censusFacts}`
 			);
 			this.page.main.find("#wc-back").on("click", () => this.close_detail());
 			return;
@@ -379,8 +449,8 @@ class WalletCensus {
 		const walletRows = (d.wallets || [])
 			.map(
 				(w) => `<tr>
-                <td>${w.currency || "—"}</td>
-                <td>${w.type || "—"}</td>
+                <td>${frappe.utils.escape_html(w.currency || "—")}</td>
+                <td>${frappe.utils.escape_html(w.type || "—")}</td>
                 <td style="text-align:right">${Number(w.live_balance || 0).toLocaleString(
 					undefined,
 					{
@@ -412,9 +482,15 @@ class WalletCensus {
 					.map(
 						(t) => `<tr>
                 <td>${frappe.utils.escape_html(t.created_at || "—")}</td>
-                <td style="text-align:right">${t.amount != null ? t.amount : "—"}</td>
-                <td>${t.currency || "—"}</td>
-                <td>${t.type_id != null ? t.type_id : "—"}</td>
+                <td style="text-align:right">${
+					t.amount != null && Number.isFinite(Number(t.amount)) ? Number(t.amount) : "—"
+				}</td>
+                <td>${frappe.utils.escape_html(t.currency || "—")}</td>
+                <td>${
+					t.type_id != null && Number.isFinite(Number(t.type_id))
+						? Number(t.type_id)
+						: "—"
+				}</td>
             </tr>`
 					)
 					.join("")
@@ -490,7 +566,9 @@ class WalletCensus {
 			"created_at",
 		];
 		const esc = (v) => {
-			const s = v === null || v === undefined ? "" : String(v);
+			let s = v === null || v === undefined ? "" : String(v);
+			// Excel formula-injection guard
+			if (typeof v === "string" && /^[=+\-@]/.test(s)) s = "'" + s;
 			return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 		};
 		const lines = [cols.join(",")];

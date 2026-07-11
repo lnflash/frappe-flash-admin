@@ -60,3 +60,13 @@ def test_graphql_client_treats_invalid_account_id_as_not_found():
 	assert "_is_not_found_error" in client_py
 	assert "InvalidAccountIdError" in client_py
 	assert "UNEXPECTED_CLIENT_ERROR" in client_py
+
+
+def test_graphql_client_lookups_tolerate_partial_responses():
+	"""A resolved account node with field-level errors (e.g. Kratos 404 on
+	owner.email) must be returned with nulls, not raised — the admin panel
+	exists to inspect broken accounts."""
+	client_py = (ACCOUNT_HUB_JS.parents[3] / "api" / "graphql_client.py").read_text()
+
+	assert "GraphQL partial response" in client_py
+	assert "if allow_not_found:" in client_py

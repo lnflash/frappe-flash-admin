@@ -96,11 +96,32 @@ class GraphQLClient:
 	def execute_and_extract(
 		self, query: str, variables: dict, data_key: str, allow_not_found: bool = False
 	) -> Any:
-		"""Execute query, check errors, and extract data by key"""
+		"""Execute query, check errors, and extract data by key.
+
+		allow_not_found selects LOOKUP semantics, which also tolerate PARTIAL
+		responses: when the requested node resolved, field-level resolver
+		errors (e.g. owner.email failing with a Kratos 404 on a dangling
+		identity, seen on TEST 2026-07-11) must not void the whole account —
+		the admin panel exists precisely to inspect broken accounts. The
+		errors are logged and the failed fields arrive as null.
+
+		Without the flag (mutations, strict reads) semantics stay
+		all-or-nothing: any GraphQL error raises.
+		"""
 		resp = self.execute_query(query, variables)
-		self._check_errors(resp, allow_not_found)
-		if allow_not_found and resp.get("errors"):
+		if allow_not_found:
+			data = (resp.get("data") or {}).get(data_key)
+			errors = resp.get("errors")
+			if data is not None:
+				if errors:
+					frappe.logger().warning(
+						f"GraphQL partial response for {data_key} (using data, "
+						f"failed fields are null): {errors}"
+					)
+				return data
+			self._check_errors(resp, allow_not_found=True)
 			return None
+		self._check_errors(resp)
 		return resp.get("data", {}).get(data_key)
 
 	# GraphQL query constants

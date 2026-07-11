@@ -107,3 +107,6 @@ def test_dashboard_renders_pulse_layer():
 	assert "admin_panel.api.admin_api.get_dashboard_stats" in js
 	assert "account_hub_query" in js
 	assert "ad-smart-search" in js
+	# hash hrefs get eaten by the desk router ("Page #x not found") — tiles
+	# must use data-scroll or /app/ routes
+	assert 'href="#fp-' not in js

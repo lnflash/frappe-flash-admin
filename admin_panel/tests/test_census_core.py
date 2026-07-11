@@ -178,3 +178,40 @@ def test_ibex_only_run_is_unmatched_not_closed():
 	# totals still computed from IBEX alone
 	assert result["totals"]["usdt"]["balance"] == 3.0
 	assert result["totals"]["funded"] == 1
+
+
+def test_sweep_pages_continues_past_short_pages():
+	"""Prod IBEX silently caps page size (limit=100 returns 25), so a short
+	batch must NOT be read as the last page — that truncated the first prod
+	census to 25 of ~8,750 accounts. Only an empty page ends the sweep."""
+	from admin_panel.api.census_core import sweep_pages
+
+	pages = {1: ["a"] * 25, 2: ["b"] * 25, 3: ["c"] * 7, 4: []}
+	fetched = []
+
+	def fetch(page):
+		fetched.append(page)
+		return pages[page]
+
+	out = [(p, len(batch)) for p, batch in sweep_pages(fetch, max_pages=10)]
+
+	assert out == [(1, 25), (2, 25), (3, 7)]
+	assert fetched == [1, 2, 3, 4]  # exactly one extra (empty) request
+
+
+def test_sweep_pages_raises_at_max_pages():
+	from admin_panel.api.census_core import PageLimitExceeded, sweep_pages
+
+	def endless(page):
+		return ["x"]
+
+	import pytest
+
+	with pytest.raises(PageLimitExceeded):
+		list(sweep_pages(endless, max_pages=3))
+
+
+def test_sweep_pages_empty_first_page():
+	from admin_panel.api.census_core import sweep_pages
+
+	assert list(sweep_pages(lambda p: [], max_pages=5)) == []

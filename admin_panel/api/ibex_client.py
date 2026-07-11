@@ -24,6 +24,8 @@ import time
 import frappe
 import requests
 
+from .census_core import PageLimitExceeded, sweep_pages
+
 # Verified URLs per environment (from the ibex-client library). Any field can
 # still be overridden via config for a bespoke staging setup. Note the sandbox
 # audience is a different host from production.
@@ -193,23 +195,25 @@ class IbexClient:
 	def iter_all_accounts(self, progress_cb=None):
 		"""Yield every org account across all pages, pacing between requests.
 
-		progress_cb(pages_done, accounts_seen) is called after each page so the
-		caller can persist scan progress for the UI.
+		Pages until an EMPTY page via census_core.sweep_pages — the prod hub
+		silently caps the page size (limit=100 returns 25), so a short batch
+		must never be read as "last page". progress_cb(pages_done,
+		accounts_seen) is called after each page so the caller can persist
+		scan progress for the UI.
 		"""
-		page = 1
+
+		def fetch(page):
+			if page > 1:
+				time.sleep(REQUEST_INTERVAL_SECONDS)
+			return self.list_accounts_page(page, PAGE_LIMIT)
+
 		seen = 0
-		while True:
-			if page > MAX_PAGES:
-				raise IbexError("IBEX account list exceeded MAX_PAGES — aborting scan")
-			batch = self.list_accounts_page(page, PAGE_LIMIT)
-			if not batch:
-				break
-			for account in batch:
-				seen += 1
-				yield account
-			if progress_cb:
-				progress_cb(page, seen)
-			if len(batch) < PAGE_LIMIT:
-				break
-			page += 1
-			time.sleep(REQUEST_INTERVAL_SECONDS)
+		try:
+			for page, batch in sweep_pages(fetch, MAX_PAGES):
+				for account in batch:
+					seen += 1
+					yield account
+				if progress_cb:
+					progress_cb(page, seen)
+		except PageLimitExceeded as exc:
+			raise IbexError(str(exc)) from exc

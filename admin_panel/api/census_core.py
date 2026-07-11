@@ -20,6 +20,30 @@ ACTIVE_STATUS = "active"
 MIGRATED_STATUSES = {"completed", "complete", "succeeded", "success", "done"}
 
 
+class PageLimitExceeded(Exception):
+	"""sweep_pages hit max_pages — the API is paging forever or the cap is too low."""
+
+
+def sweep_pages(fetch_page, max_pages):
+	"""Yield (page_number, batch) from successive 1-indexed pages until an EMPTY page.
+
+	Termination must NOT infer "last page" from a short batch: the prod IBEX
+	hub silently caps the page size (requesting limit=100 returns 25 rows), so
+	a short page looks identical to a full one there. That inference truncated
+	the first prod census to 25 of ~8,750 accounts (2026-07-10). Only an empty
+	page ends the sweep — costing exactly one extra request.
+	"""
+	page = 1
+	while True:
+		if page > max_pages:
+			raise PageLimitExceeded(f"pagination exceeded {max_pages} pages — aborting sweep")
+		batch = fetch_page(page)
+		if not batch:
+			return
+		yield page, batch
+		page += 1
+
+
 def _is_migrated(migration) -> bool:
 	if not migration:
 		return False

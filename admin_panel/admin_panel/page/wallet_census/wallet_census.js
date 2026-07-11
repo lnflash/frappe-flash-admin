@@ -39,6 +39,88 @@ function wc_debounce(func, wait) {
 	};
 }
 
+const WC_CSS = `
+    .wallet-census { --wc-surface: var(--card-bg, #ffffff); --wc-ink: var(--text-color, #1a2420);
+          --wc-ink2: var(--text-muted, #5c6b65); --wc-ink3: var(--text-light, #8fa098);
+          --wc-line: var(--border-color, #e2e8e5); --wc-line-soft: var(--subtle-fg, #ecf1ee);
+          --wc-accent: #007856; --wc-accent-ink: #007856; --wc-accent-soft: #e6f3ee;
+          --wc-good: #0ca30c; --wc-warn: #b87d00; --wc-warn-bg: #fff3d6;
+          --wc-serious: #c05a32; --wc-serious-bg: #fdeae2;
+          --wc-shadow: 0 1px 2px rgba(26,36,32,0.05), 0 4px 14px rgba(26,36,32,0.04);
+          max-width: 1240px; margin: 0 auto; }
+    [data-theme="dark"] .wallet-census, .dark .wallet-census {
+          --wc-accent: #1e9e75; --wc-accent-ink: #4cc29e; --wc-accent-soft: #12352a;
+          --wc-good: #35c135; --wc-warn: #fab219; --wc-warn-bg: #33290d;
+          --wc-serious: #ec835a; --wc-serious-bg: #38211a;
+          --wc-shadow: 0 1px 2px rgba(0,0,0,0.35), 0 6px 18px rgba(0,0,0,0.25); }
+    .wallet-census .wc-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .wallet-census .wc-input { border: 1px solid var(--wc-line); border-radius: 9px; padding: 7px 12px;
+          font-size: 13px; background: var(--wc-surface); color: var(--wc-ink); }
+    .wallet-census .wc-input:focus { outline: 2px solid var(--wc-accent); outline-offset: 1px; border-color: var(--wc-accent); }
+    .wallet-census .wc-btn { border: 1px solid var(--wc-line); background: var(--wc-surface); color: var(--wc-ink);
+          border-radius: 9px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+          transition: border-color 0.15s; }
+    .wallet-census .wc-btn:hover { border-color: var(--wc-accent); }
+    .wallet-census .wc-btn:focus-visible { outline: 2px solid var(--wc-accent); outline-offset: 1px; }
+    .wallet-census .wc-btn.primary { background: var(--wc-accent); border-color: var(--wc-accent); color: #fff; }
+    .wallet-census .wc-btn.primary:hover { filter: brightness(1.07); }
+    .wallet-census .wc-meta { color: var(--wc-ink2); font-size: 12.5px; margin: 0 0 14px; }
+    .wallet-census .wc-meta .err { color: var(--wc-serious); font-weight: 600; }
+    .wallet-census .wc-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 14px; margin-bottom: 16px; }
+    .wallet-census .wc-tile { background: var(--wc-surface); border: 1px solid var(--wc-line);
+          border-radius: 14px; padding: 15px 17px 12px; box-shadow: var(--wc-shadow);
+          display: flex; flex-direction: column; gap: 5px; min-height: 104px; }
+    .wallet-census .wc-tile-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+          color: var(--wc-ink2); font-weight: 600; }
+    .wallet-census .wc-tile-value { font-size: 27px; font-weight: 650; letter-spacing: -0.015em;
+          line-height: 1.1; color: var(--wc-ink); }
+    .wallet-census .wc-tile-sub { color: var(--wc-ink3); font-size: 12px; margin-top: auto; }
+    .wallet-census .wc-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+    .wallet-census .wc-bucket { border: 1px solid var(--wc-line); background: var(--wc-surface);
+          color: var(--wc-ink2); border-radius: 999px; padding: 5px 13px; font-size: 12.5px;
+          font-weight: 600; cursor: pointer; transition: all 0.12s; }
+    .wallet-census .wc-bucket:hover { border-color: var(--wc-accent); color: var(--wc-ink); }
+    .wallet-census .wc-bucket.active { background: var(--wc-accent); border-color: var(--wc-accent); color: #fff; }
+    .wallet-census .wc-bucket .badge { font-weight: 650; margin-left: 5px; opacity: 0.75; }
+    .wallet-census .wc-card { background: var(--wc-surface); border: 1px solid var(--wc-line);
+          border-radius: 14px; box-shadow: var(--wc-shadow); overflow: hidden; }
+    .wallet-census .wc-count { color: var(--wc-ink3); font-size: 12px; padding: 12px 18px 0; }
+    .wallet-census table.wc-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0 0; }
+    .wallet-census table.wc-table th { text-align: left; font-size: 11px; letter-spacing: 0.05em;
+          text-transform: uppercase; color: var(--wc-ink2); font-weight: 650; padding: 10px 18px;
+          border-bottom: 1px solid var(--wc-line); white-space: nowrap; cursor: pointer; }
+    .wallet-census table.wc-table td { padding: 9px 18px; border-bottom: 1px solid var(--wc-line-soft);
+          color: var(--wc-ink); font-variant-numeric: tabular-nums; }
+    .wallet-census table.wc-table tr:last-child td { border-bottom: none; }
+    .wallet-census .wc-row:hover { background: var(--wc-line-soft); }
+    .wallet-census table.wc-table code { background: transparent; color: var(--wc-ink3); font-size: 12px; }
+    .wallet-census .wc-morebar { padding: 12px 18px 14px; display: flex; gap: 10px; }
+    .wallet-census #wc-detail h4 { font-size: 18px; font-weight: 650; margin: 6px 0 14px; color: var(--wc-ink); }
+    .wallet-census #wc-detail h5 { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+          color: var(--wc-ink2); font-weight: 650; margin: 20px 0 8px; }
+    .wallet-census #wc-detail .badge { border-radius: 999px; padding: 3px 11px; font-size: 12px;
+          font-weight: 600; background: var(--wc-accent-soft); color: var(--wc-accent-ink); }
+    .wallet-census #wc-detail .row > div { padding: 8px 12px; }
+    .wallet-census #wc-detail .row .text-muted { font-size: 11px; letter-spacing: 0.05em;
+          text-transform: uppercase; font-weight: 600; }
+    .wallet-census #wc-detail table { width: 100%; border-collapse: collapse; font-size: 13px;
+          background: var(--wc-surface); border: 1px solid var(--wc-line); border-radius: 12px; overflow: hidden; }
+    .wallet-census #wc-detail table th { text-align: left; font-size: 11px; letter-spacing: 0.05em;
+          text-transform: uppercase; color: var(--wc-ink2); font-weight: 650; padding: 9px 14px;
+          border-bottom: 1px solid var(--wc-line); background: var(--wc-line-soft); }
+    .wallet-census #wc-detail table td { padding: 8px 14px; border-bottom: 1px solid var(--wc-line-soft);
+          font-variant-numeric: tabular-nums; }
+    .wallet-census #wc-detail table tr:last-child td { border-bottom: none; }
+    .wallet-census .alert { border-radius: 12px; border: 1px solid var(--wc-line); padding: 12px 16px; font-size: 13px; }
+    .wallet-census .alert-warning { background: var(--wc-warn-bg); color: var(--wc-warn); border-color: transparent; }
+    .wallet-census .alert-danger { background: var(--wc-serious-bg); color: var(--wc-serious); border-color: transparent; }
+    @media (prefers-reduced-motion: no-preference) {
+        .wallet-census .wc-rise { opacity: 0; transform: translateY(6px); animation: wc-rise 0.35s ease forwards; }
+        @keyframes wc-rise { to { opacity: 1; transform: none; } }
+    }
+`;
+
 const WC_PAGE_SIZE = 200;
 const WC_PAGE_STEP = 500;
 
@@ -77,23 +159,24 @@ class WalletCensus {
 
 	render_shell() {
 		this.page.main.html(`
+            <style>${WC_CSS}</style>
             <div class="wallet-census">
-                <div class="mb-3">
-                    <input type="text" id="wc-lookup" class="form-control" style="max-width:360px;display:inline-block"
+                <div class="wc-toolbar">
+                    <input type="text" id="wc-lookup" class="wc-input" style="min-width:320px;flex:1;max-width:420px"
                         placeholder="Look up a customer: username / phone / accountId…">
-                    <button class="btn btn-primary btn-sm ml-2" id="wc-lookup-btn">Look up</button>
+                    <button class="wc-btn primary" id="wc-lookup-btn">Look up</button>
                 </div>
                 <div id="wc-detail" style="display:none"></div>
                 <div id="wc-census">
-                    <div id="wc-status" class="text-muted small mb-3"></div>
-                    <div id="wc-summary" class="row mb-3"></div>
-                    <div id="wc-buckets" class="mb-2"></div>
-                    <div class="mb-2">
-                        <input type="text" id="wc-search" class="form-control" style="max-width:320px;display:inline-block"
+                    <div id="wc-status" class="wc-meta"></div>
+                    <div id="wc-summary" class="wc-tiles"></div>
+                    <div id="wc-buckets" class="wc-chips"></div>
+                    <div class="wc-toolbar">
+                        <input type="text" id="wc-search" class="wc-input" style="min-width:280px"
                             placeholder="Filter loaded rows by username / accountId…">
-                        <button class="btn btn-default btn-sm ml-2" id="wc-export">Export CSV</button>
+                        <button class="wc-btn" id="wc-export">Export CSV</button>
                     </div>
-                    <div id="wc-table" class="table-responsive"></div>
+                    <div id="wc-table"></div>
                 </div>
             </div>
         `);
@@ -175,7 +258,7 @@ class WalletCensus {
 			);
 		} else if (s.status === "Failed") {
 			this.set_status(
-				`<span class="text-danger">Last run failed: ${frappe.utils.escape_html(
+				`<span class="err">Last run failed: ${frappe.utils.escape_html(
 					s.error || ""
 				)}</span>`
 			);
@@ -215,12 +298,10 @@ class WalletCensus {
 			usdt = t.usdt || {},
 			btc = t.btc || {};
 		const card = (title, value, sub) => `
-            <div class="col-sm-3">
-                <div class="card p-3 mb-2">
-                    <div class="text-muted small">${title}</div>
-                    <div style="font-size:1.4rem;font-weight:600">${value}</div>
-                    <div class="text-muted small">${sub || ""}</div>
-                </div>
+            <div class="wc-tile wc-rise">
+                <div class="wc-tile-label">${title}</div>
+                <div class="wc-tile-value">${value}</div>
+                <div class="wc-tile-sub">${sub || ""}</div>
             </div>`;
 		this.page.main
 			.find("#wc-summary")
@@ -248,8 +329,8 @@ class WalletCensus {
 		const html = BUCKETS.map((b) => {
 			const count =
 				b.key === "all" ? this.totals.accounts || 0 : this.bucket_counts[b.key] || 0;
-			const active = b.key === this.active_bucket ? "btn-primary" : "btn-default";
-			return `<button class="btn btn-sm ${active} mr-1 mb-1 wc-bucket" data-bucket="${b.key}">${b.label} <span class="badge">${count}</span></button>`;
+			const active = b.key === this.active_bucket ? " active" : "";
+			return `<button class="wc-bucket${active}" data-bucket="${b.key}">${b.label} <span class="badge">${count}</span></button>`;
 		}).join("");
 		const el = this.page.main.find("#wc-buckets");
 		el.html(html);
@@ -329,22 +410,24 @@ class WalletCensus {
 			.join("");
 		const moreBtns =
 			rows.length > visible.length
-				? `<div class="mb-2">
-                    <button class="btn btn-default btn-sm" id="wc-more">Show ${WC_PAGE_STEP} more</button>
-                    <button class="btn btn-default btn-sm ml-2" id="wc-all">Show all</button>
+				? `<div class="wc-morebar">
+                    <button class="wc-btn" id="wc-more">Show ${WC_PAGE_STEP} more</button>
+                    <button class="wc-btn" id="wc-all">Show all</button>
                 </div>`
 				: "";
 		this.page.main.find("#wc-table").html(`
-            <div class="text-muted small mb-1">Showing ${visible.length} of ${
-			rows.length
-		} accounts</div>
-            <table class="table table-bordered table-hover">
-                <thead><tr>${head}</tr></thead>
-                <tbody>${
-					body ||
-					'<tr><td colspan="6" class="text-center text-muted">No accounts</td></tr>'
-				}</tbody>
-            </table>${moreBtns}`);
+            <div class="wc-card wc-rise">
+                <div class="wc-count">Showing ${visible.length} of ${rows.length} accounts</div>
+                <div style="overflow-x:auto">
+                    <table class="wc-table">
+                        <thead><tr>${head}</tr></thead>
+                        <tbody>${
+							body ||
+							'<tr><td colspan="6" style="text-align:center;color:var(--wc-ink3)">No accounts</td></tr>'
+						}</tbody>
+                    </table>
+                </div>${moreBtns}
+            </div>`);
 		this.page.main.find(".wc-sort").on("click", (e) => {
 			const key = e.currentTarget.dataset.key;
 			if (this.sort_key === key) this.sort_dir = this.sort_dir === "desc" ? "asc" : "desc";
@@ -378,7 +461,7 @@ class WalletCensus {
 			args: { query: query },
 			callback: (res) => this.render_detail(res.message || {}, query),
 			error: () => {
-				const backBtn = `<button class="btn btn-default btn-sm" id="wc-back">← Back to census</button>`;
+				const backBtn = `<button class="wc-btn" id="wc-back">← Back to census</button>`;
 				detail.html(
 					`<div class="mb-2">${backBtn}</div>
                      <div class="alert alert-danger">Failed to load customer — the server returned an error. Check logs or try again.</div>`
@@ -395,7 +478,7 @@ class WalletCensus {
 
 	render_detail(d, query) {
 		const detail = this.page.main.find("#wc-detail");
-		const backBtn = `<button class="btn btn-default btn-sm" id="wc-back">← Back to census</button>`;
+		const backBtn = `<button class="wc-btn" id="wc-back">← Back to census</button>`;
 		if (!d.found) {
 			// The census row may still carry IBEX-side facts even when the DB has no match.
 			const row = (this.rows || []).find(
@@ -503,7 +586,7 @@ class WalletCensus {
                     <span class="badge badge-info">${frappe.utils.escape_html(
 						i.status || "unknown"
 					)}</span>
-                    <button class="btn btn-default btn-sm ml-2" id="wc-hub">View in Account Hub</button>
+                    <button class="wc-btn" id="wc-hub" style="margin-left:8px">View in Account Hub</button>
                 </div>
             </div>
             <h4>${frappe.utils.escape_html(i.username || i.account_id || "Customer")}</h4>

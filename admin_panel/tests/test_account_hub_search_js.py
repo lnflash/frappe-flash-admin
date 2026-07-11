@@ -42,3 +42,21 @@ def test_result_clicks_stay_on_account_hub_and_select_account():
 	assert "event.stopPropagation();" in js
 	assert "this.on_result_click(account, item)" in js
 	assert "frappe.set_route('Form', 'Account Upgrade Request'" not in js
+
+
+def test_search_error_path_surfaces_server_message_before_generic():
+	"""Not-found searches return a friendly 404 body; the error callback must
+	show that message rather than always claiming a connection problem."""
+	js = source()
+
+	assert "const serverMsg =" in js
+	assert "err.responseJSON" in js
+	assert 'serverMsg || "Could not reach the server.' in js
+
+
+def test_graphql_client_treats_invalid_account_id_as_not_found():
+	client_py = (ACCOUNT_HUB_JS.parents[3] / "api" / "graphql_client.py").read_text()
+
+	assert "_is_not_found_error" in client_py
+	assert "InvalidAccountIdError" in client_py
+	assert "UNEXPECTED_CLIENT_ERROR" in client_py

@@ -1,12 +1,12 @@
-frappe.pages['account-hub'].on_page_load = function(wrapper) {
-    var page = frappe.ui.make_app_page({
-        parent: wrapper,
-        title: 'Account Hub',
-        single_column: true
-    });
+frappe.pages["account-hub"].on_page_load = function (wrapper) {
+	var page = frappe.ui.make_app_page({
+		parent: wrapper,
+		title: "Account Hub",
+		single_column: true,
+	});
 
-    if (!frappe.user_roles.includes('Accounts Manager')) {
-        page.main.html(`
+	if (!frappe.user_roles.includes("Accounts Manager")) {
+		page.main.html(`
             <div class="text-center mt-5">
                 <div class="alert alert-warning">
                     <h4>Access Denied</h4>
@@ -14,135 +14,139 @@ frappe.pages['account-hub'].on_page_load = function(wrapper) {
                 </div>
             </div>
         `);
-        return;
-    }
+		return;
+	}
 
-    wrapper.account_hub = new AccountHub(page);
+	wrapper.account_hub = new AccountHub(page);
 };
 
-frappe.pages['account-hub'].on_page_show = function(wrapper) {
-    if (wrapper.account_hub) {
-        wrapper.account_hub.handle_route_options();
-    }
+frappe.pages["account-hub"].on_page_show = function (wrapper) {
+	if (wrapper.account_hub) {
+		wrapper.account_hub.handle_route_options();
+	}
 };
 
 /* ─────────────────────────────────────────────
    Helpers
    ───────────────────────────────────────────── */
 function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
+	let timeout;
+	return function executedFunction(...args) {
+		const later = () => {
+			clearTimeout(timeout);
+			func(...args);
+		};
+		clearTimeout(timeout);
+		timeout = setTimeout(later, wait);
+	};
 }
 
 const ACCOUNT_LEVELS = {
-    ZERO: 'ZERO',
-    ONE: 'ONE',
-    TWO: 'TWO',
-    THREE: 'THREE'
+	ZERO: "ZERO",
+	ONE: "ONE",
+	TWO: "TWO",
+	THREE: "THREE",
 };
 
 const ACCOUNT_STATUSES = {
-    NEW: 'NEW',
-    PENDING: 'PENDING',
-    ACTIVE: 'ACTIVE',
-    LOCKED: 'LOCKED',
-    CLOSED: 'CLOSED'
+	NEW: "NEW",
+	PENDING: "PENDING",
+	ACTIVE: "ACTIVE",
+	LOCKED: "LOCKED",
+	CLOSED: "CLOSED",
 };
 
 const ACCOUNT_LEVEL_LABELS = {
-    [ACCOUNT_LEVELS.ZERO]: 'Trial',
-    [ACCOUNT_LEVELS.ONE]: 'Personal',
-    [ACCOUNT_LEVELS.TWO]: 'Pro',
-    [ACCOUNT_LEVELS.THREE]: 'Merchant'
+	[ACCOUNT_LEVELS.ZERO]: "Trial",
+	[ACCOUNT_LEVELS.ONE]: "Personal",
+	[ACCOUNT_LEVELS.TWO]: "Pro",
+	[ACCOUNT_LEVELS.THREE]: "Merchant",
 };
 
 const ACCOUNT_LEVEL_BADGES = {
-    [ACCOUNT_LEVELS.ZERO]: 'badge-trial',
-    [ACCOUNT_LEVELS.ONE]: 'badge-personal',
-    [ACCOUNT_LEVELS.TWO]: 'badge-business',
-    [ACCOUNT_LEVELS.THREE]: 'badge-merchant'
+	[ACCOUNT_LEVELS.ZERO]: "badge-trial",
+	[ACCOUNT_LEVELS.ONE]: "badge-personal",
+	[ACCOUNT_LEVELS.TWO]: "badge-business",
+	[ACCOUNT_LEVELS.THREE]: "badge-merchant",
 };
 
 const ACCOUNT_STATUS_LABELS = {
-    [ACCOUNT_STATUSES.NEW]: 'New',
-    [ACCOUNT_STATUSES.PENDING]: 'Pending',
-    [ACCOUNT_STATUSES.ACTIVE]: 'Active',
-    [ACCOUNT_STATUSES.LOCKED]: 'Locked',
-    [ACCOUNT_STATUSES.CLOSED]: 'Closed'
+	[ACCOUNT_STATUSES.NEW]: "New",
+	[ACCOUNT_STATUSES.PENDING]: "Pending",
+	[ACCOUNT_STATUSES.ACTIVE]: "Active",
+	[ACCOUNT_STATUSES.LOCKED]: "Locked",
+	[ACCOUNT_STATUSES.CLOSED]: "Closed",
 };
 
 const ACCOUNT_STATUS_BADGES = {
-    [ACCOUNT_STATUSES.NEW]: 'badge-pending',
-    [ACCOUNT_STATUSES.PENDING]: 'badge-pending',
-    [ACCOUNT_STATUSES.ACTIVE]: 'badge-approved',
-    [ACCOUNT_STATUSES.LOCKED]: 'badge-rejected',
-    [ACCOUNT_STATUSES.CLOSED]: 'badge-closed'
+	[ACCOUNT_STATUSES.NEW]: "badge-pending",
+	[ACCOUNT_STATUSES.PENDING]: "badge-pending",
+	[ACCOUNT_STATUSES.ACTIVE]: "badge-approved",
+	[ACCOUNT_STATUSES.LOCKED]: "badge-rejected",
+	[ACCOUNT_STATUSES.CLOSED]: "badge-closed",
 };
 
 function getLevelLabel(level) {
-    return ACCOUNT_LEVEL_LABELS[level] || level;
+	return ACCOUNT_LEVEL_LABELS[level] || level;
 }
 
 function getLevelBadge(level) {
-    return ACCOUNT_LEVEL_BADGES[level] || 'badge-trial';
+	return ACCOUNT_LEVEL_BADGES[level] || "badge-trial";
 }
 
 function getStatusLabel(status) {
-    return ACCOUNT_STATUS_LABELS[status] || status;
+	return ACCOUNT_STATUS_LABELS[status] || status;
 }
 
 function getStatusBadge(status) {
-    return ACCOUNT_STATUS_BADGES[status] || 'badge-pending';
+	return ACCOUNT_STATUS_BADGES[status] || "badge-pending";
 }
 
 function formatPhone(phone) {
-    if (!phone) return '-';
-    return phone.replace(/^\+?(\d{1})(\d{3})(\d{3})(\d{4})$/, '+$1 $2 $3 $4');
+	if (!phone) return "-";
+	return phone.replace(/^\+?(\d{1})(\d{3})(\d{3})(\d{4})$/, "+$1 $2 $3 $4");
 }
 
 function formatDate(ts) {
-    if (!ts) return '-';
-    const d = new Date(ts * 1000);
-    return frappe.datetime.global_date_format(d.toISOString().split('T')[0]) + ' ' + d.toLocaleTimeString();
+	if (!ts) return "-";
+	const d = new Date(ts * 1000);
+	return (
+		frappe.datetime.global_date_format(d.toISOString().split("T")[0]) +
+		" " +
+		d.toLocaleTimeString()
+	);
 }
 
 function formatCurrency(cents, currency) {
-    if (cents == null) return '-';
-    const sym = currency === 'USD' ? '$' : (currency === 'USDT' ? '₮' : '$');
-    return sym + (cents / 100).toFixed(2);
+	if (cents == null) return "-";
+	const sym = currency === "USD" ? "$" : currency === "USDT" ? "₮" : "$";
+	return sym + (cents / 100).toFixed(2);
 }
 
 /* ─────────────────────────────────────────────
    AccountHub Class
    ───────────────────────────────────────────── */
 class AccountHub {
-    constructor(page) {
-        this.page = page;
-        this.current_account = null;
-        this.default_results = [];
-        this.default_list_loaded = false;
-        this.pending_route_query = null;
-        this.$ = {};
-        this.setup_page();
-    }
+	constructor(page) {
+		this.page = page;
+		this.current_account = null;
+		this.default_results = [];
+		this.default_list_loaded = false;
+		this.pending_route_query = null;
+		this.$ = {};
+		this.setup_page();
+	}
 
-    /* ── Page Setup ────────────────────────────────── */
-    setup_page() {
-        this.create_layout();
-        this.cache_elements();
-        this.bind_events();
-        this.load_default_list();
-    }
+	/* ── Page Setup ────────────────────────────────── */
+	setup_page() {
+		this.create_layout();
+		this.cache_elements();
+		this.bind_events();
+		this.load_default_list();
+	}
 
-    create_layout() {
-        this.page.main.html(`
+	create_layout() {
+		this.page.main.html(`
             <style>
                 .account-hub {
                     --color-primary: #007856;
@@ -849,141 +853,153 @@ class AccountHub {
                 </div>
             </div>
         `);
-    }
+	}
 
-    cache_elements() {
-        const main = this.page.main;
-        this.$ = {
-            searchInput: main.find('.search-input'),
-            searchLoading: main.find('.search-loading'),
-            searchError: main.find('.search-error'),
-            searchErrorText: main.find('.search-error .error-text'),
-            searchEmpty: main.find('.search-empty'),
-            searchResultsList: main.find('.search-results-list'),
-            rightEmpty: main.find('.right-empty-state'),
-            detailContent: main.find('.ah-detail-content'),
-            detailUsername: main.find('.detail-username-display'),
-            detailLevelBadge: main.find('.detail-level-badge'),
-            detailStatusBadge: main.find('.detail-status-badge'),
-            tabs: main.find('.ah-tab'),
-            tabContents: main.find('.ah-tab-content'),
-            // Overview
-            ovPhone: main.find('.detail-ov-phone'),
-            ovEmail: main.find('.detail-ov-email'),
-            ovUsername: main.find('.detail-ov-username'),
-            ovNpub: main.find('.detail-ov-npub'),
-            ovLevelBadge: main.find('.detail-ov-level-badge'),
-            ovStatusBadge: main.find('.detail-ov-status-badge'),
-            ovErpParty: main.find('.detail-ov-erp-party'),
-            ovCreated: main.find('.detail-ov-created'),
-            // Action buttons
-            btnChangeLevel: main.find('.btn-change-level'),
-            btnLockAccount: main.find('.btn-lock-account'),
-            btnActivateAccount: main.find('.btn-activate-account'),
-            btnUpdatePhone: main.find('.btn-update-phone'),
-            // Containers
-            walletsContainer: main.find('.wallets-container'),
-            documentsContainer: main.find('.documents-container'),
-            merchantContainer: main.find('.merchant-container'),
-            upgradeContainer: main.find('.upgrade-container')
-        };
-    }
+	cache_elements() {
+		const main = this.page.main;
+		this.$ = {
+			searchInput: main.find(".search-input"),
+			searchLoading: main.find(".search-loading"),
+			searchError: main.find(".search-error"),
+			searchErrorText: main.find(".search-error .error-text"),
+			searchEmpty: main.find(".search-empty"),
+			searchResultsList: main.find(".search-results-list"),
+			rightEmpty: main.find(".right-empty-state"),
+			detailContent: main.find(".ah-detail-content"),
+			detailUsername: main.find(".detail-username-display"),
+			detailLevelBadge: main.find(".detail-level-badge"),
+			detailStatusBadge: main.find(".detail-status-badge"),
+			tabs: main.find(".ah-tab"),
+			tabContents: main.find(".ah-tab-content"),
+			// Overview
+			ovPhone: main.find(".detail-ov-phone"),
+			ovEmail: main.find(".detail-ov-email"),
+			ovUsername: main.find(".detail-ov-username"),
+			ovNpub: main.find(".detail-ov-npub"),
+			ovLevelBadge: main.find(".detail-ov-level-badge"),
+			ovStatusBadge: main.find(".detail-ov-status-badge"),
+			ovErpParty: main.find(".detail-ov-erp-party"),
+			ovCreated: main.find(".detail-ov-created"),
+			// Action buttons
+			btnChangeLevel: main.find(".btn-change-level"),
+			btnLockAccount: main.find(".btn-lock-account"),
+			btnActivateAccount: main.find(".btn-activate-account"),
+			btnUpdatePhone: main.find(".btn-update-phone"),
+			// Containers
+			walletsContainer: main.find(".wallets-container"),
+			documentsContainer: main.find(".documents-container"),
+			merchantContainer: main.find(".merchant-container"),
+			upgradeContainer: main.find(".upgrade-container"),
+		};
+	}
 
-    bind_events() {
-        const main = this.page.main;
+	bind_events() {
+		const main = this.page.main;
 
-        // Search: Enter key — calls API
-        this.$.searchInput.on('keypress', (e) => {
-            if (e.which === 13) {
-                this.perform_search();
-            }
-        });
+		// Search: Enter key — calls API
+		this.$.searchInput.on("keypress", (e) => {
+			if (e.which === 13) {
+				this.perform_search();
+			}
+		});
 
-        // Search: input — filter local list, debounce API call for longer queries
-        const debouncedSearch = debounce(() => {
-            const val = this.$.searchInput.val().trim();
-            if (val) {
-                // Keep fuzzy local results visible while remote exact search runs.
-                this.perform_search_with_query(val, false);
-            }
-        }, 600);
+		// Search: input — filter local list, debounce API call for longer queries
+		const debouncedSearch = debounce(() => {
+			const val = this.$.searchInput.val().trim();
+			if (val) {
+				// Keep fuzzy local results visible while remote exact search runs.
+				this.perform_search_with_query(val, false);
+			}
+		}, 600);
 
-        this.$.searchInput.on('input', () => {
-            const val = this.$.searchInput.val().trim();
-            // Filter local default list in real-time
-            this.filter_local_list(val);
-            // Debounce remote search if there's a query
-            if (val) {
-                debouncedSearch();
-            }
-        });
+		this.$.searchInput.on("input", () => {
+			const val = this.$.searchInput.val().trim();
+			// Filter local default list in real-time
+			this.filter_local_list(val);
+			// Debounce remote search if there's a query
+			if (val) {
+				debouncedSearch();
+			}
+		});
 
-        // Tab switching
-        this.$.tabs.on('click', function() {
-            const tab = $(this).data('tab');
-            main.find('.ah-tab').removeClass('active');
-            $(this).addClass('active');
-            main.find('.ah-tab-content').removeClass('active');
-            main.find(`.ah-tab-content[data-tab="${tab}"]`).addClass('active');
-        });
+		// Tab switching
+		this.$.tabs.on("click", function () {
+			const tab = $(this).data("tab");
+			main.find(".ah-tab").removeClass("active");
+			$(this).addClass("active");
+			main.find(".ah-tab-content").removeClass("active");
+			main.find(`.ah-tab-content[data-tab="${tab}"]`).addClass("active");
+		});
 
-        // Action buttons
-        this.$.btnChangeLevel.on('click', () => this.change_level());
-        this.$.btnLockAccount.on('click', () => this.change_status(ACCOUNT_STATUSES.LOCKED));
-        this.$.btnActivateAccount.on('click', () => this.change_status(ACCOUNT_STATUSES.ACTIVE));
-        this.$.btnUpdatePhone.on('click', () => this.update_phone());
-    }
+		// Action buttons
+		this.$.btnChangeLevel.on("click", () => this.change_level());
+		this.$.btnLockAccount.on("click", () => this.change_status(ACCOUNT_STATUSES.LOCKED));
+		this.$.btnActivateAccount.on("click", () => this.change_status(ACCOUNT_STATUSES.ACTIVE));
+		this.$.btnUpdatePhone.on("click", () => this.update_phone());
+	}
 
-    /* ── Default User List ────────────────────────────── */
+	/* ── Default User List ────────────────────────────── */
 
-    load_default_list() {
-        this.default_list_loaded = false;
-        this.$.searchLoading.show();
-        this.$.searchError.hide();
+	load_default_list() {
+		this.default_list_loaded = false;
+		this.$.searchLoading.show();
+		this.$.searchError.hide();
 
-        frappe.call({
-            method: 'admin_panel.api.admin_api.get_upgrade_requests',
-            args: { page: 1, page_size: 50 },
-            callback: (res) => {
-                this.$.searchLoading.hide();
-                const result = res.message;
-                const requests = (result && result.data) || [];
+		frappe.call({
+			method: "admin_panel.api.admin_api.get_upgrade_requests",
+			args: { page: 1, page_size: 50 },
+			callback: (res) => {
+				this.$.searchLoading.hide();
+				const result = res.message;
+				const requests = (result && result.data) || [];
 
-                if (requests.length === 0) {
-                    this.$.searchEmpty.show();
-                    return;
-                }
+				if (requests.length === 0) {
+					this.$.searchEmpty.show();
+					return;
+				}
 
-                this.default_results = requests;
-                this.default_list_loaded = true;
-                this.$.searchEmpty.hide();
-                this.render_result_list(requests);
-                this.apply_pending_route_query();
-            },
-            error: () => {
-                this.default_list_loaded = true;
-                this.$.searchLoading.hide();
-                this.$.searchEmpty.show();
-                this.apply_pending_route_query();
-            }
-        });
-    }
+				this.default_results = requests;
+				this.default_list_loaded = true;
+				this.$.searchEmpty.hide();
+				this.render_result_list(requests);
+				this.apply_pending_route_query();
+			},
+			error: () => {
+				this.default_list_loaded = true;
+				this.$.searchLoading.hide();
+				this.$.searchEmpty.show();
+				this.apply_pending_route_query();
+			},
+		});
+	}
 
-    render_result_list(items) {
-        this.$.searchError.hide();
-        this.$.searchResultsList.empty();
+	render_result_list(items) {
+		this.$.searchError.hide();
+		this.$.searchResultsList.empty();
 
-        items.forEach(account => {
-            // Use username if available, fallback to phone/email/name
-            const displayName = account.username || account.phone_number || account.email || account.name || 'Unknown';
-            const subInfo = [account.phone_number, account.email].filter(Boolean).join(' · ') || '—';
-            const level = account.requested_level || 'ZERO';
-            const initial = (displayName || '?')[0].toUpperCase();
-            const levelLabel = getLevelLabel(level);
-            const levelBadge = getLevelBadge(level);
+		items.forEach((account) => {
+			// Use username if available, fallback to phone/email/name
+			const displayName =
+				account.username ||
+				account.phone_number ||
+				account.email ||
+				account.name ||
+				"Unknown";
+			const subInfo =
+				[account.phone_number, account.email].filter(Boolean).join(" · ") || "—";
+			const level = account.requested_level || "ZERO";
+			const initial = (displayName || "?")[0].toUpperCase();
+			const levelLabel = getLevelLabel(level);
+			const levelBadge = getLevelBadge(level);
 
-            const item = $(`
-                <div class="ah-result-item" data-id="${frappe.utils.escape_html(account.name)}" data-username="${frappe.utils.escape_html(account.username || '')}" data-phone="${frappe.utils.escape_html(account.phone_number || '')}" data-email="${frappe.utils.escape_html(account.email || '')}">
+			const item = $(`
+                <div class="ah-result-item" data-id="${frappe.utils.escape_html(
+					account.name
+				)}" data-username="${frappe.utils.escape_html(
+				account.username || ""
+			)}" data-phone="${frappe.utils.escape_html(
+				account.phone_number || ""
+			)}" data-email="${frappe.utils.escape_html(account.email || "")}">
                     <div class="ah-result-avatar">${initial}</div>
                     <div class="ah-result-info">
                         <div class="ah-result-name">${frappe.utils.escape_html(displayName)}</div>
@@ -993,312 +1009,345 @@ class AccountHub {
                 </div>
             `);
 
-            item.on('click', () => this.on_result_click(account, item));
-            this.$.searchResultsList.append(item);
-        });
+			item.on("click", () => this.on_result_click(account, item));
+			this.$.searchResultsList.append(item);
+		});
 
-        if (items.length === 0) {
-            this.$.searchEmpty.show();
-        }
-    }
+		if (items.length === 0) {
+			this.$.searchEmpty.show();
+		}
+	}
 
-    filter_local_list(query) {
-        if (!query) {
-            this.render_result_list(this.default_results);
-            return;
-        }
+	filter_local_list(query) {
+		if (!query) {
+			this.render_result_list(this.default_results);
+			return;
+		}
 
-        const q = query.toLowerCase();
-        const filtered = this.default_results.filter(r => {
-            return (r.username && r.username.toLowerCase().includes(q)) ||
-                   (r.phone_number && r.phone_number.toLowerCase().includes(q)) ||
-                   (r.email && r.email.toLowerCase().includes(q)) ||
-                   (r.name && r.name.toLowerCase().includes(q));
-        });
+		const q = query.toLowerCase();
+		const filtered = this.default_results.filter((r) => {
+			return (
+				(r.username && r.username.toLowerCase().includes(q)) ||
+				(r.phone_number && r.phone_number.toLowerCase().includes(q)) ||
+				(r.email && r.email.toLowerCase().includes(q)) ||
+				(r.name && r.name.toLowerCase().includes(q))
+			);
+		});
 
-        this.render_result_list(filtered);
-    }
+		this.render_result_list(filtered);
+	}
 
-    on_result_click(account, itemEl) {
-        this.$.searchResultsList.find('.ah-result-item').removeClass('active');
-        itemEl.addClass('active');
+	on_result_click(account, itemEl) {
+		this.$.searchResultsList.find(".ah-result-item").removeClass("active");
+		itemEl.addClass("active");
 
-        // Build a fallback object from local data in case Flash API doesn't have this account
-        const fallback = {
-            uuid: account.name,
-            username: account.username || account.phone_number || account.email || account.name,
-            level: account.requested_level || 'ZERO',
-            status: account.status || 'ACTIVE',
-            owner: {
-                phone: account.phone_number,
-                email: { address: account.email, verified: false }
-            },
-            wallets: [],
-            merchants: [],
-            createdAt: null
-        };
+		// Build a fallback object from local data in case Flash API doesn't have this account
+		const fallback = {
+			uuid: account.name,
+			username: account.username || account.phone_number || account.email || account.name,
+			level: account.requested_level || "ZERO",
+			status: account.status || "ACTIVE",
+			owner: {
+				phone: account.phone_number,
+				email: { address: account.email, verified: false },
+			},
+			wallets: [],
+			merchants: [],
+			createdAt: null,
+		};
 
-        if (account.username) {
-            this.fetch_account_details(account.username, fallback);
-        } else {
-            this.show_account(fallback);
-        }
-    }
+		if (account.username) {
+			this.fetch_account_details(account.username, fallback);
+		} else {
+			this.show_account(fallback);
+		}
+	}
 
-    fetch_account_details(username, fallback) {
-        /* Fetch full account details without modifying the result list.
+	fetch_account_details(username, fallback) {
+		/* Fetch full account details without modifying the result list.
            Falls back to local data if the Flash API can't find the account. */
-        frappe.call({
-            method: 'admin_panel.api.admin_api.search_account_smart',
-            args: { query: username },
-            callback: (res) => {
-                const result = res.message;
-                if (!result || result.error) {
-                    if (fallback) {
-                        this.show_account(fallback);
-                    }
-                    return;
-                }
-                this.show_account(result);
-            },
-            error: () => {
-                if (fallback) {
-                    this.show_account(fallback);
-                }
-            }
-        });
-    }
+		frappe.call({
+			method: "admin_panel.api.admin_api.search_account_smart",
+			args: { query: username },
+			callback: (res) => {
+				const result = res.message;
+				if (!result || result.error) {
+					if (fallback) {
+						this.show_account(fallback);
+					}
+					return;
+				}
+				this.show_account(result);
+			},
+			error: () => {
+				if (fallback) {
+					this.show_account(fallback);
+				}
+			},
+		});
+	}
 
-    /* ── Route Selection ───────────────────────────── */
+	/* ── Route Selection ───────────────────────────── */
 
-    consume_route_query() {
-        const opts = frappe.route_options || {};
-        const query = opts.account_hub_query || opts.account_username || opts.username;
-        if (!query) return null;
+	consume_route_query() {
+		const opts = frappe.route_options || {};
+		const query = opts.account_hub_query || opts.account_username || opts.username;
+		if (!query) return null;
 
-        delete opts.account_hub_query;
-        delete opts.account_username;
-        delete opts.username;
-        frappe.route_options = Object.keys(opts).length ? opts : null;
+		delete opts.account_hub_query;
+		delete opts.account_username;
+		delete opts.username;
+		frappe.route_options = Object.keys(opts).length ? opts : null;
 
-        return String(query).trim();
-    }
+		return String(query).trim();
+	}
 
-    handle_route_options() {
-        const query = this.consume_route_query();
-        if (!query) return;
+	handle_route_options() {
+		const query = this.consume_route_query();
+		if (!query) return;
 
-        this.pending_route_query = query;
-        this.apply_pending_route_query();
-    }
+		this.pending_route_query = query;
+		this.apply_pending_route_query();
+	}
 
-    apply_pending_route_query() {
-        if (!this.pending_route_query || !this.default_list_loaded) return;
+	apply_pending_route_query() {
+		if (!this.pending_route_query || !this.default_list_loaded) return;
 
-        const query = this.pending_route_query;
-        this.pending_route_query = null;
-        this.$.searchInput.val(query);
-        this.filter_local_list(query);
-        this.perform_search_with_query(query, false);
-    }
+		const query = this.pending_route_query;
+		this.pending_route_query = null;
+		this.$.searchInput.val(query);
+		this.filter_local_list(query);
+		this.perform_search_with_query(query, false);
+	}
 
-    /* ── Search ─────────────────────────────────────── */
+	/* ── Search ─────────────────────────────────────── */
 
-    perform_search() {
-        const query = this.$.searchInput.val().trim();
-        if (!query) return;
-        this.perform_search_with_query(query, true);
-    }
+	perform_search() {
+		const query = this.$.searchInput.val().trim();
+		if (!query) return;
+		this.perform_search_with_query(query, true);
+	}
 
-    perform_search_with_query(query, clearLocal) {
-        if (!query) return;
+	perform_search_with_query(query, clearLocal) {
+		if (!query) return;
 
-        this.$.searchLoading.show();
-        this.$.searchError.hide();
-        if (clearLocal) {
-            this.$.searchResultsList.empty();
-        }
+		this.$.searchLoading.show();
+		this.$.searchError.hide();
+		if (clearLocal) {
+			this.$.searchResultsList.empty();
+		}
 
-        frappe.call({
-            method: 'admin_panel.api.admin_api.search_account_smart',
-            args: { query: query },
-            callback: (res) => {
-                this.$.searchLoading.hide();
-                const result = res.message;
-                if (!result || result.error) {
-                    this.show_search_error(result?.error || 'Account not found. Try searching by phone (+1...), email, username, or account ID.');
-                    return;
-                }
-                this.show_search_result(result);
-            },
-            error: () => {
-                this.$.searchLoading.hide();
-                this.show_search_error('Could not reach the server. Check your connection and try again.');
-            }
-        });
-    }
+		frappe.call({
+			method: "admin_panel.api.admin_api.search_account_smart",
+			args: { query: query },
+			callback: (res) => {
+				this.$.searchLoading.hide();
+				const result = res.message;
+				if (!result || result.error) {
+					this.show_search_error(
+						result?.error ||
+							"Account not found. Try searching by phone (+1...), email, username, or account ID."
+					);
+					return;
+				}
+				this.show_search_result(result);
+			},
+			error: (err) => {
+				this.$.searchLoading.hide();
+				// Non-2xx responses (404 not-found, 503 upstream) land here, not
+				// in callback — surface the server's message when it sent one
+				// instead of always blaming the connection.
+				const serverMsg =
+					(err && typeof err.error === "string" && err.error) ||
+					(err &&
+						err.responseJSON &&
+						typeof err.responseJSON.error === "string" &&
+						err.responseJSON.error) ||
+					(err &&
+						err.message &&
+						typeof err.message.error === "string" &&
+						err.message.error);
+				this.show_search_error(
+					serverMsg || "Could not reach the server. Check your connection and try again."
+				);
+			},
+		});
+	}
 
-    show_search_error(msg) {
-        this.$.searchError.show();
-        this.$.searchErrorText.text(msg);
-        // Don't clear the search results list — keep the last result visible
-    }
+	show_search_error(msg) {
+		this.$.searchError.show();
+		this.$.searchErrorText.text(msg);
+		// Don't clear the search results list — keep the last result visible
+	}
 
-    show_search_result(account) {
-        this.$.searchError.hide();
-        this.$.searchResultsList.empty();
-        this.$.searchEmpty.hide();
+	show_search_result(account) {
+		this.$.searchError.hide();
+		this.$.searchResultsList.empty();
+		this.$.searchEmpty.hide();
 
-        const initial = (account.username || '?')[0].toUpperCase();
-        const subInfo = account.owner?.phone || account.owner?.email?.address || account.username || account.id;
-        const levelLabel = getLevelLabel(account.level);
-        const levelBadge = getLevelBadge(account.level);
+		const initial = (account.username || "?")[0].toUpperCase();
+		const subInfo =
+			account.owner?.phone ||
+			account.owner?.email?.address ||
+			account.username ||
+			account.id;
+		const levelLabel = getLevelLabel(account.level);
+		const levelBadge = getLevelBadge(account.level);
 
-        const item = $(`
+		const item = $(`
             <div class="ah-result-item" data-uuid="${account.uuid}">
                 <div class="ah-result-avatar">${initial}</div>
                 <div class="ah-result-info">
-                    <div class="ah-result-name">${frappe.utils.escape_html(account.username || 'Unknown')}</div>
+                    <div class="ah-result-name">${frappe.utils.escape_html(
+						account.username || "Unknown"
+					)}</div>
                     <div class="ah-result-sub">${frappe.utils.escape_html(subInfo)}</div>
                 </div>
                 <span class="ah-badge ${levelBadge}">${levelLabel}</span>
             </div>
         `);
 
-        item.on('click', () => {
-            this.$.searchResultsList.find('.ah-result-item').removeClass('active');
-            item.addClass('active');
-            this.show_account(account);
-        });
+		item.on("click", () => {
+			this.$.searchResultsList.find(".ah-result-item").removeClass("active");
+			item.addClass("active");
+			this.show_account(account);
+		});
 
-        this.$.searchResultsList.append(item);
-        item.click(); // Auto-select search result
-    }
+		this.$.searchResultsList.append(item);
+		item.click(); // Auto-select search result
+	}
 
-    /* ── Show Account ────────────────────────────────── */
+	/* ── Show Account ────────────────────────────────── */
 
-    show_account(account) {
-        this.current_account = account;
+	show_account(account) {
+		this.current_account = account;
 
-        // Switch to detail view
-        this.$.rightEmpty.hide();
-        this.$.detailContent.show();
+		// Switch to detail view
+		this.$.rightEmpty.hide();
+		this.$.detailContent.show();
 
-        // Update header
-        this.$.detailUsername.text(account.username || 'Unknown');
-        this.$.detailLevelBadge
-            .text(getLevelLabel(account.level))
-            .attr('class', 'ah-badge ' + getLevelBadge(account.level));
-        this.$.detailStatusBadge
-            .text(getStatusLabel(account.status))
-            .attr('class', 'ah-badge ' + getStatusBadge(account.status));
+		// Update header
+		this.$.detailUsername.text(account.username || "Unknown");
+		this.$.detailLevelBadge
+			.text(getLevelLabel(account.level))
+			.attr("class", "ah-badge " + getLevelBadge(account.level));
+		this.$.detailStatusBadge
+			.text(getStatusLabel(account.status))
+			.attr("class", "ah-badge " + getStatusBadge(account.status));
 
-        // Activate first tab
-        this.$.tabs.removeClass('active');
-        this.$.tabs.first().addClass('active');
-        this.$.tabContents.removeClass('active');
-        this.$.tabContents.first().addClass('active');
+		// Activate first tab
+		this.$.tabs.removeClass("active");
+		this.$.tabs.first().addClass("active");
+		this.$.tabContents.removeClass("active");
+		this.$.tabContents.first().addClass("active");
 
-        // Populate all tabs
-        this.populate_overview(account);
-        this.populate_wallets(account);
-        this.populate_documents(account);
-        this.populate_merchant(account);
-        this.populate_upgrade_history(account);
-    }
+		// Populate all tabs
+		this.populate_overview(account);
+		this.populate_wallets(account);
+		this.populate_documents(account);
+		this.populate_merchant(account);
+		this.populate_upgrade_history(account);
+	}
 
-    clear_account() {
-        this.current_account = null;
-        this.$.detailContent.hide();
-        this.$.rightEmpty.show();
-        this.$.searchResultsList.find('.ah-result-item').removeClass('active');
-    }
+	clear_account() {
+		this.current_account = null;
+		this.$.detailContent.hide();
+		this.$.rightEmpty.show();
+		this.$.searchResultsList.find(".ah-result-item").removeClass("active");
+	}
 
-    refresh_current_account() {
-        if (!this.current_account) return;
-        const account = this.current_account;
-        frappe.call({
-            method: 'admin_panel.api.admin_api.search_account_smart',
-            args: { query: account.username || account.uuid },
-            callback: (res) => {
-                const result = res.message;
-                if (result && !result.error) {
-                    this.$.searchResultsList.find('.ah-result-item').remove();
-                    this.show_search_result(result);
-                }
-            },
-            error: () => {}
-        });
-    }
+	refresh_current_account() {
+		if (!this.current_account) return;
+		const account = this.current_account;
+		frappe.call({
+			method: "admin_panel.api.admin_api.search_account_smart",
+			args: { query: account.username || account.uuid },
+			callback: (res) => {
+				const result = res.message;
+				if (result && !result.error) {
+					this.$.searchResultsList.find(".ah-result-item").remove();
+					this.show_search_result(result);
+				}
+			},
+			error: () => {},
+		});
+	}
 
-    /* ── Tab: Overview ───────────────────────────────── */
+	/* ── Tab: Overview ───────────────────────────────── */
 
-    populate_overview(account) {
-        // Identity
-        const phone = account.owner?.phone;
-        this.$.ovPhone.html(phone
-            ? `<a href="tel:${frappe.utils.escape_html(phone)}" style="color:var(--color-primary);text-decoration:none;">${formatPhone(phone)}</a>`
-            : '-'
-        );
+	populate_overview(account) {
+		// Identity
+		const phone = account.owner?.phone;
+		this.$.ovPhone.html(
+			phone
+				? `<a href="tel:${frappe.utils.escape_html(
+						phone
+				  )}" style="color:var(--color-primary);text-decoration:none;">${formatPhone(
+						phone
+				  )}</a>`
+				: "-"
+		);
 
-        const email = account.owner?.email;
-        if (email && email.address) {
-            const badge = email.verified
-                ? '<span class="ah-verified-badge"><i class="fa fa-check-circle"></i> Verified</span>'
-                : '<span class="ah-verified-badge" style="background:rgba(245,158,11,0.1);color:var(--color-warning);"><i class="fa fa-clock-o"></i> Unverified</span>';
-            this.$.ovEmail.html(`${frappe.utils.escape_html(email.address)} ${badge}`);
-        } else {
-            this.$.ovEmail.text('-');
-        }
+		const email = account.owner?.email;
+		if (email && email.address) {
+			const badge = email.verified
+				? '<span class="ah-verified-badge"><i class="fa fa-check-circle"></i> Verified</span>'
+				: '<span class="ah-verified-badge" style="background:rgba(245,158,11,0.1);color:var(--color-warning);"><i class="fa fa-clock-o"></i> Unverified</span>';
+			this.$.ovEmail.html(`${frappe.utils.escape_html(email.address)} ${badge}`);
+		} else {
+			this.$.ovEmail.text("-");
+		}
 
-        this.$.ovUsername.text(account.username || '-');
-        this.$.ovNpub.text(account.npub || '-');
+		this.$.ovUsername.text(account.username || "-");
+		this.$.ovNpub.text(account.npub || "-");
 
-        // Account State
-        this.$.ovLevelBadge
-            .text(getLevelLabel(account.level))
-            .attr('class', 'ah-badge ' + getLevelBadge(account.level));
-        this.$.ovStatusBadge
-            .text(getStatusLabel(account.status))
-            .attr('class', 'ah-badge ' + getStatusBadge(account.status));
-        this.$.ovErpParty.text(account.erpParty || '-');
-        this.$.ovCreated.text(formatDate(account.createdAt));
+		// Account State
+		this.$.ovLevelBadge
+			.text(getLevelLabel(account.level))
+			.attr("class", "ah-badge " + getLevelBadge(account.level));
+		this.$.ovStatusBadge
+			.text(getStatusLabel(account.status))
+			.attr("class", "ah-badge " + getStatusBadge(account.status));
+		this.$.ovErpParty.text(account.erpParty || "-");
+		this.$.ovCreated.text(formatDate(account.createdAt));
 
-        // Action buttons visibility
-        this.$.btnLockAccount.toggle(account.status === ACCOUNT_STATUSES.ACTIVE);
-        this.$.btnActivateAccount.toggle(account.status === ACCOUNT_STATUSES.LOCKED);
-    }
+		// Action buttons visibility
+		this.$.btnLockAccount.toggle(account.status === ACCOUNT_STATUSES.ACTIVE);
+		this.$.btnActivateAccount.toggle(account.status === ACCOUNT_STATUSES.LOCKED);
+	}
 
-    /* ── Tab: Wallets ────────────────────────────────── */
+	/* ── Tab: Wallets ────────────────────────────────── */
 
-    populate_wallets(account) {
-        const container = this.$.walletsContainer;
-        container.empty();
+	populate_wallets(account) {
+		const container = this.$.walletsContainer;
+		container.empty();
 
-        const wallets = account.wallets || [];
-        if (wallets.length === 0) {
-            container.html(`
+		const wallets = account.wallets || [];
+		if (wallets.length === 0) {
+			container.html(`
                 <div class="ah-empty">
                     <div class="ah-empty-icon">💰</div>
                     <div class="ah-empty-text">No wallet information available</div>
                 </div>
             `);
-            return;
-        }
+			return;
+		}
 
-        // Sort: USD first, then others
-        const sorted = [...wallets].sort((a, b) => {
-            if (a.walletCurrency === 'USD') return -1;
-            if (b.walletCurrency === 'USD') return 1;
-            return 0;
-        });
+		// Sort: USD first, then others
+		const sorted = [...wallets].sort((a, b) => {
+			if (a.walletCurrency === "USD") return -1;
+			if (b.walletCurrency === "USD") return 1;
+			return 0;
+		});
 
-        sorted.forEach(w => {
-            const cur = w.walletCurrency || 'USD';
-            const card = $(`
+		sorted.forEach((w) => {
+			const cur = w.walletCurrency || "USD";
+			const card = $(`
                 <div class="ah-wallet-card">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
-                        <span class="ah-wallet-currency-badge">${frappe.utils.escape_html(cur)}</span>
+                        <span class="ah-wallet-currency-badge">${frappe.utils.escape_html(
+							cur
+						)}</span>
                     </div>
                     <div class="ah-wallet-row">
                         <span class="ah-info-label">Balance</span>
@@ -1306,188 +1355,218 @@ class AccountHub {
                     </div>
                     <div class="ah-wallet-row">
                         <span class="ah-info-label">Pending Incoming</span>
-                        <span style="font-weight:500;color:var(--color-text01);">${formatCurrency(w.pendingIncomingBalance, cur)}</span>
+                        <span style="font-weight:500;color:var(--color-text01);">${formatCurrency(
+							w.pendingIncomingBalance,
+							cur
+						)}</span>
                     </div>
                     <div class="ah-wallet-row" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--color-border01);">
                         <span class="ah-info-label">Wallet ID</span>
-                        <span style="font-size:12px;color:var(--color-text02);font-family:monospace;">${frappe.utils.escape_html(w.id)}</span>
+                        <span style="font-size:12px;color:var(--color-text02);font-family:monospace;">${frappe.utils.escape_html(
+							w.id
+						)}</span>
                     </div>
                 </div>
             `);
-            container.append(card);
-        });
-    }
+			container.append(card);
+		});
+	}
 
-    /* ── Tab: Documents ──────────────────────────────── */
+	/* ── Tab: Documents ──────────────────────────────── */
 
-    populate_documents(account) {
-        const container = this.$.documentsContainer;
-        container.empty();
+	populate_documents(account) {
+		const container = this.$.documentsContainer;
+		container.empty();
 
-        const username = account.username;
-        if (!username) {
-            container.html(`
+		const username = account.username;
+		if (!username) {
+			container.html(`
                 <div class="ah-empty">
                     <div class="ah-empty-icon">📄</div>
                     <div class="ah-empty-text">No documents uploaded</div>
                 </div>
             `);
-            return;
-        }
+			return;
+		}
 
-        container.html(`<div class="ah-loading"><div class="ah-spinner"></div><p style="color:var(--color-text02);font-size:14px;">Loading documents...</p></div>`);
+		container.html(
+			`<div class="ah-loading"><div class="ah-spinner"></div><p style="color:var(--color-text02);font-size:14px;">Loading documents...</p></div>`
+		);
 
-        frappe.call({
-            method: 'admin_panel.api.admin_api.get_upgrade_requests_by_account',
-            args: { username: username },
-            callback: (res) => {
-                container.empty();
-                const result = res.message;
-                const requests = (result && result.data) || [];
-                const docRequests = requests.filter(r => r.id_document);
+		frappe.call({
+			method: "admin_panel.api.admin_api.get_upgrade_requests_by_account",
+			args: { username: username },
+			callback: (res) => {
+				container.empty();
+				const result = res.message;
+				const requests = (result && result.data) || [];
+				const docRequests = requests.filter((r) => r.id_document);
 
-                if (docRequests.length === 0) {
-                    container.html(`
+				if (docRequests.length === 0) {
+					container.html(`
                         <div class="ah-empty">
                             <div class="ah-empty-icon">📄</div>
                             <div class="ah-empty-text">No documents uploaded</div>
                         </div>
                     `);
-                    return;
-                }
+					return;
+				}
 
-                docRequests.forEach(r => {
-                    const item = $(`
+				docRequests.forEach((r) => {
+					const item = $(`
                         <div class="ah-doc-item">
                             <div>
-                                <div class="ah-doc-info"><i class="fa fa-file-image-o" style="margin-right:6px;color:var(--color-primary);"></i> ${frappe.utils.escape_html(r.requested_level || 'Unknown')} Upgrade</div>
-                                <div style="font-size:12px;color:var(--color-text02);margin-top:2px;">Submitted ${frappe.utils.escape_html(r.creation || '')}</div>
+                                <div class="ah-doc-info"><i class="fa fa-file-image-o" style="margin-right:6px;color:var(--color-primary);"></i> ${frappe.utils.escape_html(
+									r.requested_level || "Unknown"
+								)} Upgrade</div>
+                                <div style="font-size:12px;color:var(--color-text02);margin-top:2px;">Submitted ${frappe.utils.escape_html(
+									r.creation || ""
+								)}</div>
                             </div>
-                            <button class="ah-btn ah-btn-secondary ah-btn-sm btn-view-doc" data-file-key="${frappe.utils.escape_html(r.id_document)}">
+                            <button class="ah-btn ah-btn-secondary ah-btn-sm btn-view-doc" data-file-key="${frappe.utils.escape_html(
+								r.id_document
+							)}">
                                 <i class="fa fa-eye"></i> View
                             </button>
                         </div>
                     `);
 
-                    const requestName = r.name;
-                    item.find('.btn-view-doc').on('click', () => {
-                        window.open('/app/account-upgrade-request/' + encodeURIComponent(requestName), '_blank');
-                    });
+					const requestName = r.name;
+					item.find(".btn-view-doc").on("click", () => {
+						window.open(
+							"/app/account-upgrade-request/" + encodeURIComponent(requestName),
+							"_blank"
+						);
+					});
 
-                    container.append(item);
-                });
-            },
-            error: () => {
-                container.html(`
+					container.append(item);
+				});
+			},
+			error: () => {
+				container.html(`
                     <div class="ah-empty">
                         <div class="ah-empty-icon">⚠️</div>
                         <div class="ah-empty-text">Failed to load documents</div>
                         <div class="ah-empty-sub">An error occurred while fetching document data</div>
                     </div>
                 `);
-            }
-        });
-    }
+			},
+		});
+	}
 
-    /* ── Tab: Merchant ───────────────────────────────── */
+	/* ── Tab: Merchant ───────────────────────────────── */
 
-    populate_merchant(account) {
-        const container = this.$.merchantContainer;
-        container.empty();
+	populate_merchant(account) {
+		const container = this.$.merchantContainer;
+		container.empty();
 
-        const merchants = account.merchants || [];
-        if (merchants.length === 0) {
-            container.html(`
+		const merchants = account.merchants || [];
+		if (merchants.length === 0) {
+			container.html(`
                 <div class="ah-empty">
                     <div class="ah-empty-icon">🏪</div>
                     <div class="ah-empty-text">No merchant information</div>
                 </div>
             `);
-            return;
-        }
+			return;
+		}
 
-        merchants.forEach(m => {
-            const validBadge = m.validated
-                ? '<span class="ah-badge badge-approved"><i class="fa fa-check"></i> Validated</span>'
-                : '<span class="ah-badge badge-pending"><i class="fa fa-clock-o"></i> Not Validated</span>';
+		merchants.forEach((m) => {
+			const validBadge = m.validated
+				? '<span class="ah-badge badge-approved"><i class="fa fa-check"></i> Validated</span>'
+				: '<span class="ah-badge badge-pending"><i class="fa fa-clock-o"></i> Not Validated</span>';
 
-            let mapLink = '-';
-            const coords = m.coordinates || {};
-            if (coords.latitude != null && coords.longitude != null) {
-                mapLink = `<a href="https://www.google.com/maps?q=${coords.latitude},${coords.longitude}" target="_blank" style="color:var(--color-primary);text-decoration:none;">${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}</a>`;
-            }
+			let mapLink = "-";
+			const coords = m.coordinates || {};
+			if (coords.latitude != null && coords.longitude != null) {
+				mapLink = `<a href="https://www.google.com/maps?q=${coords.latitude},${
+					coords.longitude
+				}" target="_blank" style="color:var(--color-primary);text-decoration:none;">${coords.latitude.toFixed(
+					4
+				)}, ${coords.longitude.toFixed(4)}</a>`;
+			}
 
-            const card = $(`
+			const card = $(`
                 <div class="ah-merchant-card">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                         <div class="ah-merchant-title">
                             <i class="fa fa-shopping-cart" style="margin-right:6px;color:var(--color-primary);"></i>
-                            ${frappe.utils.escape_html(m.title || 'Unnamed')}
+                            ${frappe.utils.escape_html(m.title || "Unnamed")}
                         </div>
                         ${validBadge}
                     </div>
-                    <div class="ah-merchant-row"><strong>Username:</strong> ${frappe.utils.escape_html(m.username || '-')}</div>
+                    <div class="ah-merchant-row"><strong>Username:</strong> ${frappe.utils.escape_html(
+						m.username || "-"
+					)}</div>
                     <div class="ah-merchant-row"><strong>Coordinates:</strong> ${mapLink}</div>
-                    <div class="ah-merchant-row"><strong>Created:</strong> ${formatDate(m.createdAt)}</div>
+                    <div class="ah-merchant-row"><strong>Created:</strong> ${formatDate(
+						m.createdAt
+					)}</div>
                 </div>
             `);
 
-            // Action buttons for unvalidated merchants
-            if (!m.validated) {
-                const actionsDiv = $(`<div class="ah-merchant-actions"></div>`);
+			// Action buttons for unvalidated merchants
+			if (!m.validated) {
+				const actionsDiv = $(`<div class="ah-merchant-actions"></div>`);
 
-                const validateBtn = $(`<button class="ah-btn ah-btn-success ah-btn-sm"><i class="fa fa-check"></i> Validate</button>`);
-                validateBtn.on('click', () => this.validate_merchant(m.id));
+				const validateBtn = $(
+					`<button class="ah-btn ah-btn-success ah-btn-sm"><i class="fa fa-check"></i> Validate</button>`
+				);
+				validateBtn.on("click", () => this.validate_merchant(m.id));
 
-                const deleteBtn = $(`<button class="ah-btn ah-btn-danger ah-btn-sm"><i class="fa fa-trash"></i> Delete</button>`);
-                deleteBtn.on('click', () => this.delete_merchant(m.id));
+				const deleteBtn = $(
+					`<button class="ah-btn ah-btn-danger ah-btn-sm"><i class="fa fa-trash"></i> Delete</button>`
+				);
+				deleteBtn.on("click", () => this.delete_merchant(m.id));
 
-                actionsDiv.append(validateBtn, deleteBtn);
-                card.append(actionsDiv);
-            }
+				actionsDiv.append(validateBtn, deleteBtn);
+				card.append(actionsDiv);
+			}
 
-            container.append(card);
-        });
-    }
+			container.append(card);
+		});
+	}
 
-    /* ── Tab: Upgrade History ────────────────────────── */
+	/* ── Tab: Upgrade History ────────────────────────── */
 
-    populate_upgrade_history(account) {
-        const container = this.$.upgradeContainer;
-        container.empty();
+	populate_upgrade_history(account) {
+		const container = this.$.upgradeContainer;
+		container.empty();
 
-        const username = account.username;
-        if (!username) {
-            container.html(`
+		const username = account.username;
+		if (!username) {
+			container.html(`
                 <div class="ah-empty">
                     <div class="ah-empty-icon">📋</div>
                     <div class="ah-empty-text">No upgrade requests for this account</div>
                 </div>
             `);
-            return;
-        }
+			return;
+		}
 
-        container.html(`<div class="ah-loading"><div class="ah-spinner"></div><p style="color:var(--color-text02);font-size:14px;">Loading upgrade history...</p></div>`);
+		container.html(
+			`<div class="ah-loading"><div class="ah-spinner"></div><p style="color:var(--color-text02);font-size:14px;">Loading upgrade history...</p></div>`
+		);
 
-        frappe.call({
-            method: 'admin_panel.api.admin_api.get_upgrade_requests_by_account',
-            args: { username: username },
-            callback: (res) => {
-                container.empty();
-                const result = res.message;
-                const requests = (result && result.data) || [];
+		frappe.call({
+			method: "admin_panel.api.admin_api.get_upgrade_requests_by_account",
+			args: { username: username },
+			callback: (res) => {
+				container.empty();
+				const result = res.message;
+				const requests = (result && result.data) || [];
 
-                if (requests.length === 0) {
-                    container.html(`
+				if (requests.length === 0) {
+					container.html(`
                         <div class="ah-empty">
                             <div class="ah-empty-icon">📋</div>
                             <div class="ah-empty-text">No upgrade requests for this account</div>
                         </div>
                     `);
-                    return;
-                }
+					return;
+				}
 
-                const table = $(`
+				const table = $(`
                     <table class="ah-table">
                         <thead>
                             <tr>
@@ -1502,304 +1581,362 @@ class AccountHub {
                     </table>
                 `);
 
-                const tbody = table.find('tbody');
-                requests.forEach(r => {
-                    const statusLabel = getStatusLabel(r.status || 'PENDING');
-                    const statusBadge = getStatusBadge(r.status || 'PENDING');
-                    const levelLabel = getLevelLabel(r.requested_level);
-                    const levelBadge = getLevelBadge(r.requested_level);
+				const tbody = table.find("tbody");
+				requests.forEach((r) => {
+					const statusLabel = getStatusLabel(r.status || "PENDING");
+					const statusBadge = getStatusBadge(r.status || "PENDING");
+					const levelLabel = getLevelLabel(r.requested_level);
+					const levelBadge = getLevelBadge(r.requested_level);
 
-                    const row = $(`
+					const row = $(`
                         <tr>
                             <td><span class="ah-badge ${levelBadge}">${levelLabel}</span></td>
                             <td><span class="ah-badge ${statusBadge}">${statusLabel}</span></td>
-                            <td>${r.creation ? frappe.datetime.str_to_user(r.creation) : '-'}</td>
-                            <td>${r.modified ? frappe.datetime.str_to_user(r.modified) : '-'}</td>
-                            <td style="max-width:250px;white-space:normal;word-break:break-word;">${r.support_note ? frappe.utils.escape_html(r.support_note) : '-'}</td>
+                            <td>${r.creation ? frappe.datetime.str_to_user(r.creation) : "-"}</td>
+                            <td>${r.modified ? frappe.datetime.str_to_user(r.modified) : "-"}</td>
+                            <td style="max-width:250px;white-space:normal;word-break:break-word;">${
+								r.support_note ? frappe.utils.escape_html(r.support_note) : "-"
+							}</td>
                         </tr>
                     `);
-                    tbody.append(row);
-                });
+					tbody.append(row);
+				});
 
-                container.append(table);
-            },
-            error: () => {
-                container.html(`
+				container.append(table);
+			},
+			error: () => {
+				container.html(`
                     <div class="ah-empty">
                         <div class="ah-empty-icon">⚠️</div>
                         <div class="ah-empty-text">Failed to load upgrade history</div>
                         <div class="ah-empty-sub">An error occurred while fetching upgrade data</div>
                     </div>
                 `);
-            }
-        });
-    }
+			},
+		});
+	}
 
-    /* ── Actions: Change Level ────────────────────────── */
+	/* ── Actions: Change Level ────────────────────────── */
 
-    change_level() {
-        if (!this.current_account) return;
-        const account = this.current_account;
+	change_level() {
+		if (!this.current_account) return;
+		const account = this.current_account;
 
-        const currentLevel = account.level;
-        const options = Object.keys(ACCOUNT_LEVEL_LABELS).filter(k => k !== currentLevel).map(k => ({
-            label: ACCOUNT_LEVEL_LABELS[k],
-            value: k
-        }));
+		const currentLevel = account.level;
+		const options = Object.keys(ACCOUNT_LEVEL_LABELS)
+			.filter((k) => k !== currentLevel)
+			.map((k) => ({
+				label: ACCOUNT_LEVEL_LABELS[k],
+				value: k,
+			}));
 
-        if (options.length === 0) {
-            frappe.msgprint({ title: 'Info', indicator: 'blue', message: 'No other levels available to change to.' });
-            return;
-        }
+		if (options.length === 0) {
+			frappe.msgprint({
+				title: "Info",
+				indicator: "blue",
+				message: "No other levels available to change to.",
+			});
+			return;
+		}
 
-        const d = new frappe.ui.Dialog({
-            title: 'Change Account Level',
-            fields: [
-                {
-                    fieldname: 'new_level',
-                    fieldtype: 'Select',
-                    label: 'New Level',
-                    reqd: 1,
-                    options: options.map(o => o.label),
-                    default: options[0].label
-                }
-            ],
-            primary_action_label: 'Update Level',
-            primary_action: (values) => {
-                const selectedOption = options.find(o => o.label === values.new_level);
-                if (!selectedOption) return;
+		const d = new frappe.ui.Dialog({
+			title: "Change Account Level",
+			fields: [
+				{
+					fieldname: "new_level",
+					fieldtype: "Select",
+					label: "New Level",
+					reqd: 1,
+					options: options.map((o) => o.label),
+					default: options[0].label,
+				},
+			],
+			primary_action_label: "Update Level",
+			primary_action: (values) => {
+				const selectedOption = options.find((o) => o.label === values.new_level);
+				if (!selectedOption) return;
 
-                d.hide();
-                frappe.call({
-                    method: 'admin_panel.api.admin_api.update_account_level',
-                    args: {
-                        uid: account.id || account.uuid,
-                        level: selectedOption.value
-                    },
-                    freeze: true,
-                    freeze_message: 'Updating account level...',
-                    callback: (res) => {
-                        const result = res.message || {};
-                        if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
-                            frappe.msgprint({
-                                title: 'Error',
-                                indicator: 'red',
-                                message: Array.isArray(result.errors) ? result.errors.join(', ') : result.errors
-                            });
-                        } else {
-                            frappe.show_alert({ message: `Account level updated to ${ACCOUNT_LEVEL_LABELS[selectedOption.value]}`, indicator: 'green' }, 5);
-                            this.refresh_current_account();
-                        }
-                    },
-                    error: (err) => {
-                        frappe.msgprint({
-                            title: 'Error',
-                            indicator: 'red',
-                            message: err?.responseJSON?.exception || err?.message || 'Failed to update account level'
-                        });
-                    }
-                });
-            }
-        });
+				d.hide();
+				frappe.call({
+					method: "admin_panel.api.admin_api.update_account_level",
+					args: {
+						uid: account.id || account.uuid,
+						level: selectedOption.value,
+					},
+					freeze: true,
+					freeze_message: "Updating account level...",
+					callback: (res) => {
+						const result = res.message || {};
+						if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
+							frappe.msgprint({
+								title: "Error",
+								indicator: "red",
+								message: Array.isArray(result.errors)
+									? result.errors.join(", ")
+									: result.errors,
+							});
+						} else {
+							frappe.show_alert(
+								{
+									message: `Account level updated to ${
+										ACCOUNT_LEVEL_LABELS[selectedOption.value]
+									}`,
+									indicator: "green",
+								},
+								5
+							);
+							this.refresh_current_account();
+						}
+					},
+					error: (err) => {
+						frappe.msgprint({
+							title: "Error",
+							indicator: "red",
+							message:
+								err?.responseJSON?.exception ||
+								err?.message ||
+								"Failed to update account level",
+						});
+					},
+				});
+			},
+		});
 
-        d.show();
-    }
+		d.show();
+	}
 
-    /* ── Actions: Change Status ───────────────────────── */
+	/* ── Actions: Change Status ───────────────────────── */
 
-    change_status(newStatus) {
-        if (!this.current_account) return;
-        const account = this.current_account;
-        const isLock = newStatus === ACCOUNT_STATUSES.LOCKED;
+	change_status(newStatus) {
+		if (!this.current_account) return;
+		const account = this.current_account;
+		const isLock = newStatus === ACCOUNT_STATUSES.LOCKED;
 
-        const d = new frappe.ui.Dialog({
-            title: isLock ? 'Lock Account' : 'Activate Account',
-            fields: [
-                {
-                    fieldname: 'comment',
-                    fieldtype: 'Small Text',
-                    label: isLock ? 'Reason for locking' : 'Comment (optional)',
-                    reqd: isLock ? 1 : 0
-                }
-            ],
-            primary_action_label: isLock ? 'Lock Account' : 'Activate Account',
-            primary_action: (values) => {
-                d.hide();
-                frappe.call({
-                    method: 'admin_panel.api.admin_api.update_account_status_api',
-                    args: {
-                        uid: account.id || account.uuid,
-                        account_uuid: account.uuid,
-                        username: account.username,
-                        status: newStatus,
-                        comment: values.comment || ''
-                    },
-                    freeze: true,
-                    freeze_message: isLock ? 'Locking account...' : 'Activating account...',
-                    callback: (res) => {
-                        const result = res.message || {};
-                        if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
-                            frappe.msgprint({
-                                title: 'Error',
-                                indicator: 'red',
-                                message: Array.isArray(result.errors) ? result.errors.join(', ') : result.errors
-                            });
-                        } else {
-                            frappe.show_alert({
-                                message: `Account ${isLock ? 'locked' : 'activated'} successfully`,
-                                indicator: 'green'
-                            }, 5);
-                            this.refresh_current_account();
-                        }
-                    },
-                    error: (err) => {
-                        frappe.msgprint({
-                            title: 'Error',
-                            indicator: 'red',
-                            message: err?.responseJSON?.exception || err?.message || `Failed to ${isLock ? 'lock' : 'activate'} account`
-                        });
-                    }
-                });
-            }
-        });
+		const d = new frappe.ui.Dialog({
+			title: isLock ? "Lock Account" : "Activate Account",
+			fields: [
+				{
+					fieldname: "comment",
+					fieldtype: "Small Text",
+					label: isLock ? "Reason for locking" : "Comment (optional)",
+					reqd: isLock ? 1 : 0,
+				},
+			],
+			primary_action_label: isLock ? "Lock Account" : "Activate Account",
+			primary_action: (values) => {
+				d.hide();
+				frappe.call({
+					method: "admin_panel.api.admin_api.update_account_status_api",
+					args: {
+						uid: account.id || account.uuid,
+						account_uuid: account.uuid,
+						username: account.username,
+						status: newStatus,
+						comment: values.comment || "",
+					},
+					freeze: true,
+					freeze_message: isLock ? "Locking account..." : "Activating account...",
+					callback: (res) => {
+						const result = res.message || {};
+						if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
+							frappe.msgprint({
+								title: "Error",
+								indicator: "red",
+								message: Array.isArray(result.errors)
+									? result.errors.join(", ")
+									: result.errors,
+							});
+						} else {
+							frappe.show_alert(
+								{
+									message: `Account ${
+										isLock ? "locked" : "activated"
+									} successfully`,
+									indicator: "green",
+								},
+								5
+							);
+							this.refresh_current_account();
+						}
+					},
+					error: (err) => {
+						frappe.msgprint({
+							title: "Error",
+							indicator: "red",
+							message:
+								err?.responseJSON?.exception ||
+								err?.message ||
+								`Failed to ${isLock ? "lock" : "activate"} account`,
+						});
+					},
+				});
+			},
+		});
 
-        d.show();
-    }
+		d.show();
+	}
 
-    /* ── Actions: Update Phone ────────────────────────── */
+	/* ── Actions: Update Phone ────────────────────────── */
 
-    update_phone() {
-        if (!this.current_account) return;
-        const account = this.current_account;
+	update_phone() {
+		if (!this.current_account) return;
+		const account = this.current_account;
 
-        const d = new frappe.ui.Dialog({
-            title: 'Update Phone Number',
-            fields: [
-                {
-                    fieldname: 'phone',
-                    fieldtype: 'Data',
-                    label: 'New Phone Number',
-                    description: 'Enter phone number with country code (e.g., +1234567890)',
-                    reqd: 1,
-                    default: account.owner?.phone || ''
-                }
-            ],
-            primary_action_label: 'Update Phone',
-            primary_action: (values) => {
-                d.hide();
-                frappe.call({
-                    method: 'admin_panel.api.admin_api.update_user_phone_api',
-                    args: {
-                        account_uuid: account.uuid,
-                        username: account.username,
-                        phone: values.phone
-                    },
-                    freeze: true,
-                    freeze_message: 'Updating phone number...',
-                    callback: (res) => {
-                        const result = res.message || {};
-                        if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
-                            frappe.msgprint({
-                                title: 'Error',
-                                indicator: 'red',
-                                message: Array.isArray(result.errors) ? result.errors.join(', ') : result.errors
-                            });
-                        } else {
-                            frappe.show_alert({ message: 'Phone number updated successfully', indicator: 'green' }, 5);
-                            this.refresh_current_account();
-                        }
-                    },
-                    error: (err) => {
-                        frappe.msgprint({
-                            title: 'Error',
-                            indicator: 'red',
-                            message: err?.responseJSON?.exception || err?.message || 'Failed to update phone number'
-                        });
-                    }
-                });
-            }
-        });
+		const d = new frappe.ui.Dialog({
+			title: "Update Phone Number",
+			fields: [
+				{
+					fieldname: "phone",
+					fieldtype: "Data",
+					label: "New Phone Number",
+					description: "Enter phone number with country code (e.g., +1234567890)",
+					reqd: 1,
+					default: account.owner?.phone || "",
+				},
+			],
+			primary_action_label: "Update Phone",
+			primary_action: (values) => {
+				d.hide();
+				frappe.call({
+					method: "admin_panel.api.admin_api.update_user_phone_api",
+					args: {
+						account_uuid: account.uuid,
+						username: account.username,
+						phone: values.phone,
+					},
+					freeze: true,
+					freeze_message: "Updating phone number...",
+					callback: (res) => {
+						const result = res.message || {};
+						if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
+							frappe.msgprint({
+								title: "Error",
+								indicator: "red",
+								message: Array.isArray(result.errors)
+									? result.errors.join(", ")
+									: result.errors,
+							});
+						} else {
+							frappe.show_alert(
+								{
+									message: "Phone number updated successfully",
+									indicator: "green",
+								},
+								5
+							);
+							this.refresh_current_account();
+						}
+					},
+					error: (err) => {
+						frappe.msgprint({
+							title: "Error",
+							indicator: "red",
+							message:
+								err?.responseJSON?.exception ||
+								err?.message ||
+								"Failed to update phone number",
+						});
+					},
+				});
+			},
+		});
 
-        d.show();
-    }
+		d.show();
+	}
 
-    /* ── Actions: Validate / Delete Merchant ─────────── */
+	/* ── Actions: Validate / Delete Merchant ─────────── */
 
-    validate_merchant(merchantId) {
-        frappe.confirm(
-            'Are you sure you want to validate this merchant?',
-            () => {
-                frappe.call({
-                    method: 'admin_panel.api.admin_api.validate_merchant_api',
-                    args: { merchant_id: merchantId },
-                    freeze: true,
-                    freeze_message: 'Validating merchant...',
-                    callback: (res) => {
-                        const result = res.message || {};
-                        if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
-                            frappe.msgprint({
-                                title: 'Error',
-                                indicator: 'red',
-                                message: Array.isArray(result.errors) ? result.errors.join(', ') : result.errors
-                            });
-                        } else {
-                            frappe.show_alert({ message: 'Merchant validated successfully', indicator: 'green' }, 5);
-                            this.refresh_current_account();
-                        }
-                    },
-                    error: (err) => {
-                        frappe.msgprint({
-                            title: 'Error',
-                            indicator: 'red',
-                            message: err?.responseJSON?.exception || err?.message || 'Failed to validate merchant'
-                        });
-                    }
-                });
-            }
-        );
-    }
+	validate_merchant(merchantId) {
+		frappe.confirm("Are you sure you want to validate this merchant?", () => {
+			frappe.call({
+				method: "admin_panel.api.admin_api.validate_merchant_api",
+				args: { merchant_id: merchantId },
+				freeze: true,
+				freeze_message: "Validating merchant...",
+				callback: (res) => {
+					const result = res.message || {};
+					if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
+						frappe.msgprint({
+							title: "Error",
+							indicator: "red",
+							message: Array.isArray(result.errors)
+								? result.errors.join(", ")
+								: result.errors,
+						});
+					} else {
+						frappe.show_alert(
+							{ message: "Merchant validated successfully", indicator: "green" },
+							5
+						);
+						this.refresh_current_account();
+					}
+				},
+				error: (err) => {
+					frappe.msgprint({
+						title: "Error",
+						indicator: "red",
+						message:
+							err?.responseJSON?.exception ||
+							err?.message ||
+							"Failed to validate merchant",
+					});
+				},
+			});
+		});
+	}
 
-    delete_merchant(merchantId) {
-        frappe.confirm(
-            'Are you sure you want to delete this merchant? This action cannot be undone.',
-            () => {
-                frappe.call({
-                    method: 'admin_panel.api.admin_api.delete_merchant_api',
-                    args: { merchant_id: merchantId },
-                    freeze: true,
-                    freeze_message: 'Deleting merchant...',
-                    callback: (res) => {
-                        const result = res.message || {};
-                        if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
-                            frappe.msgprint({
-                                title: 'Error',
-                                indicator: 'red',
-                                message: Array.isArray(result.errors) ? result.errors.join(', ') : result.errors
-                            });
-                        } else {
-                            frappe.show_alert({ message: 'Merchant deleted successfully', indicator: 'green' }, 5);
-                            this.refresh_current_account();
-                        }
-                    },
-                    error: (err) => {
-                        frappe.msgprint({
-                            title: 'Error',
-                            indicator: 'red',
-                            message: err?.responseJSON?.exception || err?.message || 'Failed to delete merchant'
-                        });
-                    }
-                });
-            }
-        );
-    }
+	delete_merchant(merchantId) {
+		frappe.confirm(
+			"Are you sure you want to delete this merchant? This action cannot be undone.",
+			() => {
+				frappe.call({
+					method: "admin_panel.api.admin_api.delete_merchant_api",
+					args: { merchant_id: merchantId },
+					freeze: true,
+					freeze_message: "Deleting merchant...",
+					callback: (res) => {
+						const result = res.message || {};
+						if (Array.isArray(result.errors) ? result.errors.length : result.errors) {
+							frappe.msgprint({
+								title: "Error",
+								indicator: "red",
+								message: Array.isArray(result.errors)
+									? result.errors.join(", ")
+									: result.errors,
+							});
+						} else {
+							frappe.show_alert(
+								{ message: "Merchant deleted successfully", indicator: "green" },
+								5
+							);
+							this.refresh_current_account();
+						}
+					},
+					error: (err) => {
+						frappe.msgprint({
+							title: "Error",
+							indicator: "red",
+							message:
+								err?.responseJSON?.exception ||
+								err?.message ||
+								"Failed to delete merchant",
+						});
+					},
+				});
+			}
+		);
+	}
 
-    /* ── View Document ───────────────────────────────── */
+	/* ── View Document ───────────────────────────────── */
 
-    view_document(fileKey) {
-        if (!fileKey) return;
-        frappe.show_alert({
-            message: __('Open the Account Upgrade Request form to view the document.'),
-            indicator: 'blue'
-        }, 5);
-    }
+	view_document(fileKey) {
+		if (!fileKey) return;
+		frappe.show_alert(
+			{
+				message: __("Open the Account Upgrade Request form to view the document."),
+				indicator: "blue",
+			},
+			5
+		);
+	}
 }

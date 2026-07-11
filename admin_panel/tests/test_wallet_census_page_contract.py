@@ -83,3 +83,27 @@ def test_workspace_links_include_wallet_census_page():
 	assert len(links) == 1
 	assert links[0]["link_type"] == "Page"
 	assert links[0]["label"] == "Wallet Census"
+
+
+def test_pulse_endpoint_is_admin_gated():
+	pulse_py = (ADMIN_PANEL / "api" / "pulse.py").read_text()
+
+	assert "@frappe.whitelist()" in pulse_py
+	assert "@require_admin()" in pulse_py
+	assert "@handle_api_errors" in pulse_py
+	assert "def get_dashboard_pulse" in pulse_py
+	# never ship the heavy rows payload from the pulse
+	assert "rows_json" not in pulse_py
+
+
+def test_dashboard_renders_pulse_layer():
+	js = (ADMIN_PANEL / "admin_panel" / "page" / "admin_dashboard" / "admin_dashboard.js").read_text()
+
+	assert "admin_panel.api.pulse.get_dashboard_pulse" in js
+	assert 'id="fp-trend"' in js
+	assert "USDT float" in js
+	assert "Cashouts needing action" in js
+	# existing flows preserved
+	assert "admin_panel.api.admin_api.get_dashboard_stats" in js
+	assert "account_hub_query" in js
+	assert "ad-smart-search" in js

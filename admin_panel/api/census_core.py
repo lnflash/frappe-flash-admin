@@ -19,6 +19,12 @@ ACTIVE_STATUS = "active"
 # cashwalletmigrations statuses that count as a completed migration.
 MIGRATED_STATUSES = {"completed", "complete", "succeeded", "success", "done"}
 
+# Balances at or below this are zero for classification. IBEX emits
+# sub-nanodollar dust (~1e-10 observed on prod, first full census): those rows
+# classified as "funded" pre-rounding but displayed $0.00. Matches the cutover
+# verifier's dust tolerance.
+FUNDED_EPSILON = 1e-6
+
 
 class PageLimitExceeded(Exception):
 	"""sweep_pages hit max_pages — the API is paging forever or the cap is too low."""
@@ -94,8 +100,10 @@ def build_census(ibex_accounts, wallets, accounts, migrations) -> dict:
 		migration = migrations.get(account_id)
 
 		raw_balance = account.get("balance")
-		balance = float(raw_balance) if raw_balance else 0.0
-		funded = balance > 0
+		# Round to stored precision BEFORE classifying so "funded" and the
+		# displayed balance can never disagree.
+		balance = round(float(raw_balance), 8) if raw_balance else 0.0
+		funded = balance > FUNDED_EPSILON
 
 		currency = wallet.get("currency") or CURRENCY_BY_ID.get(account.get("currencyId"))
 		status = acct.get("status")
@@ -146,7 +154,7 @@ def build_census(ibex_accounts, wallets, accounts, migrations) -> dict:
 				"account_id": account_id,
 				"wallet_id": wallet_id,
 				"currency": currency,
-				"balance": round(balance, 8),
+				"balance": balance,
 				"status": status,
 				"level": acct.get("level"),
 				"role": role,
@@ -162,7 +170,7 @@ def build_census(ibex_accounts, wallets, accounts, migrations) -> dict:
 		)
 
 	rows.sort(key=lambda r: r["balance"], reverse=True)
-	funded_count = sum(1 for r in rows if r["balance"] > 0)
+	funded_count = sum(1 for r in rows if r["balance"] > FUNDED_EPSILON)
 
 	# BTC wallets exist in mongo but hold no IBEX balance — report the count so
 	# operators know it's intentional, not a gap.

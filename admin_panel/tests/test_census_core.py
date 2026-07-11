@@ -215,3 +215,26 @@ def test_sweep_pages_empty_first_page():
 	from admin_panel.api.census_core import sweep_pages
 
 	assert list(sweep_pages(lambda p: [], max_pages=5)) == []
+
+
+def test_micro_dust_is_not_funded():
+	"""IBEX emits sub-nanodollar dust (~1e-10 seen on prod): it must classify
+	as zero — 91 rows showed 'active_funded' at $0.00 on the first full census."""
+	ibex = [{"id": "w-dust", "name": "acc-dust", "currencyId": 29, "balance": 3e-10}]
+	accounts = {
+		"acc-dust": {
+			"username": "dusty",
+			"role": "user",
+			"status": "active",
+			"default_wallet_id": "w-dust",
+		}
+	}
+	wallets = {"w-dust": {"account_id": "acc-dust", "currency": "Usdt", "type": "Checking"}}
+
+	result = build_census(ibex, wallets, accounts, {})
+	row = result["rows"][0]
+
+	assert row["balance"] == 0.0
+	assert row["buckets"] == ["active_zero"]
+	assert result["totals"]["funded"] == 0
+	assert result["bucket_counts"]["active_funded"] == 0

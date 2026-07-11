@@ -13,7 +13,10 @@ Money-flow facts this module leans on (verified in the flash codebase):
   pay_invoice from the sender (the cutover primitive).
 """
 
+import math
+
 import frappe
+import requests
 
 from .auth import audit_log, require_financial, require_roles
 from .common import handle_api_errors
@@ -30,6 +33,57 @@ DEFAULT_TRANSFER_CAP_USD = 100.0
 
 CURRENCY_BY_ID = {0: "BTC", 3: "USD", 29: "USDT"}
 
+# IBEX pay-invoice status: 2 = SUCCEEDED (verified against the hub).
+_IBEX_STATUS_SUCCEEDED = 2
+_SETTLED_NAMES = {"SUCCEEDED", "SETTLED", "COMPLETE", "COMPLETED"}
+_FAILED_NAMES = {"FAILED", "CANCELLED", "CANCELED", "EXPIRED"}
+
+
+def _payment_nodes(payment):
+	"""The payment envelope plus its nested transaction.payment, if any."""
+	if not isinstance(payment, dict):
+		return []
+	nodes = [payment]
+	inner = (payment.get("transaction") or {}).get("payment")
+	if isinstance(inner, dict):
+		nodes.append(inner)
+	return nodes
+
+
+def _payment_settled(payment):
+	"""Did the LN payment affirmatively settle?
+
+	Returns True (settled), False (affirmatively failed), or None (ambiguous —
+	treat as unconfirmed, never as success). Fail-safe by design: an unknown
+	response shape yields None so money is never reported moved on a guess.
+	"""
+	nodes = _payment_nodes(payment)
+	for node in nodes:
+		status = node.get("status")
+		name = (status.get("name") if isinstance(status, dict) else None) or ""
+		if name.upper() in _SETTLED_NAMES:
+			return True
+		if name.upper() in _FAILED_NAMES:
+			return False
+	for node in nodes:
+		if node.get("statusId") == _IBEX_STATUS_SUCCEEDED:
+			return True
+		if isinstance(node.get("status"), int) and node["status"] == _IBEX_STATUS_SUCCEEDED:
+			return True
+	for node in nodes:
+		fr = node.get("failureReason")
+		if fr not in (None, 0):
+			return False
+	return None
+
+
+def _payment_hash(payment):
+	for node in _payment_nodes(payment):
+		h = node.get("hash")
+		if h:
+			return h
+	return ""
+
 
 def _watchlist_map():
 	"""Merge the two watchlist sources into {lowercased ref: {...}}.
@@ -44,9 +98,10 @@ def _watchlist_map():
 	"""
 	watch = {}
 	for x in frappe.conf.get("system_watchlist") or []:
-		watch[str(x).lower()] = {"allow_transfers": False, "managed": False, "label": None}
+		watch[str(x).lower()] = {"ref": str(x), "allow_transfers": False, "managed": False, "label": None}
 	for row in frappe.get_all("System Watchlist", fields=["account_ref", "label", "allow_transfers"]):
 		watch[str(row.account_ref).lower()] = {
+			"ref": str(row.account_ref),
 			"allow_transfers": bool(row.allow_transfers),
 			"managed": True,
 			"label": row.label,
@@ -77,7 +132,12 @@ def _resolve_system_accounts():
 		role = (acc.get("role") or "user").lower()
 		is_role_account = role in SYSTEM_ROLES
 		username = str(acc.get("username") or "")
-		watch_entry = watch.get(account_id.lower()) or watch.get(username.lower())
+		# An account can match a watch entry by id OR username; prefer a managed
+		# (doctype) entry so a legacy config entry can't mask a transfers-on row.
+		candidates = [c for c in (watch.get(account_id.lower()), watch.get(username.lower())) if c]
+		watch_entry = None
+		if candidates:
+			watch_entry = sorted(candidates, key=lambda c: 0 if c["managed"] else 1)[0]
 		is_watch = watch_entry is not None
 		if not (is_role_account or is_watch):
 			continue
@@ -92,6 +152,9 @@ def _resolve_system_accounts():
 				"transferable": is_role_account or allow_transfers,
 				"allow_transfers": allow_transfers,
 				"watch_managed": bool(watch_entry and watch_entry["managed"]),
+				# the exact ref stored on the doctype row, so the page's
+				# toggle/remove buttons hit the right record (id- or name-added)
+				"watch_ref": watch_entry["ref"] if watch_entry else None,
 				"wallets": sorted(by_account.get(account_id, []), key=lambda w: w["wallet_id"]),
 			}
 		)
@@ -139,7 +202,12 @@ def get_system_accounts():
 	for acc in accounts:
 		for w in acc["wallets"]:
 			details = client.get_account_details(w["wallet_id"])
-			currency = CURRENCY_BY_ID.get(details.get("currencyId"), w.get("mongo_currency") or "USD")
+			# Normalize to UPPERCASE: the mongo_currency fallback is title-case
+			# ("Usdt"/"Btc"), which would fail the USD/USDT float check below and
+			# the BTC exclusion in the transfer picker.
+			currency = (
+				CURRENCY_BY_ID.get(details.get("currencyId")) or w.get("mongo_currency") or "USD"
+			).upper()
 			balance = float(details.get("balance") or 0.0)
 			w["currency"] = currency
 			w["balance"] = balance
@@ -209,13 +277,18 @@ def transfer_between_system_wallets(from_wallet_id, to_wallet_id, amount_usd, me
 	"""
 	from_wallet_id = frappe.utils.cstr(from_wallet_id)
 	to_wallet_id = frappe.utils.cstr(to_wallet_id)
-	amount = float(amount_usd)
+	try:
+		amount = float(amount_usd)
+	except (TypeError, ValueError):
+		frappe.throw("Amount must be a number")
 	memo = frappe.utils.cstr(memo or "ERP treasury transfer")
 
 	if from_wallet_id == to_wallet_id:
 		frappe.throw("Sender and receiver are the same wallet")
-	if not amount or amount <= 0:
-		frappe.throw("Amount must be positive")
+	# math.isfinite rejects NaN/inf, which slip past `amount > cap` (NaN
+	# comparisons are always False) and would reach IBEX.
+	if not math.isfinite(amount) or amount <= 0:
+		frappe.throw("Amount must be a positive number")
 	cap = float(frappe.conf.get("system_transfer_cap_usd") or DEFAULT_TRANSFER_CAP_USD)
 	if amount > cap:
 		frappe.throw(
@@ -233,6 +306,19 @@ def transfer_between_system_wallets(from_wallet_id, to_wallet_id, amount_usd, me
 	if to_wallet_id not in transferable:
 		frappe.throw("Receiver is not a transfer-enabled system wallet")
 
+	# Idempotency guard: a timed-out or otherwise unresolved prior transfer
+	# from this wallet may have moved money we can't confirm. Block a new one
+	# until it's reconciled, so a retry after a "Pending" can't double-spend.
+	unresolved = frappe.db.get_value(
+		"System Transfer Log",
+		{"from_wallet": from_wallet_id, "status": ["in", ["Draft", "Pending"]]},
+	)
+	if unresolved:
+		frappe.throw(
+			f"A prior transfer from this wallet is unresolved ({unresolved}). "
+			"Verify its outcome in the System Transfer Log before starting another."
+		)
+
 	log = frappe.get_doc(
 		{
 			"doctype": "System Transfer Log",
@@ -248,26 +334,66 @@ def transfer_between_system_wallets(from_wallet_id, to_wallet_id, amount_usd, me
 	frappe.db.commit()
 
 	client = IbexClient()
+	# Step 1: create the invoice on the receiver. A failure here moved no money.
 	try:
 		invoice = client.add_invoice(to_wallet_id, amount, memo=memo)
 		bolt11 = (invoice.get("invoice") or {}).get("bolt11")
 		if not bolt11:
 			raise ValueError(f"IBEX add_invoice returned no bolt11: {str(invoice)[:200]}")
-		payment = client.pay_invoice(from_wallet_id, bolt11)
 	except Exception as e:
 		log.db_set("status", "Failed")
 		log.db_set("error", str(e)[:500])
 		frappe.db.commit()
 		raise
-	log.db_set("status", "Paid")
-	log.db_set("ibex_payment_hash", frappe.utils.cstr(payment.get("hash") or "")[:140])
-	audit_log(
-		"system_transfer",
-		"System Transfer Log",
-		log.name,
-		{"from": from_wallet_id, "to": to_wallet_id, "amount_usd": amount},
-	)
-	return {"success": True, "log": log.name, "payment": payment}
+
+	# Step 2: pay it from the sender. A network timeout/connection error here
+	# is INDETERMINATE — the LN payment may still settle server-side — so it is
+	# NOT a failure. Mark Pending (the idempotency guard then blocks retries)
+	# and tell the operator to reconcile.
+	try:
+		payment = client.pay_invoice(from_wallet_id, bolt11)
+	except requests.exceptions.RequestException as e:
+		log.db_set("status", "Pending")
+		log.db_set("error", f"Indeterminate (network): {e}"[:500])
+		frappe.db.commit()
+		frappe.throw(
+			"The payment outcome is UNKNOWN — the request timed out but the funds "
+			"may have moved. Check balances and the System Transfer Log before retrying."
+		)
+	except Exception as e:
+		log.db_set("status", "Failed")
+		log.db_set("error", str(e)[:500])
+		frappe.db.commit()
+		raise
+
+	# A 200 from IBEX means the pay request was accepted, not that it settled.
+	# Only an affirmative SUCCEEDED marks Paid; an affirmative failure marks
+	# Failed; anything ambiguous stays Pending for the operator to resolve.
+	settled = _payment_settled(payment)
+	if settled is True:
+		log.db_set("status", "Paid")
+		log.db_set("ibex_payment_hash", frappe.utils.cstr(_payment_hash(payment))[:140])
+		frappe.db.commit()
+		audit_log(
+			"system_transfer",
+			"System Transfer Log",
+			log.name,
+			{"from": from_wallet_id, "to": to_wallet_id, "amount_usd": amount},
+		)
+		return {"success": True, "log": log.name, "status": "Paid"}
+	elif settled is False:
+		log.db_set("status", "Failed")
+		log.db_set("error", f"IBEX reported the payment not settled: {str(payment)[:400]}")
+		frappe.db.commit()
+		frappe.throw("IBEX did not settle the payment (see the System Transfer Log).")
+	else:
+		log.db_set("status", "Pending")
+		log.db_set("error", f"IBEX settlement ambiguous: {str(payment)[:400]}")
+		frappe.db.commit()
+		frappe.throw(
+			"IBEX accepted the payment but its settlement is unconfirmed. "
+			"Check balances and the System Transfer Log before retrying."
+		)
 
 
 def _find_watchlist_doc(account_ref):

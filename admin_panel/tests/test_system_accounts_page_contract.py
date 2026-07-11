@@ -58,6 +58,50 @@ def test_every_transfer_attempt_is_logged_before_money_moves():
 	assert 'log.db_set("status", "Paid")' in API_PY
 
 
+def test_transfer_cap_is_actually_enforced():
+	# the cap must be COMPARED and throw, not merely referenced — otherwise
+	# enforcement could be deleted with the presence-only tests still green
+	assert "if amount > cap:" in API_PY
+	assert "exceeds the per-transfer cap" in API_PY
+
+
+def test_paid_only_on_confirmed_settlement():
+	# a 200 from IBEX is not proof of settlement — Paid must gate on an
+	# affirmative _payment_settled() is True, never on absence of an exception
+	assert "_payment_settled(payment)" in API_PY
+	assert "if settled is True:" in API_PY
+	# helper is fail-safe: unknown shape returns None (ambiguous), not success
+	assert "def _payment_settled(" in API_PY
+	assert "return None" in API_PY
+
+
+def test_indeterminate_pay_is_pending_not_failed():
+	# a network timeout/connection error is NOT a failure (the LN payment may
+	# still settle) — it must mark Pending so the idempotency guard blocks retry
+	assert "except requests.exceptions.RequestException" in API_PY
+	assert 'log.db_set("status", "Pending")' in API_PY
+
+
+def test_transfer_has_idempotency_guard():
+	# a new transfer from a wallet with an unresolved (Draft/Pending) prior
+	# transfer must be refused, so a retry after a timeout cannot double-spend
+	assert '"status": ["in", ["Draft", "Pending"]]' in API_PY
+	assert "unresolved" in API_PY
+
+
+def test_transfer_rejects_non_finite_amount():
+	# NaN/inf slip past `amount > cap` (NaN comparisons are False); math.isfinite
+	# must gate the amount before it can reach IBEX
+	assert "math.isfinite(amount)" in API_PY
+
+
+def test_transfer_does_not_leak_raw_ibex_response():
+	# the raw pay_invoice response carries the LN preimage; the endpoint must
+	# return only what the UI needs, not the whole blob
+	assert 'return {"success": True, "log": log.name, "status": "Paid"}' in API_PY
+	assert '"payment": payment' not in API_PY
+
+
 def test_activity_endpoint_revalidates_wallet_membership():
 	assert '"Not a system-account wallet"' in API_PY
 	assert "frappe.PermissionError" in API_PY

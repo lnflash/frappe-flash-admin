@@ -273,16 +273,20 @@ class SystemAccounts {
 						? '<span class="sa-chip st-ok">transfers on</span>'
 						: '<span class="sa-chip">view-only</span>'
 					: "";
+				// watch_ref is the exact ref stored on the doctype row, so the
+				// toggle/remove buttons hit the right record whether the entry
+				// was added by username or by mongo id.
+				const watchRef = acc.watch_ref || acc.username || acc.account_id;
 				const watchControls =
 					isWatch && acc.watch_managed && this.can_transfer
 						? `<span class="sa-spacer"></span>
                         <button class="sa-btn sa-toggle-btn" data-account="${saEsc(
-							acc.username || acc.account_id
+							watchRef
 						)}" data-allow="${acc.allow_transfers ? 1 : 0}">${
 								acc.allow_transfers ? "Disable transfers" : "Enable transfers"
 						  }</button>
                         <button class="sa-btn sa-remove-btn" data-account="${saEsc(
-							acc.username || acc.account_id
+							watchRef
 						)}" title="Remove from watchlist">✕</button>`
 						: "";
 				return `

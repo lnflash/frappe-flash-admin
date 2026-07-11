@@ -131,3 +131,28 @@ def get_transfer_pulse():
 		"bridge": bridge_counts,
 		"now": str(frappe.utils.now_datetime()),
 	}
+
+
+@frappe.whitelist()
+@require_admin()
+@handle_api_errors
+def get_upgrade_pulse():
+	"""Queue vitals for the Account Management (upgrade requests) tiles."""
+	oldest = frappe.get_all(
+		"Account Upgrade Request",
+		filters={"status": "Pending"},
+		fields=["name", "username", "creation"],
+		order_by="creation asc",
+		limit=1,
+	)
+	week_ago = frappe.utils.add_days(frappe.utils.now_datetime(), -7)
+	return {
+		"pending": frappe.db.count("Account Upgrade Request", {"status": "Pending"}),
+		"processed_week": frappe.db.count(
+			"Account Upgrade Request",
+			{"status": ["in", ["Approved", "Rejected"]], "modified": [">=", week_ago]},
+		),
+		"oldest_at": str(oldest[0].creation) if oldest else None,
+		"oldest_who": (oldest[0].username or oldest[0].name) if oldest else None,
+		"now": str(frappe.utils.now_datetime()),
+	}

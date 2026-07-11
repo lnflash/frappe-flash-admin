@@ -159,4 +159,3 @@ class Cashout(Document):
 		audit_log(
 			"complete_cashout", "Cashout", self.name, {"payment_je": je.name, "amount": self.user_receives}
 		)
-		frappe.msgprint(f"Payment Journal Entry {je.name} created.")

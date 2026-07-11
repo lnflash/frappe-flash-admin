@@ -178,7 +178,8 @@ class SystemAccounts {
                     <span class="sa-spacer"></span>
                     ${
 						this.can_transfer
-							? '<button class="sa-btn primary" data-act="transfer">Move Funds</button>'
+							? '<button class="sa-btn" data-act="watch">Watch Account</button>' +
+							  '<button class="sa-btn primary" data-act="transfer">Move Funds</button>'
 							: ""
 					}
                 </div>
@@ -190,6 +191,7 @@ class SystemAccounts {
 		this.page.main
 			.find('[data-act="transfer"]')
 			.on("click", () => this.open_transfer_dialog());
+		this.page.main.find('[data-act="watch"]').on("click", () => this.open_watch_dialog());
 	}
 
 	load() {
@@ -265,6 +267,24 @@ class SystemAccounts {
 							)
 							.join("")
 					: '<div class="sa-wallet-row sa-empty">No wallets found in mongo for this account.</div>';
+				const isWatch = acc.role === "watchlist";
+				const xferChip = isWatch
+					? acc.allow_transfers
+						? '<span class="sa-chip st-ok">transfers on</span>'
+						: '<span class="sa-chip">view-only</span>'
+					: "";
+				const watchControls =
+					isWatch && acc.watch_managed && this.can_transfer
+						? `<span class="sa-spacer"></span>
+                        <button class="sa-btn sa-toggle-btn" data-account="${saEsc(
+							acc.username || acc.account_id
+						)}" data-allow="${acc.allow_transfers ? 1 : 0}">${
+								acc.allow_transfers ? "Disable transfers" : "Enable transfers"
+						  }</button>
+                        <button class="sa-btn sa-remove-btn" data-account="${saEsc(
+							acc.username || acc.account_id
+						)}" title="Remove from watchlist">✕</button>`
+						: "";
 				return `
                 <div class="sa-card">
                     <div class="sa-card-head">
@@ -277,7 +297,9 @@ class SystemAccounts {
 								? `<span class="sa-chip ${statusTone}">${saEsc(acc.status)}</span>`
 								: ""
 						}
+                        ${xferChip}
                         <span class="sa-card-sub">${saEsc(acc.account_id)}</span>
+                        ${watchControls}
                     </div>
                     ${wallets}
                 </div>`;
@@ -293,6 +315,96 @@ class SystemAccounts {
 		this.page.main.find(".sa-activity-btn").on("click", (e) => {
 			this.toggle_activity($(e.currentTarget).data("wallet"));
 		});
+		this.page.main.find(".sa-toggle-btn").on("click", (e) => {
+			const btn = $(e.currentTarget);
+			this.toggle_transfers(btn.data("account"), !Number(btn.data("allow")));
+		});
+		this.page.main.find(".sa-remove-btn").on("click", (e) => {
+			this.remove_watch($(e.currentTarget).data("account"));
+		});
+	}
+
+	open_watch_dialog() {
+		const d = new frappe.ui.Dialog({
+			title: "Watch an Ops Account",
+			fields: [
+				{
+					fieldname: "account_ref",
+					fieldtype: "Data",
+					label: "Username or mongo account id",
+					reqd: 1,
+				},
+				{ fieldname: "label", fieldtype: "Data", label: "Label (optional)" },
+				{
+					fieldname: "help",
+					fieldtype: "HTML",
+					options: `<div style="font-size:12px;color:var(--text-muted);">
+                        Added accounts are <strong>view-only</strong> until you enable transfers on the card.
+                    </div>`,
+				},
+			],
+			primary_action_label: "Add to Watchlist",
+			primary_action: (values) => {
+				frappe.call({
+					method: "admin_panel.api.system_accounts.add_watchlist_entry",
+					args: { account_ref: values.account_ref, label: values.label },
+					freeze: true,
+					callback: () => {
+						d.hide();
+						frappe.show_alert(
+							{ message: "Added to watchlist.", indicator: "green" },
+							5
+						);
+						this.load();
+					},
+				});
+			},
+		});
+		d.show();
+	}
+
+	remove_watch(accountRef) {
+		frappe.confirm(
+			`Remove <strong>${saEsc(accountRef)}</strong> from the watchlist? ` +
+				"This does not touch the account or its funds.",
+			() => {
+				frappe.call({
+					method: "admin_panel.api.system_accounts.remove_watchlist_entry",
+					args: { account_ref: accountRef },
+					callback: () => {
+						frappe.show_alert({ message: "Removed.", indicator: "green" }, 4);
+						this.load();
+					},
+				});
+			}
+		);
+	}
+
+	toggle_transfers(accountRef, allow) {
+		const act = () =>
+			frappe.call({
+				method: "admin_panel.api.system_accounts.set_watchlist_transfers",
+				args: { account_ref: accountRef, allow: allow ? 1 : 0 },
+				callback: () => {
+					frappe.show_alert(
+						{
+							message: allow ? "Transfers enabled." : "Transfers disabled.",
+							indicator: allow ? "orange" : "green",
+						},
+						4
+					);
+					this.load();
+				},
+			});
+		if (allow) {
+			frappe.confirm(
+				`Enable transfers for <strong>${saEsc(accountRef)}</strong>?<br><br>` +
+					"This makes it a valid endpoint for moving funds in and out (still capped and logged).",
+				act
+			);
+		} else {
+			act();
+		}
 	}
 
 	toggle_activity(walletId) {

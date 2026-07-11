@@ -31,12 +31,35 @@ DEFAULT_TRANSFER_CAP_USD = 100.0
 CURRENCY_BY_ID = {0: "BTC", 3: "USD", 29: "USDT"}
 
 
-def _resolve_system_accounts():
-	"""All role accounts + the optional site_config watchlist, with their wallets.
+def _watchlist_map():
+	"""Merge the two watchlist sources into {lowercased ref: {...}}.
 
-	Watchlist entries (`system_watchlist` in site_config: usernames or mongo
-	account ids) are VIEW-ONLY ops accounts (e.g. legacy float accounts) —
-	never valid transfer endpoints.
+	- `System Watchlist` doctype rows: UI-managed, each carries a per-account
+	  `allow_transfers` opt-in (default off) and is removable from the page.
+	- `system_watchlist` in site_config: legacy view-only list, never
+	  transfer-eligible and not UI-managed.
+
+	A ref may be a username or a mongo account id. Doctype rows win over
+	config on the same ref.
+	"""
+	watch = {}
+	for x in frappe.conf.get("system_watchlist") or []:
+		watch[str(x).lower()] = {"allow_transfers": False, "managed": False, "label": None}
+	for row in frappe.get_all("System Watchlist", fields=["account_ref", "label", "allow_transfers"]):
+		watch[str(row.account_ref).lower()] = {
+			"allow_transfers": bool(row.allow_transfers),
+			"managed": True,
+			"label": row.label,
+		}
+	return watch
+
+
+def _resolve_system_accounts():
+	"""All role accounts + the watchlist, with their wallets.
+
+	Role accounts (bankowner/funder/dealer) are always transfer-eligible.
+	Watchlist accounts are VIEW-ONLY unless their doctype row has
+	allow_transfers set — a deliberate per-account opt-in.
 	"""
 	accounts = load_accounts()
 	wallets = load_wallets()
@@ -47,23 +70,28 @@ def _resolve_system_accounts():
 			{"wallet_id": wallet_id, "mongo_currency": w.get("currency")}
 		)
 
-	watchlist = frappe.conf.get("system_watchlist") or []
-	watch_keys = {str(x).lower() for x in watchlist}
+	watch = _watchlist_map()
 
 	resolved = []
 	for account_id, acc in accounts.items():
 		role = (acc.get("role") or "user").lower()
 		is_role_account = role in SYSTEM_ROLES
-		is_watch = account_id.lower() in watch_keys or str(acc.get("username") or "").lower() in watch_keys
+		username = str(acc.get("username") or "")
+		watch_entry = watch.get(account_id.lower()) or watch.get(username.lower())
+		is_watch = watch_entry is not None
 		if not (is_role_account or is_watch):
 			continue
+		allow_transfers = bool(watch_entry and watch_entry["allow_transfers"])
 		resolved.append(
 			{
 				"account_id": account_id,
 				"username": acc.get("username"),
 				"role": role if is_role_account else "watchlist",
 				"status": acc.get("status"),
-				"transferable": is_role_account,
+				# role accounts always transferable; watchlist only on opt-in
+				"transferable": is_role_account or allow_transfers,
+				"allow_transfers": allow_transfers,
+				"watch_managed": bool(watch_entry and watch_entry["managed"]),
 				"wallets": sorted(by_account.get(account_id, []), key=lambda w: w["wallet_id"]),
 			}
 		)
@@ -201,9 +229,9 @@ def transfer_between_system_wallets(from_wallet_id, to_wallet_id, amount_usd, me
 		for w in acc["wallets"]
 	}
 	if from_wallet_id not in transferable:
-		frappe.throw("Sender is not a role-account wallet")
+		frappe.throw("Sender is not a transfer-enabled system wallet")
 	if to_wallet_id not in transferable:
-		frappe.throw("Receiver is not a role-account wallet")
+		frappe.throw("Receiver is not a transfer-enabled system wallet")
 
 	log = frappe.get_doc(
 		{
@@ -240,3 +268,76 @@ def transfer_between_system_wallets(from_wallet_id, to_wallet_id, amount_usd, me
 		{"from": from_wallet_id, "to": to_wallet_id, "amount_usd": amount},
 	)
 	return {"success": True, "log": log.name, "payment": payment}
+
+
+def _find_watchlist_doc(account_ref):
+	ref = frappe.utils.cstr(account_ref).strip()
+	name = frappe.db.get_value("System Watchlist", {"account_ref": ref})
+	return ref, name
+
+
+@frappe.whitelist()
+@require_roles(["System Manager"])
+@handle_api_errors
+def add_watchlist_entry(account_ref, label=None):
+	"""Add an ops account to the watchlist (view-only until opted into
+	transfers). account_ref is a username or mongo account id and must
+	resolve to a real account in mongo."""
+	ref = frappe.utils.cstr(account_ref).strip()
+	if not ref:
+		frappe.throw("Account reference is required")
+
+	accounts = load_accounts()
+	known = ref in accounts or any(str(a.get("username") or "") == ref for a in accounts.values())
+	if not known:
+		frappe.throw(f"No account found for '{ref}' (username or mongo id)")
+	if frappe.db.exists("System Watchlist", {"account_ref": ref}):
+		frappe.throw(f"'{ref}' is already on the watchlist")
+
+	doc = frappe.get_doc(
+		{
+			"doctype": "System Watchlist",
+			"account_ref": ref,
+			"label": frappe.utils.cstr(label or "") or None,
+			"allow_transfers": 0,
+			"added_by": frappe.session.user,
+		}
+	)
+	doc.insert(ignore_permissions=True)
+	audit_log("watchlist_add", "System Watchlist", doc.name, {"account_ref": ref})
+	return {"success": True, "name": doc.name}
+
+
+@frappe.whitelist()
+@require_roles(["System Manager"])
+@handle_api_errors
+def remove_watchlist_entry(account_ref):
+	"""Remove an account from the watchlist. Does not touch the account or
+	its funds — only stops it from appearing on this page."""
+	ref, name = _find_watchlist_doc(account_ref)
+	if not name:
+		frappe.throw(f"'{ref}' is not on the watchlist")
+	frappe.delete_doc("System Watchlist", name, ignore_permissions=True)
+	audit_log("watchlist_remove", "System Watchlist", name, {"account_ref": ref})
+	return {"success": True}
+
+
+@frappe.whitelist()
+@require_roles(["System Manager"])
+@handle_api_errors
+def set_watchlist_transfers(account_ref, allow):
+	"""Flip the per-account transfer opt-in. When on, the account becomes a
+	valid transfer endpoint (still capped, still logged); when off it is
+	view-only."""
+	ref, name = _find_watchlist_doc(account_ref)
+	if not name:
+		frappe.throw(f"'{ref}' is not on the watchlist")
+	allow_flag = 1 if frappe.utils.cint(allow) else 0
+	frappe.db.set_value("System Watchlist", name, "allow_transfers", allow_flag)
+	audit_log(
+		"watchlist_transfers_" + ("on" if allow_flag else "off"),
+		"System Watchlist",
+		name,
+		{"account_ref": ref},
+	)
+	return {"success": True, "allow_transfers": bool(allow_flag)}

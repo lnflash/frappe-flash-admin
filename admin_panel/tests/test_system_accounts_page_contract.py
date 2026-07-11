@@ -31,10 +31,23 @@ def test_transfer_endpoint_is_system_manager_only_with_cap_and_role_guard():
 	assert stack in API_PY
 	assert "system_transfer_cap_usd" in API_PY
 	assert "DEFAULT_TRANSFER_CAP_USD" in API_PY
-	# watchlist accounts are view-only: only transferable (role) wallets qualify
+	# only transfer-enabled wallets qualify (role accounts + opted-in watch)
 	assert 'if acc["transferable"]' in API_PY
-	assert '"Sender is not a role-account wallet"' in API_PY
-	assert '"Receiver is not a role-account wallet"' in API_PY
+	assert '"Sender is not a transfer-enabled system wallet"' in API_PY
+	assert '"Receiver is not a transfer-enabled system wallet"' in API_PY
+
+
+def test_watchlist_is_opt_in_for_transfers():
+	# role accounts always transferable; watchlist only when allow_transfers
+	assert '"transferable": is_role_account or allow_transfers' in API_PY
+	# management endpoints are all System Manager only
+	for fn in ("add_watchlist_entry", "remove_watchlist_entry", "set_watchlist_transfers"):
+		stack = f'@frappe.whitelist()\n@require_roles(["System Manager"])\n@handle_api_errors\ndef {fn}('
+		assert stack in API_PY, f"{fn} must be whitelisted + System Manager + handle_api_errors"
+	# adding validates the account actually exists in mongo
+	assert "No account found for" in API_PY
+	# config watchlist stays view-only (managed=False), never opt-in-able
+	assert '"managed": False' in API_PY
 
 
 def test_every_transfer_attempt_is_logged_before_money_moves():

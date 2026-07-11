@@ -387,7 +387,7 @@ class OpsDashboard {
                 <div class="fp-value">${this.esc(co.count)}</div>
                 <div class="fp-foot">${coChip}</div>
             </a>
-            <a class="fp-tile fp-rise" href="#fp-requests-anchor">
+            <a class="fp-tile fp-rise" href="#" data-scroll="#fp-requests">
                 <div class="fp-label">Upgrade requests pending</div>
                 <div class="fp-value">${this.esc(up.count)}</div>
                 <div class="fp-foot">${upChip}</div>
@@ -396,9 +396,15 @@ class OpsDashboard {
 
 		// desk router for the tile links (keep SPA navigation)
 		$m.find(".fp-tile").on("click", function (e) {
+			e.preventDefault();
+			const scroll = $(this).data("scroll");
+			if (scroll) {
+				const el = document.querySelector(scroll);
+				if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+				return;
+			}
 			const href = $(this).attr("href");
 			if (href && href.startsWith("/app/")) {
-				e.preventDefault();
 				frappe.set_route(href.replace("/app/", ""));
 			}
 		});

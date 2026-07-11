@@ -1,12 +1,12 @@
-frappe.pages['account-management'].on_page_load = function(wrapper) {
-    if (!frappe.user_roles.includes('Accounts Manager')) {
-        var page = frappe.ui.make_app_page({
-            parent: wrapper,
-            title: 'Flash Account Manager',
-            single_column: true
-        });
-        
-        page.main.html(`
+frappe.pages["account-management"].on_page_load = function (wrapper) {
+	if (!frappe.user_roles.includes("Accounts Manager")) {
+		var page = frappe.ui.make_app_page({
+			parent: wrapper,
+			title: "Flash Account Manager",
+			single_column: true,
+		});
+
+		page.main.html(`
             <div class="text-center mt-5">
                 <div class="alert alert-warning">
                     <h4>Access Denied</h4>
@@ -14,116 +14,116 @@ frappe.pages['account-management'].on_page_load = function(wrapper) {
                 </div>
             </div>
         `);
-        return;
-    }
+		return;
+	}
 
-    var page = frappe.ui.make_app_page({
-        parent: wrapper,
-        title: 'Flash Account Manager',
-        single_column: true
-    });
+	var page = frappe.ui.make_app_page({
+		parent: wrapper,
+		title: "Flash Account Manager",
+		single_column: true,
+	});
 
-    new FlashAccountManager(page);
+	new FlashAccountManager(page);
 };
 
 const AccountLevels = {
-    TRIAL: "ZERO",
-    PERSONAL: "ONE",
-    PRO: "TWO",
-    MERCHANT: "THREE"
+	TRIAL: "ZERO",
+	PERSONAL: "ONE",
+	PRO: "TWO",
+	MERCHANT: "THREE",
 };
 
 const AccountStatus = {
-    PENDING: "Pending",
-    REJECTED: "Rejected",
-    APPROVED: "Approved",
-    CLOSED: "Closed"
+	PENDING: "Pending",
+	REJECTED: "Rejected",
+	APPROVED: "Approved",
+	CLOSED: "Closed",
 };
 
 const ACCOUNT_LEVEL_MAP = {
-    [AccountLevels.TRIAL]: 'Trial',
-    [AccountLevels.PERSONAL]: 'Personal',
-    [AccountLevels.PRO]: 'Pro',
-    [AccountLevels.MERCHANT]: 'Merchant'
+	[AccountLevels.TRIAL]: "Trial",
+	[AccountLevels.PERSONAL]: "Personal",
+	[AccountLevels.PRO]: "Pro",
+	[AccountLevels.MERCHANT]: "Merchant",
 };
 
 const LEVEL_BADGE_MAP = {
-    [AccountLevels.TRIAL]: 'badge-trial',
-    [AccountLevels.PERSONAL]: 'badge-personal',
-    [AccountLevels.PRO]: 'badge-business',
-    [AccountLevels.MERCHANT]: 'badge-merchant'
+	[AccountLevels.TRIAL]: "badge-trial",
+	[AccountLevels.PERSONAL]: "badge-personal",
+	[AccountLevels.PRO]: "badge-business",
+	[AccountLevels.MERCHANT]: "badge-merchant",
 };
 
 const STATUS_BADGE_MAP = {
-    [AccountStatus.APPROVED]: 'badge-approved',
-    [AccountStatus.REJECTED]: 'badge-rejected',
-    [AccountStatus.PENDING]: 'badge-pending',
-    [AccountStatus.CLOSED]: 'badge-closed'
+	[AccountStatus.APPROVED]: "badge-approved",
+	[AccountStatus.REJECTED]: "badge-rejected",
+	[AccountStatus.PENDING]: "badge-pending",
+	[AccountStatus.CLOSED]: "badge-closed",
 };
 
 function getAccountLevelLabel(level) {
-    return ACCOUNT_LEVEL_MAP[level] || level;
+	return ACCOUNT_LEVEL_MAP[level] || level;
 }
 
 function getLevelBadgeClass(level) {
-    return LEVEL_BADGE_MAP[level] || 'badge-trial';
+	return LEVEL_BADGE_MAP[level] || "badge-trial";
 }
 
 function getStatusBadgeClass(status) {
-    return STATUS_BADGE_MAP[status] || 'badge-pending';
+	return STATUS_BADGE_MAP[status] || "badge-pending";
 }
 
 function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
+	let timeout;
+	return function executedFunction(...args) {
+		const later = () => {
+			clearTimeout(timeout);
+			func(...args);
+		};
+		clearTimeout(timeout);
+		timeout = setTimeout(later, wait);
+	};
 }
 
 class FlashAccountManager {
-    constructor(page) {
-        this.page = page;
-        this.selected_request = null;
-        this.upgrade_requests = [];
-        this.current_page = 1;
-        this.page_size = 10;
-        this.total_pages = 1;
-        this.total_count = 0;
-        this.$cache = {};
-        this.setup_page();
-    }
+	constructor(page) {
+		this.page = page;
+		this.selected_request = null;
+		this.upgrade_requests = [];
+		this.current_page = 1;
+		this.page_size = 10;
+		this.total_pages = 1;
+		this.total_count = 0;
+		this.$cache = {};
+		this.setup_page();
+	}
 
-    setup_page() {
-        this.create_layout();
-        this.cache_elements();
-        this.bind_events();
-        this.load_upgrade_requests();
-    }
+	setup_page() {
+		this.create_layout();
+		this.cache_elements();
+		this.bind_events();
+		this.load_upgrade_requests();
+	}
 
-    cache_elements() {
-        const main = this.page.main;
-        this.$cache = {
-            searchInput: main.find('.search-input'),
-            requestsLoading: main.find('.requests-loading'),
-            requestsTable: main.find('.requests-list table'),
-            noRequests: main.find('.no-requests'),
-            requestDetails: main.find('.request-details'),
-            paginationControls: main.find('.pagination-controls'),
-            requestsTbody: main.find('.requests-tbody'),
-            searchLoading: main.find('.search-loading'),
-            searchError: main.find('.search-error'),
-            filterStatus: main.find('#filter-status'),
-            filterLevel: main.find('#filter-level')
-        };
-    }
+	cache_elements() {
+		const main = this.page.main;
+		this.$cache = {
+			searchInput: main.find(".search-input"),
+			requestsLoading: main.find(".requests-loading"),
+			requestsTable: main.find(".requests-list table"),
+			noRequests: main.find(".no-requests"),
+			requestDetails: main.find(".request-details"),
+			paginationControls: main.find(".pagination-controls"),
+			requestsTbody: main.find(".requests-tbody"),
+			searchLoading: main.find(".search-loading"),
+			searchError: main.find(".search-error"),
+			filterStatus: main.find("#filter-status"),
+			filterLevel: main.find("#filter-level"),
+		};
+	}
 
-    create_layout() {
-        this.page.main.html(`
+	create_layout() {
+		this.page.main.html(`
             <style>
                 .flash-account-manager {
                     --color-primary: #007856;
@@ -790,25 +790,25 @@ class FlashAccountManager {
                 </div>
             </div>
         `);
-    }
+	}
 
-    show_id_document(fileUrl) {
-        const d = new frappe.ui.Dialog({
-            title: 'ID Document',
-            size: 'large',
-            fields: [
-                {
-                    fieldtype: 'HTML',
-                    fieldname: 'preview',
-                }
-            ],
-            primary_action_label: 'Close',
-            primary_action() {
-                d.hide();
-            }
-        });
+	show_id_document(fileUrl) {
+		const d = new frappe.ui.Dialog({
+			title: "ID Document",
+			size: "large",
+			fields: [
+				{
+					fieldtype: "HTML",
+					fieldname: "preview",
+				},
+			],
+			primary_action_label: "Close",
+			primary_action() {
+				d.hide();
+			},
+		});
 
-        d.fields_dict.preview.$wrapper.html(`
+		d.fields_dict.preview.$wrapper.html(`
                 <div style="text-align:center;">
                     <img
                         src="${fileUrl}"
@@ -821,449 +821,486 @@ class FlashAccountManager {
                     />
                 </div>
             `);
-        d.show();
-    }
+		d.show();
+	}
 
-    prefetch_id_document_url(fileKey, containerEl) {
-        frappe.call({
-            method: 'admin_panel.api.admin_api.get_id_document_url',
-            args: { file_key: fileKey },
-            callback: (response) => {
-                if (response.message && response.message.success) {
-                    const preSignedUrl = response.message.url;
-                    containerEl.html(`
+	prefetch_id_document_url(fileKey, containerEl) {
+		frappe.call({
+			method: "admin_panel.api.admin_api.get_id_document_url",
+			args: { file_key: fileKey },
+			callback: (response) => {
+				if (response.message && response.message.success) {
+					const preSignedUrl = response.message.url;
+					containerEl.html(`
                         <button class="btn btn-sm btn-secondary btn-view-id-doc">
                             <i class="fa fa-eye"></i> View document
                         </button>
                     `);
-                    containerEl.find('.btn-view-id-doc').on('click', () => {
-                        this.show_id_document(preSignedUrl);
-                    });
-                } else {
-                    containerEl.html(`
+					containerEl.find(".btn-view-id-doc").on("click", () => {
+						this.show_id_document(preSignedUrl);
+					});
+				} else {
+					containerEl.html(`
                         <button class="btn btn-sm btn-danger btn-view-id-doc" disabled>
                             <i class="fa fa-exclamation-triangle"></i> Failed to load
                         </button>
                     `);
-                }
-            },
-            error: () => {
-                containerEl.html(`
+				}
+			},
+			error: () => {
+				containerEl.html(`
                     <button class="btn btn-sm btn-danger btn-view-id-doc" disabled>
                         <i class="fa fa-exclamation-triangle"></i> Failed to load
                     </button>
                 `);
-            }
-        });
-    }
+			},
+		});
+	}
 
-    bind_events() {
-        const main = this.page.main;
-        const debouncedSearch = debounce(() => {
-            if (this.$cache.searchInput.val().trim()) {
-                this.search();
-            } else {
-                this.$cache.searchError.hide();
-                this.load_upgrade_requests();
-            }
-        }, 300);
+	bind_events() {
+		const main = this.page.main;
+		const debouncedSearch = debounce(() => {
+			if (this.$cache.searchInput.val().trim()) {
+				this.search();
+			} else {
+				this.$cache.searchError.hide();
+				this.load_upgrade_requests();
+			}
+		}, 300);
 
-        main.find('.btn-search').on('click', () => this.search());
-        this.$cache.searchInput.on('keypress', (e) => { if (e.which === 13) this.search(); });
-        this.$cache.searchInput.on('input', debouncedSearch);
+		main.find(".btn-search").on("click", () => this.search());
+		this.$cache.searchInput.on("keypress", (e) => {
+			if (e.which === 13) this.search();
+		});
+		this.$cache.searchInput.on("input", debouncedSearch);
 
-        main.find('.btn-refresh').on('click', () => this.load_upgrade_requests());
-        main.find('.btn-close-details').on('click', () => this.$cache.requestDetails.hide());
-        main.find('.btn-approve').on('click', () => this.approve_request(this.selected_request));
-        main.find('.btn-reject').on('click', () => this.reject_request(this.selected_request));
+		main.find(".btn-refresh").on("click", () => this.load_upgrade_requests());
+		main.find(".btn-close-details").on("click", () => this.$cache.requestDetails.hide());
+		main.find(".btn-approve").on("click", () => this.approve_request(this.selected_request));
+		main.find(".btn-reject").on("click", () => this.reject_request(this.selected_request));
 
-        this.$cache.filterStatus.on('change', () => { this.current_page = 1; this.load_upgrade_requests(); });
-        this.$cache.filterLevel.on('change', () => { this.current_page = 1; this.load_upgrade_requests(); });
+		this.$cache.filterStatus.on("change", () => {
+			this.current_page = 1;
+			this.load_upgrade_requests();
+		});
+		this.$cache.filterLevel.on("change", () => {
+			this.current_page = 1;
+			this.load_upgrade_requests();
+		});
 
-        // Pagination events
-        main.find('.btn-first-page').on('click', () => this.go_to_page(1));
-        main.find('.btn-prev-page').on('click', () => this.go_to_page(this.current_page - 1));
-        main.find('.btn-next-page').on('click', () => this.go_to_page(this.current_page + 1));
-        main.find('.btn-last-page').on('click', () => this.go_to_page(this.total_pages));
-    }
+		// Pagination events
+		main.find(".btn-first-page").on("click", () => this.go_to_page(1));
+		main.find(".btn-prev-page").on("click", () => this.go_to_page(this.current_page - 1));
+		main.find(".btn-next-page").on("click", () => this.go_to_page(this.current_page + 1));
+		main.find(".btn-last-page").on("click", () => this.go_to_page(this.total_pages));
+	}
 
-    create_request_row(req, showActions = true) {
-        const levelBadge = getLevelBadgeClass(req.requested_level);
-        const displayStatus = req.status || AccountStatus.PENDING;
-        const statusBadge = getStatusBadgeClass(displayStatus);
-        const isPending = req.status === AccountStatus.PENDING;
+	create_request_row(req, showActions = true) {
+		const levelBadge = getLevelBadgeClass(req.requested_level);
+		const displayStatus = req.status || AccountStatus.PENDING;
+		const statusBadge = getStatusBadgeClass(displayStatus);
+		const isPending = req.status === AccountStatus.PENDING;
 
-        const actionsHtml = showActions && isPending
-            ? `<td style="text-align:center;">
+		const actionsHtml =
+			showActions && isPending
+				? `<td style="text-align:center;">
                 <button class="modern-icon-btn modern-icon-btn-success btn-quick-approve" data-request-id="${req.name}" title="Approve"><i class="fa fa-check"></i></button>
                 <button class="modern-icon-btn modern-icon-btn-danger btn-quick-reject" data-request-id="${req.name}" title="Reject"><i class="fa fa-times"></i></button>
                </td>`
-            : `<td style="text-align:center;"><span>-</span></td>`;
+				: `<td style="text-align:center;"><span>-</span></td>`;
 
-        const row = $(`
+		const row = $(`
             <tr class="request-row" data-request-id="${req.name}">
-                <td><strong>${req.username || '-'}</strong></td>
+                <td><strong>${req.username || "-"}</strong></td>
                 <td>${this.formatPhone(req.phone_number)}</td>
-                <td><span class="modern-badge ${levelBadge}">${getAccountLevelLabel(req.requested_level)}</span></td>
+                <td><span class="modern-badge ${levelBadge}">${getAccountLevelLabel(
+			req.requested_level
+		)}</span></td>
                 <td>${this.formatDateTime(req.creation)}</td>
                 <td><span class="modern-badge ${statusBadge}">${displayStatus}</span></td>
                 ${actionsHtml}
             </tr>
         `);
 
-        row.on('click', (e) => {
-            if (!$(e.target).closest('button').length) {
-                this.page.main.find('.request-row').removeClass('selected');
-                row.addClass('selected');
-                this.show_request_details(req);
-            }
-        });
+		row.on("click", (e) => {
+			if (!$(e.target).closest("button").length) {
+				this.page.main.find(".request-row").removeClass("selected");
+				row.addClass("selected");
+				this.show_request_details(req);
+			}
+		});
 
-        row.find('.btn-quick-approve').on('click', (e) => {
-            e.stopPropagation();
-            $(e.currentTarget).prop('disabled', true);
-            this.approve_request(req);
-        });
-        row.find('.btn-quick-reject').on('click', (e) => {
-            e.stopPropagation();
-            $(e.currentTarget).prop('disabled', true);
-            this.reject_request(req);
-        });
-        return row;
-    }
+		row.find(".btn-quick-approve").on("click", (e) => {
+			e.stopPropagation();
+			$(e.currentTarget).prop("disabled", true);
+			this.approve_request(req);
+		});
+		row.find(".btn-quick-reject").on("click", (e) => {
+			e.stopPropagation();
+			$(e.currentTarget).prop("disabled", true);
+			this.reject_request(req);
+		});
+		return row;
+	}
 
-    go_to_page(page) {
-        if (page < 1 || page > this.total_pages) return;
-        this.current_page = page;
-        this.load_upgrade_requests();
-    }
+	go_to_page(page) {
+		if (page < 1 || page > this.total_pages) return;
+		this.current_page = page;
+		this.load_upgrade_requests();
+	}
 
-    load_upgrade_requests() {
-        this.$cache.requestsLoading.show();
-        this.$cache.requestsTable.hide();
-        this.$cache.noRequests.hide();
-        this.$cache.requestDetails.hide();
-        this.$cache.paginationControls.hide();
+	load_upgrade_requests() {
+		this.$cache.requestsLoading.show();
+		this.$cache.requestsTable.hide();
+		this.$cache.noRequests.hide();
+		this.$cache.requestDetails.hide();
+		this.$cache.paginationControls.hide();
 
-        frappe.call({
-            method: 'admin_panel.api.admin_api.get_upgrade_requests',
-            args: {
-                status: this.$cache.filterStatus.val(),
-                requested_level: this.$cache.filterLevel.val(),
-                page: this.current_page,
-                page_size: this.page_size
-            },
-            callback: (response) => {
-                this.$cache.requestsLoading.hide();
-                const result = response.message || {};
-                this.upgrade_requests = result.data || [];
-                this.total_count = result.total || 0;
-                this.total_pages = result.total_pages || 1;
-                this.current_page = result.page || 1;
-                this.render_requests();
-                this.update_pagination();
-            },
-            error: () => {
-                this.$cache.requestsLoading.hide();
-                frappe.show_alert({ message: 'Failed to load upgrade requests', indicator: 'red' }, 5);
-            }
-        });
-    }
+		frappe.call({
+			method: "admin_panel.api.admin_api.get_upgrade_requests",
+			args: {
+				status: this.$cache.filterStatus.val(),
+				requested_level: this.$cache.filterLevel.val(),
+				page: this.current_page,
+				page_size: this.page_size,
+			},
+			callback: (response) => {
+				this.$cache.requestsLoading.hide();
+				const result = response.message || {};
+				this.upgrade_requests = result.data || [];
+				this.total_count = result.total || 0;
+				this.total_pages = result.total_pages || 1;
+				this.current_page = result.page || 1;
+				this.render_requests();
+				this.update_pagination();
+			},
+			error: () => {
+				this.$cache.requestsLoading.hide();
+				frappe.show_alert(
+					{ message: "Failed to load upgrade requests", indicator: "red" },
+					5
+				);
+			},
+		});
+	}
 
-    update_pagination() {
-        if (this.total_count === 0) {
-            this.$cache.paginationControls.hide();
-            return;
-        }
+	update_pagination() {
+		if (this.total_count === 0) {
+			this.$cache.paginationControls.hide();
+			return;
+		}
 
-        this.$cache.paginationControls.css('display', 'flex');
+		this.$cache.paginationControls.css("display", "flex");
 
-        const start = (this.current_page - 1) * this.page_size + 1;
-        const end = Math.min(this.current_page * this.page_size, this.total_count);
-        const main = this.page.main;
+		const start = (this.current_page - 1) * this.page_size + 1;
+		const end = Math.min(this.current_page * this.page_size, this.total_count);
+		const main = this.page.main;
 
-        main.find('.page-start').text(start);
-        main.find('.page-end').text(end);
-        main.find('.total-count').text(this.total_count);
-        main.find('.current-page').text(this.current_page);
-        main.find('.total-pages').text(this.total_pages);
+		main.find(".page-start").text(start);
+		main.find(".page-end").text(end);
+		main.find(".total-count").text(this.total_count);
+		main.find(".current-page").text(this.current_page);
+		main.find(".total-pages").text(this.total_pages);
 
-        main.find('.btn-first-page, .btn-prev-page').prop('disabled', this.current_page <= 1);
-        main.find('.btn-next-page, .btn-last-page').prop('disabled', this.current_page >= this.total_pages);
-    }
+		main.find(".btn-first-page, .btn-prev-page").prop("disabled", this.current_page <= 1);
+		main.find(".btn-next-page, .btn-last-page").prop(
+			"disabled",
+			this.current_page >= this.total_pages
+		);
+	}
 
-    render_requests() {
-        this.$cache.requestsTbody.empty();
+	render_requests() {
+		this.$cache.requestsTbody.empty();
 
-        if (this.upgrade_requests.length === 0) {
-            this.$cache.requestsTable.hide();
-            this.$cache.noRequests.show();
-            return;
-        }
+		if (this.upgrade_requests.length === 0) {
+			this.$cache.requestsTable.hide();
+			this.$cache.noRequests.show();
+			return;
+		}
 
-        this.$cache.requestsTable.show();
-        this.$cache.noRequests.hide();
+		this.$cache.requestsTable.show();
+		this.$cache.noRequests.hide();
 
-        this.upgrade_requests.forEach((req) => {
-            this.$cache.requestsTbody.append(this.create_request_row(req));
-        });
-    }
+		this.upgrade_requests.forEach((req) => {
+			this.$cache.requestsTbody.append(this.create_request_row(req));
+		});
+	}
 
-    show_request_details(req) {
-        this.selected_request = req;
-        const panel = this.page.main.find('.request-details');
+	show_request_details(req) {
+		this.selected_request = req;
+		const panel = this.page.main.find(".request-details");
 
-        const approveBtn = panel.find('.btn-approve');
-        const rejectBtn = panel.find('.btn-reject');
+		const approveBtn = panel.find(".btn-approve");
+		const rejectBtn = panel.find(".btn-reject");
 
-        // Show buttons only for pending requests (not approved, rejected, or closed)
-        if (req.status === AccountStatus.PENDING) {
-            approveBtn.show();
-            rejectBtn.show();
-        } else {
-            approveBtn.hide();
-            rejectBtn.hide();
-        }
+		// Show buttons only for pending requests (not approved, rejected, or closed)
+		if (req.status === AccountStatus.PENDING) {
+			approveBtn.show();
+			rejectBtn.show();
+		} else {
+			approveBtn.hide();
+			rejectBtn.hide();
+		}
 
-        const rejectionResonContainer = panel.find(".rejection-reason") 
-        if(req.support_note){
-            rejectionResonContainer.show()
-        }else{
-            rejectionResonContainer.hide()
-        }
-        
-        // Fill personal info
-        panel.find('.detail-username').text(req.username || '-');
-        panel.find('.detail-phone').text(this.formatPhone(req.phone_number) || '-');
-        panel.find('.detail-fullname').text(req.full_name || '-');
-        panel.find('.detail-email').text(req.email || '-');
+		const rejectionResonContainer = panel.find(".rejection-reason");
+		if (req.support_note) {
+			rejectionResonContainer.show();
+		} else {
+			rejectionResonContainer.hide();
+		}
 
-        // Business info
-        if (req.requested_level === AccountLevels.PRO || req.requested_level === AccountLevels.MERCHANT) {
-            panel.find('.business-info').show();
-            panel.find('.detail-business-name').text(req.address_title || '-');
-            panel.find('.detail-address-line1').text(req.address_line1 || '-');
-            panel.find('.detail-address-line2').text(req.address_line2 || '-');
-            panel.find('.detail-city').text(req.city || '-');
-            panel.find('.detail-state').text(req.state || '-');
-            panel.find('.detail-pincode').text(req.pincode || '-');
-            panel.find('.detail-country').text(req.country || '-');
-            panel.find('.detail-terminal-requested').text(req.terminal_requested ?? '-');
-        } else {
-            panel.find('.business-info').hide();
-        }
+		// Fill personal info
+		panel.find(".detail-username").text(req.username || "-");
+		panel.find(".detail-phone").text(this.formatPhone(req.phone_number) || "-");
+		panel.find(".detail-fullname").text(req.full_name || "-");
+		panel.find(".detail-email").text(req.email || "-");
 
-        // ID Document (PRO and MERCHANT)
-        const idDocItem = panel.find('.id-document-item');
-        if (req.requested_level === AccountLevels.PRO || req.requested_level === AccountLevels.MERCHANT) {
-            const idDocEl = panel.find('.detail-id-document');
-            idDocEl.empty();
+		// Business info
+		if (
+			req.requested_level === AccountLevels.PRO ||
+			req.requested_level === AccountLevels.MERCHANT
+		) {
+			panel.find(".business-info").show();
+			panel.find(".detail-business-name").text(req.address_title || "-");
+			panel.find(".detail-address-line1").text(req.address_line1 || "-");
+			panel.find(".detail-address-line2").text(req.address_line2 || "-");
+			panel.find(".detail-city").text(req.city || "-");
+			panel.find(".detail-state").text(req.state || "-");
+			panel.find(".detail-pincode").text(req.pincode || "-");
+			panel.find(".detail-country").text(req.country || "-");
+			panel.find(".detail-terminal-requested").text(req.terminal_requested ?? "-");
+		} else {
+			panel.find(".business-info").hide();
+		}
 
-            if (req.id_document) {
-                idDocEl.html(`
+		// ID Document (PRO and MERCHANT)
+		const idDocItem = panel.find(".id-document-item");
+		if (
+			req.requested_level === AccountLevels.PRO ||
+			req.requested_level === AccountLevels.MERCHANT
+		) {
+			const idDocEl = panel.find(".detail-id-document");
+			idDocEl.empty();
+
+			if (req.id_document) {
+				idDocEl.html(`
                     <button class="btn btn-sm btn-secondary btn-view-id-doc" disabled>
                         <i class="fa fa-spinner fa-spin"></i> Loading...
                     </button>
                 `);
-                this.prefetch_id_document_url(req.id_document, idDocEl);
-            } else {
-                idDocEl.text('-');
-            }
-            idDocItem.show();
-        } else {
-            idDocItem.hide();
-        }
+				this.prefetch_id_document_url(req.id_document, idDocEl);
+			} else {
+				idDocEl.text("-");
+			}
+			idDocItem.show();
+		} else {
+			idDocItem.hide();
+		}
 
-        // Bank info (required for MERCHANT, optional for PRO)
-        const hasBankInfo = req.bank_name || req.account_number || req.bank_branch;
-        const showBankInfo = req.requested_level === AccountLevels.MERCHANT ||
-                            (req.requested_level === AccountLevels.PRO && hasBankInfo);
+		// Bank info (required for MERCHANT, optional for PRO)
+		const hasBankInfo = req.bank_name || req.account_number || req.bank_branch;
+		const showBankInfo =
+			req.requested_level === AccountLevels.MERCHANT ||
+			(req.requested_level === AccountLevels.PRO && hasBankInfo);
 
-        if (showBankInfo) {
-            panel.find('.detail-bank-name').text(req.bank_name || '-');
-            panel.find('.detail-account-number').text(req.account_number || '-');
-            panel.find('.detail-account-type').text(req.account_type || '-');
-            panel.find('.detail-bank-branch').text(req.bank_branch || '-');
-            panel.find('.detail-currency').text(req.currency || '-');
-            panel.find('.bank-info-section').show();
-        } else {
-            panel.find('.bank-info-section').hide();
-        }
+		if (showBankInfo) {
+			panel.find(".detail-bank-name").text(req.bank_name || "-");
+			panel.find(".detail-account-number").text(req.account_number || "-");
+			panel.find(".detail-account-type").text(req.account_type || "-");
+			panel.find(".detail-bank-branch").text(req.bank_branch || "-");
+			panel.find(".detail-currency").text(req.currency || "-");
+			panel.find(".bank-info-section").show();
+		} else {
+			panel.find(".bank-info-section").hide();
+		}
 
-        // Request info
-        panel.find('.detail-current-level').text(getAccountLevelLabel(req.current_level) || '-');
-        panel.find('.detail-requested-level').text(getAccountLevelLabel(req.requested_level) || '-');
-        panel.find('.detail-status').text(req.status || '-');
-        panel.find('.detail-submitted').text(this.formatDateTime(req.creation));
-        panel.find('.detail-request-id').text(req.name);
-        panel.find('.detail-rejection-reason').text(req.support_note);
+		// Request info
+		panel.find(".detail-current-level").text(getAccountLevelLabel(req.current_level) || "-");
+		panel
+			.find(".detail-requested-level")
+			.text(getAccountLevelLabel(req.requested_level) || "-");
+		panel.find(".detail-status").text(req.status || "-");
+		panel.find(".detail-submitted").text(this.formatDateTime(req.creation));
+		panel.find(".detail-request-id").text(req.name);
+		panel.find(".detail-rejection-reason").text(req.support_note);
 
-        panel.show();
+		panel.show();
 
-        const row = this.page.main.find(`tr[data-request-id="${req.name}"]`);
-        if (row.length) {
-            row[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    }
+		const row = this.page.main.find(`tr[data-request-id="${req.name}"]`);
+		if (row.length) {
+			row[0].scrollIntoView({ behavior: "smooth", block: "start" });
+		}
+	}
 
-    approve_request(req) {
-        if (!req) return;
-        const levelLabel = getAccountLevelLabel(req.requested_level);
-        frappe.confirm(
-            `Are you sure you want to approve the upgrade request for ${req.username}? This will update the account level to ${levelLabel}.`,
-            () => frappe.call({
-                method: 'admin_panel.api.admin_api.approve_upgrade_request',
-                args: { request_id: req.name },
-                freeze: true,
-                freeze_message: "Approving request and updating account level...",
-                callback: (r) => {
-                    const result = r.message || {};
-                    if (result.success) {
-                        frappe.msgprint({
-                            title: 'Success',
-                            indicator: 'green',
-                            message: result.message || "Request approved and account level updated."
-                        });
-                        this.close_details();
-                        this.load_upgrade_requests();
-                    } else if (result.error || result.errors) {
-                        const errorMsg = result.error || result.errors?.join(', ') || 'Unknown error';
-                        frappe.msgprint({
-                            title: 'Error',
-                            indicator: 'red',
-                            message: errorMsg
-                        });
-                    }
-                },
-                error: (err) => {
-                    const msg = err?.responseJSON?.exception || err?.responseJSON?.message || 'Failed to approve request';
-                    frappe.msgprint({ title: 'Error', indicator: 'red', message: msg });
-                }
-            })
-        );
-    }
+	approve_request(req) {
+		if (!req) return;
+		const levelLabel = getAccountLevelLabel(req.requested_level);
+		frappe.confirm(
+			`Are you sure you want to approve the upgrade request for ${req.username}? This will update the account level to ${levelLabel}.`,
+			() =>
+				frappe.call({
+					method: "admin_panel.api.admin_api.approve_upgrade_request",
+					args: { request_id: req.name },
+					freeze: true,
+					freeze_message: "Approving request and updating account level...",
+					callback: (r) => {
+						const result = r.message || {};
+						if (result.success) {
+							frappe.msgprint({
+								title: "Success",
+								indicator: "green",
+								message:
+									result.message ||
+									"Request approved and account level updated.",
+							});
+							this.close_details();
+							this.load_upgrade_requests();
+						} else if (result.error || result.errors) {
+							const errorMsg =
+								result.error || result.errors?.join(", ") || "Unknown error";
+							frappe.msgprint({
+								title: "Error",
+								indicator: "red",
+								message: errorMsg,
+							});
+						}
+					},
+					error: (err) => {
+						const msg =
+							err?.responseJSON?.exception ||
+							err?.responseJSON?.message ||
+							"Failed to approve request";
+						frappe.msgprint({ title: "Error", indicator: "red", message: msg });
+					},
+				})
+		);
+	}
 
-    reject_request(req) {
-        if (!req) return;
+	reject_request(req) {
+		if (!req) return;
 
-        const d = new frappe.ui.Dialog({
-            title: "Reject Upgrade Request",
-            fields: [
-                {
-                    fieldname: "reason",
-                    fieldtype: "Small Text",
-                    label: "Reason for Rejection",
-                    reqd: 1
-                }
-            ],
-            primary_action_label: "Reject",
-            primary_action: (values) => {
-                frappe.call({
-                    method: 'admin_panel.api.admin_api.reject_upgrade_request',
-                    args: { request_id: req.name, reason: values.reason },
-                    freeze: true,
-                    freeze_message: "Rejecting request...",
-                    callback: (r) => {
-                        const result = r.message || {};
-                        if (result.success) {
-                            d.hide();
-                            frappe.msgprint({
-                                title: 'Request Rejected',
-                                indicator: 'orange',
-                                message: result.message || "Request rejected."
-                            });
-                            this.close_details();
-                            this.load_upgrade_requests();
-                        } else if (result.error || result.errors) {
-                            const errorMsg = result.error || result.errors?.join(', ') || 'Unknown error';
-                            frappe.msgprint({
-                                title: 'Error',
-                                indicator: 'red',
-                                message: errorMsg
-                            });
-                        }
-                    },
-                    error: (err) => {
-                        frappe.msgprint({
-                            title: 'Error',
-                            indicator: 'red',
-                            message: err.message || 'Failed to reject request'
-                        });
-                    }
-                });
-            }
-        });
+		const d = new frappe.ui.Dialog({
+			title: "Reject Upgrade Request",
+			fields: [
+				{
+					fieldname: "reason",
+					fieldtype: "Small Text",
+					label: "Reason for Rejection",
+					reqd: 1,
+				},
+			],
+			primary_action_label: "Reject",
+			primary_action: (values) => {
+				frappe.call({
+					method: "admin_panel.api.admin_api.reject_upgrade_request",
+					args: { request_id: req.name, reason: values.reason },
+					freeze: true,
+					freeze_message: "Rejecting request...",
+					callback: (r) => {
+						const result = r.message || {};
+						if (result.success) {
+							d.hide();
+							frappe.msgprint({
+								title: "Request Rejected",
+								indicator: "orange",
+								message: result.message || "Request rejected.",
+							});
+							this.close_details();
+							this.load_upgrade_requests();
+						} else if (result.error || result.errors) {
+							const errorMsg =
+								result.error || result.errors?.join(", ") || "Unknown error";
+							frappe.msgprint({
+								title: "Error",
+								indicator: "red",
+								message: errorMsg,
+							});
+						}
+					},
+					error: (err) => {
+						frappe.msgprint({
+							title: "Error",
+							indicator: "red",
+							message: err.message || "Failed to reject request",
+						});
+					},
+				});
+			},
+		});
 
-        d.show();
-    }
+		d.show();
+	}
 
-    close_details() {
-        this.$cache.requestDetails.hide();
-        this.selected_request = null;
-    }
+	close_details() {
+		this.$cache.requestDetails.hide();
+		this.selected_request = null;
+	}
 
-    search() {
-        const input = this.$cache.searchInput.val().trim();
-        if (!input) {
-            frappe.show_alert({ message: 'Please enter a username or phone number', indicator: 'orange' }, 3);
-            return;
-        }
+	search() {
+		const input = this.$cache.searchInput.val().trim();
+		if (!input) {
+			frappe.show_alert(
+				{ message: "Please enter a username or phone number", indicator: "orange" },
+				3
+			);
+			return;
+		}
 
-        this.$cache.searchLoading.show();
-        this.$cache.searchError.hide();
-        this.$cache.requestDetails.hide();
+		this.$cache.searchLoading.show();
+		this.$cache.searchError.hide();
+		this.$cache.requestDetails.hide();
 
-        frappe.call({
-            method: 'admin_panel.api.admin_api.search_account',
-            args: { id: input },
-            callback: (res) => {
-                this.$cache.searchLoading.hide();
-                const results = res.message;
-                if (!results || results.error) {
-                    this.show_search_error(results?.error || 'Account not found');
-                    return;
-                }
-                this.show_search_results(Array.isArray(results) ? results : []);
-            },
-            error: (e) => {
-                this.$cache.searchLoading.hide();
-                this.show_search_error(e.message || 'Account not found');
-            }
-        });
-    }
+		frappe.call({
+			method: "admin_panel.api.admin_api.search_account",
+			args: { id: input },
+			callback: (res) => {
+				this.$cache.searchLoading.hide();
+				const results = res.message;
+				if (!results || results.error) {
+					this.show_search_error(results?.error || "Account not found");
+					return;
+				}
+				this.show_search_results(Array.isArray(results) ? results : []);
+			},
+			error: (e) => {
+				this.$cache.searchLoading.hide();
+				this.show_search_error(e.message || "Account not found");
+			},
+		});
+	}
 
-    show_search_results(results) {
-        this.$cache.requestsTbody.empty();
-        this.$cache.searchError.hide();
-        this.$cache.paginationControls.hide();
+	show_search_results(results) {
+		this.$cache.requestsTbody.empty();
+		this.$cache.searchError.hide();
+		this.$cache.paginationControls.hide();
 
-        if (!results || !results.length) {
-            this.$cache.noRequests.show();
-            this.$cache.requestsTable.hide();
-            this.show_search_error('No accounts found');
-            return;
-        }
+		if (!results || !results.length) {
+			this.$cache.noRequests.show();
+			this.$cache.requestsTable.hide();
+			this.show_search_error("No accounts found");
+			return;
+		}
 
-        this.$cache.noRequests.hide();
-        this.$cache.requestsTable.show();
+		this.$cache.noRequests.hide();
+		this.$cache.requestsTable.show();
 
-        results.forEach(account => {
-            this.$cache.requestsTbody.append(this.create_request_row(account, true));
-        });
-    }
+		results.forEach((account) => {
+			this.$cache.requestsTbody.append(this.create_request_row(account, true));
+		});
+	}
 
-    show_search_error(msg) {
-        this.$cache.searchLoading.hide();
-        this.$cache.searchError.show();
-        this.page.main.find('.error-message').text(msg);
-    }
+	show_search_error(msg) {
+		this.$cache.searchLoading.hide();
+		this.$cache.searchError.show();
+		this.page.main.find(".error-message").text(msg);
+	}
 
-    formatPhone(phone) {
-        if (!phone) return '-';
-        return phone.replace(/^(\d{3})(\d{3})(\d{2})(\d{2})$/, '+$1 $2 $3 $4');
-    }
+	formatPhone(phone) {
+		if (!phone) return "-";
+		return phone.replace(/^(\d{3})(\d{3})(\d{2})(\d{2})$/, "+$1 $2 $3 $4");
+	}
 
-    formatDateTime(dt) {
-        return dt ? frappe.datetime.str_to_user(dt) : '-';
-    }
+	formatDateTime(dt) {
+		return dt ? frappe.datetime.str_to_user(dt) : "-";
+	}
 }

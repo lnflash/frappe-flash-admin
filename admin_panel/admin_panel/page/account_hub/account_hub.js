@@ -90,6 +90,14 @@ function getLevelLabel(level) {
 	return ACCOUNT_LEVEL_LABELS[level] || level;
 }
 
+const RESULT_STATUS_TONE = {
+	[ACCOUNT_STATUSES.ACTIVE]: "ok",
+	[ACCOUNT_STATUSES.NEW]: "warn",
+	[ACCOUNT_STATUSES.PENDING]: "warn",
+	[ACCOUNT_STATUSES.LOCKED]: "bad",
+	[ACCOUNT_STATUSES.CLOSED]: "off",
+};
+
 function getLevelBadge(level) {
 	return ACCOUNT_LEVEL_BADGES[level] || "badge-trial";
 }
@@ -115,6 +123,12 @@ function formatDate(ts) {
 		" " +
 		d.toLocaleTimeString()
 	);
+}
+
+function formatDateOnly(ts) {
+	if (!ts) return "-";
+	const d = new Date(ts * 1000);
+	return frappe.datetime.global_date_format(d.toISOString().split("T")[0]);
 }
 
 function formatCurrency(cents, currency) {
@@ -210,7 +224,7 @@ class AccountHub {
                 .ah-result-item:hover { background: var(--ah-line-soft); }
                 .ah-result-item.active { background: var(--ah-accent-soft);
                     border-left-color: var(--ah-accent); }
-                .ah-result-avatar { width: 34px; height: 34px; border-radius: 50%;
+                .ah-result-avatar { position: relative; width: 34px; height: 34px; border-radius: 50%;
                     background: var(--ah-accent-soft); color: var(--ah-accent-ink);
                     display: grid; place-items: center; font-weight: 700; font-size: 14px; flex: none; }
                 .ah-result-info { min-width: 0; flex: 1; }
@@ -224,6 +238,12 @@ class AccountHub {
                     border-top-color: var(--ah-accent); border-radius: 50%;
                     margin: 0 auto 8px; animation: ah-spin 0.8s linear infinite; }
                 @keyframes ah-spin { to { transform: rotate(360deg); } }
+                .ah-dot { position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px;
+                    border-radius: 50%; box-shadow: 0 0 0 2px var(--ah-surface); }
+                .ah-dot-ok { background: var(--ah-good); }
+                .ah-dot-warn { background: var(--ah-warn); }
+                .ah-dot-bad { background: var(--ah-serious); }
+                .ah-dot-off { background: var(--ah-ink3); }
                 .ah-error-msg { margin: 12px 16px; padding: 10px 14px; border-radius: 10px;
                     background: var(--ah-serious-bg); color: var(--ah-serious);
                     font-size: 12.5px; font-weight: 600; }
@@ -236,10 +256,22 @@ class AccountHub {
                     margin-top: 4px; max-width: 340px; margin-left: auto; margin-right: auto; }
                 .ah-right-empty { padding: 90px 20px; }
 
-                /* identity band */
-                .detail-account-title { padding: 16px 20px; font-size: 18px; font-weight: 650;
-                    letter-spacing: -0.01em; }
-                .detail-account-title .fa-user { display: none; }
+                /* identity band — who + what they hold, above the tabs */
+                .ah-ident { padding: 14px 20px 13px; border-bottom: 1px solid var(--ah-line); }
+                .ah-ident-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+                .ah-ident-name { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+                .ah-ident-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+                .ah-ident-meta { color: var(--ah-ink2); font-size: 12.5px; margin-top: 4px;
+                    display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+                .ah-ident-dot { color: var(--ah-ink3); }
+                .ah-ident-balances { display: flex; gap: 8px; margin-top: 11px; flex-wrap: wrap; }
+                .ah-bal-chip { display: inline-flex; align-items: baseline; gap: 7px;
+                    border: 1px solid var(--ah-line); border-radius: 10px; padding: 5px 12px;
+                    background: var(--ah-surface); }
+                .ah-bal-cur { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
+                    color: var(--ah-ink2); font-weight: 650; }
+                .ah-bal-amt { font-size: 15px; font-weight: 650; color: var(--ah-ink);
+                    font-variant-numeric: tabular-nums; }
 
                 /* tabs — underline style */
                 .ah-tabs { display: flex; gap: 2px; padding: 0 14px; border-bottom: 1px solid var(--ah-line);
@@ -270,10 +302,7 @@ class AccountHub {
                 .ah-info-value { font-size: 13px; font-weight: 600; color: var(--ah-ink);
                     text-align: right; word-break: break-word; min-width: 0; }
 
-                /* actions — destructive isolated right */
-                .ah-action-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-                    padding-top: 4px; }
-                .ah-action-bar .btn-lock-account, .ah-action-bar .ah-btn-danger { margin-left: auto; }
+
                 .ah-btn { border: 1px solid var(--ah-line); background: var(--ah-surface);
                     color: var(--ah-ink); border-radius: 9px; padding: 7px 14px; font-size: 13px;
                     font-weight: 600; cursor: pointer; transition: all 0.13s; }
@@ -395,11 +424,28 @@ class AccountHub {
 
                             <!-- Detail Content (shown when account is selected) -->
                             <div class="ah-detail-content" style="display:none;">
-                                <div class="ah-card-header detail-account-title" style="display:flex;align-items:center;gap:10px;">
-                                    <i class="fa fa-user"></i>
-                                    <span class="detail-username-display"></span>
-                                    <span class="ah-badge detail-level-badge" style="margin-left:auto;"></span>
-                                    <span class="ah-badge detail-status-badge"></span>
+                                <div class="ah-ident">
+                                    <div class="ah-ident-top">
+                                        <span class="detail-username-display ah-ident-name"></span>
+                                        <span class="ah-badge detail-level-badge"></span>
+                                        <span class="ah-badge detail-status-badge"></span>
+                                        <div class="ah-ident-actions">
+                                            <button class="ah-btn ah-btn-sm ah-btn-primary btn-change-level">
+                                                <i class="fa fa-level-up"></i> Change Level
+                                            </button>
+                                            <button class="ah-btn ah-btn-sm ah-btn-secondary btn-update-phone">
+                                                <i class="fa fa-phone"></i> Update Phone
+                                            </button>
+                                            <button class="ah-btn ah-btn-sm ah-btn-success btn-activate-account" style="display:none;">
+                                                <i class="fa fa-unlock"></i> Activate
+                                            </button>
+                                            <button class="ah-btn ah-btn-sm ah-btn-danger btn-lock-account" style="display:none;">
+                                                <i class="fa fa-lock"></i> Lock
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="ah-ident-meta detail-ident-meta"></div>
+                                    <div class="ah-ident-balances detail-ident-balances"></div>
                                 </div>
 
                                 <!-- Tabs -->
@@ -456,24 +502,6 @@ class AccountHub {
                                             </div>
                                         </div>
                                     </div>
-
-                                    <!-- Action Bar -->
-                                    <div class="ah-action-bar">
-                                        <div class="btn-group">
-                                            <button class="ah-btn ah-btn-primary btn-change-level">
-                                                <i class="fa fa-level-up"></i> Change Level
-                                            </button>
-                                        </div>
-                                        <button class="ah-btn ah-btn-danger btn-lock-account" style="display:none;">
-                                            <i class="fa fa-lock"></i> Lock Account
-                                        </button>
-                                        <button class="ah-btn ah-btn-success btn-activate-account" style="display:none;">
-                                            <i class="fa fa-unlock"></i> Activate Account
-                                        </button>
-                                        <button class="ah-btn ah-btn-secondary btn-update-phone">
-                                            <i class="fa fa-phone"></i> Update Phone
-                                        </button>
-                                    </div>
                                 </div>
 
                                 <!-- Tab: Wallets -->
@@ -517,6 +545,8 @@ class AccountHub {
 			detailUsername: main.find(".detail-username-display"),
 			detailLevelBadge: main.find(".detail-level-badge"),
 			detailStatusBadge: main.find(".detail-status-badge"),
+			identMeta: main.find(".detail-ident-meta"),
+			identBalances: main.find(".detail-ident-balances"),
 			tabs: main.find(".ah-tab"),
 			tabContents: main.find(".ah-tab-content"),
 			// Overview
@@ -639,6 +669,8 @@ class AccountHub {
 			const initial = (displayName || "?")[0].toUpperCase();
 			const levelLabel = getLevelLabel(level);
 			const levelBadge = getLevelBadge(level);
+			const tone = RESULT_STATUS_TONE[account.status];
+			const dotHtml = tone ? `<span class="ah-dot ah-dot-${tone}"></span>` : "";
 
 			const item = $(`
                 <div class="ah-result-item" data-id="${frappe.utils.escape_html(
@@ -648,7 +680,7 @@ class AccountHub {
 			)}" data-phone="${frappe.utils.escape_html(
 				account.phone_number || ""
 			)}" data-email="${frappe.utils.escape_html(account.email || "")}">
-                    <div class="ah-result-avatar">${initial}</div>
+                    <div class="ah-result-avatar">${initial}${dotHtml}</div>
                     <div class="ah-result-info">
                         <div class="ah-result-name">${frappe.utils.escape_html(displayName)}</div>
                         <div class="ah-result-sub">${frappe.utils.escape_html(subInfo)}</div>
@@ -882,6 +914,37 @@ class AccountHub {
 		this.$.detailStatusBadge
 			.text(getStatusLabel(account.status))
 			.attr("class", "ah-badge " + getStatusBadge(account.status));
+
+		// Identity band: who they are + what they hold, zero clicks in
+		const metaBits = [];
+		if (account.owner?.phone) metaBits.push(formatPhone(account.owner.phone));
+		if (account.owner?.email?.address) metaBits.push(account.owner.email.address);
+		if (account.createdAt) metaBits.push("Joined " + formatDateOnly(account.createdAt));
+		this.$.identMeta.html(
+			metaBits
+				.map((bit) => `<span>${frappe.utils.escape_html(bit)}</span>`)
+				.join('<span class="ah-ident-dot">\u00b7</span>')
+		);
+		this.$.identMeta.toggle(metaBits.length > 0);
+		const balanceWallets = [...(account.wallets || [])].sort((a, b) => {
+			if (a.walletCurrency === "USD") return -1;
+			if (b.walletCurrency === "USD") return 1;
+			return 0;
+		});
+		this.$.identBalances.html(
+			balanceWallets
+				.map(
+					(w) =>
+						`<span class="ah-bal-chip"><span class="ah-bal-cur">${frappe.utils.escape_html(
+							w.walletCurrency || "USD"
+						)}</span><span class="ah-bal-amt">${formatCurrency(
+							w.balance,
+							w.walletCurrency
+						)}</span></span>`
+				)
+				.join("")
+		);
+		this.$.identBalances.toggle(balanceWallets.length > 0);
 
 		// Activate first tab
 		this.$.tabs.removeClass("active");

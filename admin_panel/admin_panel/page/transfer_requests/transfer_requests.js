@@ -117,6 +117,7 @@ class TransferRequestsManager {
 			requestsTable: main.find(".requests-list table"),
 			noRequests: main.find(".no-requests"),
 			requestDetails: main.find(".request-details"),
+			pulseTiles: main.find(".pulse-tiles"),
 			paginationControls: main.find(".pagination-controls"),
 			requestsTbody: main.find(".requests-tbody"),
 			searchLoading: main.find(".search-loading"),
@@ -293,10 +294,45 @@ class TransferRequestsManager {
                 /* pagination */
                 .flash-cashout-manager .pagination-controls { display: flex; }
 
+                /* queue pulse tiles */
+                .flash-cashout-manager .tr-tiles { display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+                    gap: 12px; margin-bottom: 14px; }
+                .flash-cashout-manager .tr-tile { background: var(--tr-surface);
+                    border: 1px solid var(--tr-line); border-radius: 14px;
+                    box-shadow: var(--tr-shadow); padding: 12px 16px; }
+                .flash-cashout-manager .tr-tile-label { font-size: 11px; letter-spacing: 0.06em;
+                    text-transform: uppercase; color: var(--tr-ink2); font-weight: 650; }
+                .flash-cashout-manager .tr-tile-value { font-size: 22px; font-weight: 650;
+                    color: var(--tr-ink); font-variant-numeric: tabular-nums; margin-top: 2px; }
+                .flash-cashout-manager .tr-tile-value.warn { color: var(--tr-warn); }
+                .flash-cashout-manager .tr-tile-value.bad { color: var(--tr-serious); }
+                .flash-cashout-manager .tr-tile-sub { font-size: 11.5px; color: var(--tr-ink3);
+                    margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+                /* row age chips */
+                .flash-cashout-manager .tr-age { display: inline-flex; border-radius: 999px;
+                    padding: 2px 8px; font-size: 11px; font-weight: 650; margin-left: 8px;
+                    background: var(--tr-line-soft); color: var(--tr-ink2); }
+                .flash-cashout-manager .tr-age.warn { background: var(--tr-warn-bg); color: var(--tr-warn); }
+                .flash-cashout-manager .tr-age.bad { background: var(--tr-serious-bg); color: var(--tr-serious); }
+
+                /* details as a right drawer — no scroll-jump on row click */
+                .flash-cashout-manager .request-details { position: fixed; top: 0; right: 0;
+                    bottom: 0; width: min(620px, 94vw); z-index: 1040; margin: 0;
+                    border-radius: 16px 0 0 16px; border-right: none;
+                    box-shadow: -20px 0 50px rgba(26, 36, 32, 0.18); overflow-y: auto; }
+                [data-theme="dark"] .flash-cashout-manager .request-details,
+                .dark .flash-cashout-manager .request-details {
+                    box-shadow: -20px 0 50px rgba(0, 0, 0, 0.5); }
+                .flash-cashout-manager .request-details .modern-card-header { position: sticky;
+                    top: 0; background: var(--tr-surface); z-index: 1; }
+
                 @media (prefers-reduced-motion: no-preference) {
-                    .flash-cashout-manager .modern-requests-card,
-                    .flash-cashout-manager .request-details { animation: tr-rise 0.3s ease; }
+                    .flash-cashout-manager .modern-requests-card { animation: tr-rise 0.3s ease; }
                     @keyframes tr-rise { from { opacity: 0; transform: translateY(5px); } }
+                    .flash-cashout-manager .request-details { animation: tr-slide 0.22s ease; }
+                    @keyframes tr-slide { from { opacity: 0.4; transform: translateX(40px); } }
                 }
             </style>
 
@@ -305,6 +341,9 @@ class TransferRequestsManager {
                     <button class="transfer-tab active" data-type="cashout" role="tab" aria-selected="true">Cashouts</button>
                     <button class="transfer-tab" data-type="bridge" role="tab" aria-selected="false">Bridge</button>
                 </div>
+
+                <!-- Queue pulse -->
+                <div class="tr-tiles pulse-tiles" style="display:none;"></div>
 
                 <!-- Search & Filter -->
                 <div class="modern-search-card">
@@ -643,6 +682,12 @@ class TransferRequestsManager {
 		this.$cache.searchInput.on("input", debouncedSearch);
 
 		main.find(".btn-refresh").on("click", () => this.load_requests());
+
+		$(document).on("keydown.transfer_requests", (e) => {
+			if (e.key === "Escape" && !window.cur_dialog) {
+				this.close_details();
+			}
+		});
 		main.find(".btn-close-details").on("click", () => this.close_details());
 		main.on("click", ".btn-create-cashout", () =>
 			this.create_cashout_request(this.selected_request)
@@ -753,7 +798,95 @@ class TransferRequestsManager {
         `);
 	}
 
+	formatAge(dateStr) {
+		const then = new Date(dateStr);
+		if (isNaN(then)) return "";
+		const mins = Math.max(0, Math.floor((Date.now() - then.getTime()) / 60000));
+		if (mins < 60) return `${mins}m`;
+		const hours = Math.floor(mins / 60);
+		if (hours < 24) return `${hours}h`;
+		return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+	}
+
+	age_tone(dateStr) {
+		const then = new Date(dateStr);
+		if (isNaN(then)) return "";
+		const hours = (Date.now() - then.getTime()) / 3600e3;
+		if (hours >= 24) return "bad";
+		if (hours >= 6) return "warn";
+		return "";
+	}
+
+	is_actionable(req) {
+		const status = req.display_status || req.status || "";
+		return (
+			status === CashoutStatus.PENDING ||
+			status === CashoutStatus.DRAFT ||
+			status === CashoutStatus.IN_PROGRESS
+		);
+	}
+
+	render_age_chip(req) {
+		if (!this.is_actionable(req) || !req.creation) return "";
+		const age = this.formatAge(req.creation);
+		if (!age) return "";
+		return `<span class="tr-age ${this.age_tone(req.creation)}">${age}</span>`;
+	}
+
+	load_pulse() {
+		frappe.call({
+			method: "admin_panel.api.pulse.get_transfer_pulse",
+			callback: (res) => {
+				this.pulse = res.message;
+				this.render_pulse();
+			},
+			error: () => this.$cache.pulseTiles.hide(),
+		});
+	}
+
+	render_pulse() {
+		if (!this.pulse) return;
+		const tiles = [];
+		if (this.active_type === "bridge") {
+			const b = this.pulse.bridge || {};
+			tiles.push({ label: "Pending", value: b.pending ?? 0 });
+			tiles.push({ label: "Fiat Received", value: b.fiat_received ?? 0 });
+			tiles.push({
+				label: "Failed",
+				value: b.failed ?? 0,
+				tone: b.failed ? "bad" : "",
+				sub: b.failed ? "needs review" : "none unresolved",
+			});
+		} else {
+			const c = this.pulse.cashouts || {};
+			tiles.push({ label: "Pending", value: c.pending ?? 0 });
+			tiles.push({ label: "In Progress", value: c.in_progress ?? 0 });
+			tiles.push({
+				label: "Oldest Waiting",
+				value: c.oldest_at ? this.formatAge(c.oldest_at) : "\u2014",
+				tone: c.oldest_at ? this.age_tone(c.oldest_at) : "",
+				sub: c.oldest_id || "queue clear",
+			});
+		}
+		this.$cache.pulseTiles.html(
+			tiles
+				.map(
+					(t) => `
+                <div class="tr-tile">
+                    <div class="tr-tile-label">${this.escapeHtml(t.label)}</div>
+                    <div class="tr-tile-value ${t.tone || ""}">${this.escapeHtml(
+						String(t.value)
+					)}</div>
+                    ${t.sub ? `<div class="tr-tile-sub">${this.escapeHtml(t.sub)}</div>` : ""}
+                </div>`
+				)
+				.join("")
+		);
+		this.$cache.pulseTiles.show();
+	}
+
 	load_requests() {
+		this.load_pulse();
 		if (this.active_type === "bridge") {
 			this.load_bridge_requests();
 		} else {
@@ -842,7 +975,7 @@ class TransferRequestsManager {
                 <td><span class="modern-badge ${this.escapeHtml(statusBadge)}">${this.escapeHtml(
 			displayStatus
 		)}</span></td>
-                <td>${this.formatDateTime(req.creation)}</td>
+                <td>${this.formatDateTime(req.creation)}${this.render_age_chip(req)}</td>
                 ${actionsHtml}
             </tr>
         `);
@@ -1162,11 +1295,6 @@ class TransferRequestsManager {
 		completeBtn.toggle(this.canSettleCashout(req));
 
 		panel.show();
-
-		const row = this.page.main.find(`tr[data-request-id="${req.name}"]`);
-		if (row.length) {
-			row[0].scrollIntoView({ behavior: "smooth", block: "start" });
-		}
 	}
 
 	set_cashout_action_buttons_disabled(disabled) {
@@ -1462,11 +1590,6 @@ class TransferRequestsManager {
         `);
 
 		panel.show();
-
-		const row = this.page.main.find(`tr[data-request-id="${this.escapeHtml(req.name)}"]`);
-		if (row.length) {
-			row[0].scrollIntoView({ behavior: "smooth", block: "start" });
-		}
 	}
 
 	close_details() {

@@ -1,11 +1,11 @@
-frappe.pages['alert-users'].on_page_load = function(wrapper) {
-    var page = frappe.ui.make_app_page({
-        parent: wrapper,
-        title: 'Alert Users',
-        single_column: true
-    });
+frappe.pages["alert-users"].on_page_load = function (wrapper) {
+	var page = frappe.ui.make_app_page({
+		parent: wrapper,
+		title: "Alert Users",
+		single_column: true,
+	});
 
-    page.main.html(`
+	page.main.html(`
         <style>
             .alert-form-container {
                 max-width: 800px;
@@ -269,138 +269,148 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
         </div>
     `);
 
-    const $titleInput = page.main.find('#alert-title');
-    const $descriptionInput = page.main.find('#alert-description');
-    const $tagSelect = page.main.find('#alert-tag');
-    const $sendButton = page.main.find('#send-alert-btn');
-    const $titleCount = page.main.find('#title-count');
-    const $descriptionCount = page.main.find('#description-count');
-    const $previewContainer = page.main.find('#alert-preview');
-    const $previewTitle = page.main.find('#preview-title');
-    const $previewDescription = page.main.find('#preview-description');
-    const $previewTag = page.main.find('#preview-tag');
+	const $titleInput = page.main.find("#alert-title");
+	const $descriptionInput = page.main.find("#alert-description");
+	const $tagSelect = page.main.find("#alert-tag");
+	const $sendButton = page.main.find("#send-alert-btn");
+	const $titleCount = page.main.find("#title-count");
+	const $descriptionCount = page.main.find("#description-count");
+	const $previewContainer = page.main.find("#alert-preview");
+	const $previewTitle = page.main.find("#preview-title");
+	const $previewDescription = page.main.find("#preview-description");
+	const $previewTag = page.main.find("#preview-tag");
 
-    function updatePreview() {
-        const title = $titleInput.val().trim();
-        const description = $descriptionInput.val().trim();
-        const tag = $tagSelect.val();
+	function updatePreview() {
+		const title = $titleInput.val().trim();
+		const description = $descriptionInput.val().trim();
+		const tag = $tagSelect.val();
 
-        if (title || description) {
-            $previewTitle.text(title || 'No title');
-            $previewDescription.text(description || 'No message');
-            $previewTag.text(`Type: ${tag}`);
-            $previewContainer.fadeIn();
-        } else {
-            $previewContainer.fadeOut();
-        }
-    }
+		if (title || description) {
+			$previewTitle.text(title || "No title");
+			$previewDescription.text(description || "No message");
+			$previewTag.text(`Type: ${tag}`);
+			$previewContainer.fadeIn();
+		} else {
+			$previewContainer.fadeOut();
+		}
+	}
 
-    function loadAlertTypes() {
-        frappe.call({
-            method: 'admin_panel.api.admin_api.get_alert_types',
-            callback: function(r) {
-                const topics = r.message && r.message.topics;
-                $tagSelect.empty();
+	function loadAlertTypes() {
+		frappe.call({
+			method: "admin_panel.api.admin_api.get_alert_types",
+			callback: function (r) {
+				const topics = r.message && r.message.topics;
+				$tagSelect.empty();
 
-                if (!topics || topics.length === 0) {
-                    $tagSelect.append('<option value="">No alert types available</option>');
-                    return;
-                }
+				if (!topics || topics.length === 0) {
+					$tagSelect.append('<option value="">No alert types available</option>');
+					return;
+				}
 
-                topics.forEach(function(topic) {
-                    $tagSelect.append(`<option value="${topic}">${topic}</option>`);
-                });
+				topics.forEach(function (topic) {
+					$tagSelect.append(`<option value="${topic}">${topic}</option>`);
+				});
 
-                $tagSelect.prop('disabled', false);
-                $sendButton.prop('disabled', false);
-                updatePreview();
-            },
-            error: function() {
-                $tagSelect.empty().append('<option value="">Failed to load types</option>');
-                frappe.show_alert({
-                    message: 'Could not load alert types from API.',
-                    indicator: 'red'
-                }, 5);
-            }
-        });
-    }
+				$tagSelect.prop("disabled", false);
+				$sendButton.prop("disabled", false);
+				updatePreview();
+			},
+			error: function () {
+				$tagSelect.empty().append('<option value="">Failed to load types</option>');
+				frappe.show_alert(
+					{
+						message: "Could not load alert types from API.",
+						indicator: "red",
+					},
+					5
+				);
+			},
+		});
+	}
 
-    function sendAlert(title, description, alertType) {
-        $sendButton.prop('disabled', true);
-        $sendButton.html('<span class="btn-text">Sending...</span>');
+	function sendAlert(title, description, alertType) {
+		$sendButton.prop("disabled", true);
+		$sendButton.html('<span class="btn-text">Sending...</span>');
 
-        frappe.call({
-            method: 'admin_panel.api.admin_api.send_alert',
-            args: {
-                title: title,
-                message: description,
-                alert_type: alertType
-            },
-            callback: function(response) {
-                if (response.message && response.message.success) {
-                    frappe.show_alert({
-                        message: 'Alert sent successfully to all users!',
-                        indicator: 'green'
-                    }, 5);
+		frappe.call({
+			method: "admin_panel.api.admin_api.send_alert",
+			args: {
+				title: title,
+				message: description,
+				alert_type: alertType,
+			},
+			callback: function (response) {
+				if (response.message && response.message.success) {
+					frappe.show_alert(
+						{
+							message: "Alert sent successfully to all users!",
+							indicator: "green",
+						},
+						5
+					);
 
-                    $titleInput.val('');
-                    $descriptionInput.val('');
-                    $titleCount.text('0');
-                    $descriptionCount.text('0');
-                    $previewContainer.fadeOut();
+					$titleInput.val("");
+					$descriptionInput.val("");
+					$titleCount.text("0");
+					$descriptionCount.text("0");
+					$previewContainer.fadeOut();
 
-                    loadAlertHistory();
-                } else {
-                    const errorMsg = response.message?.error ||
-                                   (response.message?.errors ? response.message.errors.join(', ') : '') ||
-                                   'Unknown error';
+					loadAlertHistory();
+				} else {
+					const errorMsg =
+						response.message?.error ||
+						(response.message?.errors ? response.message.errors.join(", ") : "") ||
+						"Unknown error";
 
-                    frappe.msgprint({
-                        title: 'Error',
-                        message: `Failed to send alert: ${errorMsg}`,
-                        indicator: 'red'
-                    });
-                }
-            },
-            error: function() {
-                frappe.msgprint({
-                    title: 'Error',
-                    message: 'Failed to send alert. Please try again.',
-                    indicator: 'red'
-                });
-            },
-            always: function() {
-                $sendButton.prop('disabled', false);
-                $sendButton.html('<span class="btn-text">Send Alert to All Users</span>');
-            }
-        });
-    }
+					frappe.msgprint({
+						title: "Error",
+						message: `Failed to send alert: ${errorMsg}`,
+						indicator: "red",
+					});
+				}
+			},
+			error: function () {
+				frappe.msgprint({
+					title: "Error",
+					message: "Failed to send alert. Please try again.",
+					indicator: "red",
+				});
+			},
+			always: function () {
+				$sendButton.prop("disabled", false);
+				$sendButton.html('<span class="btn-text">Send Alert to All Users</span>');
+			},
+		});
+	}
 
-    function getSeverityClass(tag) {
-        const t = (tag || '').toUpperCase();
-        if (t.includes('EMERGENCY')) return 'severity-emergency';
-        if (t.includes('ATTENTION'))  return 'severity-attention';
-        if (t.includes('INFO'))       return 'severity-info';
-        if (t.includes('MARKETING'))  return 'severity-marketing';
-        return '';
-    }
+	function getSeverityClass(tag) {
+		const t = (tag || "").toUpperCase();
+		if (t.includes("EMERGENCY")) return "severity-emergency";
+		if (t.includes("ATTENTION")) return "severity-attention";
+		if (t.includes("INFO")) return "severity-info";
+		if (t.includes("MARKETING")) return "severity-marketing";
+		return "";
+	}
 
-    function loadAlertHistory() {
-        frappe.call({
-            method: 'admin_panel.api.admin_api.get_user_alerts',
-            args: { limit: 10 },
-            callback: function(r) {
-                const $historyList = page.main.find('#alert-history-list');
-                $historyList.empty();
+	function loadAlertHistory() {
+		frappe.call({
+			method: "admin_panel.api.admin_api.get_user_alerts",
+			args: { limit: 10 },
+			callback: function (r) {
+				const $historyList = page.main.find("#alert-history-list");
+				$historyList.empty();
 
-                if (!r.message || !r.message.logs || r.message.logs.length === 0) {
-                    $historyList.html('<p style="color:#939998;">No alerts have been sent yet.</p>');
-                    return;
-                }
+				if (!r.message || !r.message.logs || r.message.logs.length === 0) {
+					$historyList.html(
+						'<p style="color:#939998;">No alerts have been sent yet.</p>'
+					);
+					return;
+				}
 
-                const html = r.message.logs.map(log => {
-                    const date = frappe.datetime.str_to_user(log.sent_on);
-                    return `
+				const html = r.message.logs
+					.map((log) => {
+						const date = frappe.datetime.str_to_user(log.sent_on);
+						return `
                         <div class="alert-item ${getSeverityClass(log.tag)}">
                             <h4>${frappe.utils.escape_html(log.title)}</h4>
                             <p>${frappe.utils.escape_html(log.message)}</p>
@@ -409,61 +419,62 @@ frappe.pages['alert-users'].on_page_load = function(wrapper) {
                             </small>
                         </div>
                     `;
-                }).join('');
-                $historyList.html(html);
-            }
-        });
-    }
+					})
+					.join("");
+				$historyList.html(html);
+			},
+		});
+	}
 
-    // Event handlers
-    $titleInput.on('input', function() {
-        $titleCount.text($(this).val().length);
-        updatePreview();
-    });
+	// Event handlers
+	$titleInput.on("input", function () {
+		$titleCount.text($(this).val().length);
+		updatePreview();
+	});
 
-    $descriptionInput.on('input', function() {
-        $descriptionCount.text($(this).val().length);
-        updatePreview();
-    });
+	$descriptionInput.on("input", function () {
+		$descriptionCount.text($(this).val().length);
+		updatePreview();
+	});
 
-    $tagSelect.on('change', updatePreview);
+	$tagSelect.on("change", updatePreview);
 
-    $sendButton.on('click', function() {
-        const title = $titleInput.val().trim();
-        const description = $descriptionInput.val().trim();
-        const alertType = $tagSelect.val();
+	$sendButton.on("click", function () {
+		const title = $titleInput.val().trim();
+		const description = $descriptionInput.val().trim();
+		const alertType = $tagSelect.val();
 
-        if (!title) {
-            frappe.msgprint({
-                title: 'Missing Title',
-                message: 'Please enter an alert title',
-                indicator: 'red'
-            });
-            $titleInput.focus();
-            return;
-        }
+		if (!title) {
+			frappe.msgprint({
+				title: "Missing Title",
+				message: "Please enter an alert title",
+				indicator: "red",
+			});
+			$titleInput.focus();
+			return;
+		}
 
-        if (!description) {
-            frappe.msgprint({
-                title: 'Missing Message',
-                message: 'Please enter an alert message',
-                indicator: 'red'
-            });
-            $descriptionInput.focus();
-            return;
-        }
+		if (!description) {
+			frappe.msgprint({
+				title: "Missing Message",
+				message: "Please enter an alert message",
+				indicator: "red",
+			});
+			$descriptionInput.focus();
+			return;
+		}
 
-        frappe.confirm(
-            `Are you sure you want to send this ${alertType} alert to all users?<br><br>
+		frappe.confirm(
+			`Are you sure you want to send this ${alertType} alert to all users?<br><br>
             <strong>Title:</strong> ${title}<br>
             <strong>Message:</strong> ${description}<br>
             <strong>Type:</strong> ${alertType}`,
-            function() {
-                sendAlert(title, description, alertType);
-            }
-        );
-    });
+			function () {
+				sendAlert(title, description, alertType);
+			}
+		);
+	});
 
-    loadAlertTypes();
-    loadAlertHistory();
-}
+	loadAlertTypes();
+	loadAlertHistory();
+};

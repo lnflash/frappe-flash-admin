@@ -17,7 +17,7 @@ frappe.pages["account-management"].on_page_load = function (wrapper) {
 		return;
 	}
 
-	var page = frappe.ui.make_app_page({
+	page = frappe.ui.make_app_page({
 		parent: wrapper,
 		title: "Flash Account Manager",
 		single_column: true,
@@ -323,10 +323,10 @@ class FlashAccountManager {
                 <!-- Search Bar -->
                 <div class="modern-search-card">
                     <div class="modern-search-wrapper" style="margin-bottom:20px;">
-                        <input 
-                            type="text" 
-                            id="search-input" 
-                            class="modern-search-input search-input" 
+                        <input
+                            type="text"
+                            id="search-input"
+                            class="modern-search-input search-input"
                             placeholder="Enter username or phone number"
                         >
                         <button class="modern-btn modern-btn-primary btn-search">

@@ -63,9 +63,25 @@ class GraphQLClient:
 		errors = response.get("errors")
 		if not errors:
 			return
-		if allow_not_found and any(e.get("code") in ("NOT_FOUND", "INVALID_INPUT") for e in errors):
+		if allow_not_found and any(self._is_not_found_error(e) for e in errors):
 			return
 		raise GraphQLError(f"GraphQL errors: {errors}")
+
+	@staticmethod
+	def _is_not_found_error(error: dict) -> bool:
+		"""Errors that mean "no such account", not an API failure.
+
+		Flash surfaces a malformed / unknown account id from the by-id lookup as
+		UNEXPECTED_CLIENT_ERROR wrapping InvalidAccountIdError (not NOT_FOUND).
+		Smart search probes usernames against the by-id lookup as a fallback, so
+		that shape must read as "no match" — otherwise every not-found search
+		503s instead of returning the friendly 404 (seen on TEST 2026-07-10).
+		"""
+		if error.get("code") in ("NOT_FOUND", "INVALID_INPUT"):
+			return True
+		return error.get("code") == "UNEXPECTED_CLIENT_ERROR" and "InvalidAccountIdError" in str(
+			error.get("message", "")
+		)
 
 	def execute_query(self, query: str, variables: dict | None = None) -> dict:
 		"""Execute a GraphQL query and return the response"""

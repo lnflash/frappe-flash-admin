@@ -150,6 +150,6 @@ def test_transfer_log_doctype_is_append_only():
 	)
 	assert dt["in_create"] == 1  # no desk New button
 	for perm in dt["permissions"]:
-		assert not perm.get("write") and not perm.get("create") and not perm.get("delete"), (
-			f"System Transfer Log must be read-only via desk: {perm}"
-		)
+		assert (
+			not perm.get("write") and not perm.get("create") and not perm.get("delete")
+		), f"System Transfer Log must be read-only via desk: {perm}"

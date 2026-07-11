@@ -66,10 +66,12 @@ query).
   on the Lightning side and is **not** returned here — BTC wallets are counted
   but their balance is reported as `null`, intentionally.
 - The scan paces ~1 req/s and refetches the token once on a `401`.
-- **Prod caps the page size silently**: requesting `limit=100` returns 25 rows
-  (sandbox honors 100). Pagination therefore terminates only on an **empty
-  page**, never on a short one — a short-page inference truncated the first
-  prod census to 25 of ~8,750 accounts.
+- **The hub caps the page size silently in BOTH environments**: requesting
+  `limit=100` returns 25 rows (verified prod AND sandbox 2026-07-10; the
+  sandbox org actually holds ~3,748 accounts across 150 pages). Pagination
+  therefore terminates only on an **empty page**, never on a short one — a
+  short-page inference truncated the first prod census to 25 of ~8,750
+  accounts, and had silently truncated every sandbox sweep to page 1.
 
 ### Customer MongoDB (`galoy`)
 

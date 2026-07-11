@@ -148,6 +148,9 @@ def get_upgrade_pulse():
 	week_ago = frappe.utils.add_days(frappe.utils.now_datetime(), -7)
 	return {
 		"pending": frappe.db.count("Account Upgrade Request", {"status": "Pending"}),
+		# Approximation: `modified` bumps on ANY re-save of an already
+		# processed request (e.g. phone sync), not just the approve/reject
+		# transition — the doctype records no processed-at timestamp.
 		"processed_week": frappe.db.count(
 			"Account Upgrade Request",
 			{"status": ["in", ["Approved", "Rejected"]], "modified": [">=", week_ago]},

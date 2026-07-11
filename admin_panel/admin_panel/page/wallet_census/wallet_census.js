@@ -99,11 +99,6 @@ const WC_CSS = `
     .wallet-census #wc-detail h4 { font-size: 18px; font-weight: 650; margin: 6px 0 14px; color: var(--wc-ink); }
     .wallet-census #wc-detail h5 { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
           color: var(--wc-ink2); font-weight: 650; margin: 20px 0 8px; }
-    .wallet-census #wc-detail .badge { border-radius: 999px; padding: 3px 11px; font-size: 12px;
-          font-weight: 600; background: var(--wc-accent-soft); color: var(--wc-accent-ink); }
-    .wallet-census #wc-detail .row > div { padding: 8px 12px; }
-    .wallet-census #wc-detail .row .text-muted { font-size: 11px; letter-spacing: 0.05em;
-          text-transform: uppercase; font-weight: 600; }
     .wallet-census #wc-detail table { width: 100%; border-collapse: collapse; font-size: 13px;
           background: var(--wc-surface); border: 1px solid var(--wc-line); border-radius: 12px; overflow: hidden; }
     .wallet-census #wc-detail table th { text-align: left; font-size: 11px; letter-spacing: 0.05em;

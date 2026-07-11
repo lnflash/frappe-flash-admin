@@ -91,12 +91,22 @@ function getLevelLabel(level) {
 }
 
 const RESULT_STATUS_TONE = {
+	// account statuses (UPPERCASE) — account search results
 	[ACCOUNT_STATUSES.ACTIVE]: "ok",
 	[ACCOUNT_STATUSES.NEW]: "warn",
 	[ACCOUNT_STATUSES.PENDING]: "warn",
 	[ACCOUNT_STATUSES.LOCKED]: "bad",
 	[ACCOUNT_STATUSES.CLOSED]: "off",
+	// upgrade-request statuses arrive Title Case from the doctype; the
+	// lookup uppercases, so only the two extra vocabulary words go here
+	APPROVED: "ok",
+	REJECTED: "bad",
 };
+
+function statusDotHtml(status) {
+	const tone = RESULT_STATUS_TONE[String(status || "").toUpperCase()];
+	return tone ? `<span class="ah-dot ah-dot-${tone}"></span>` : "";
+}
 
 function getLevelBadge(level) {
 	return ACCOUNT_LEVEL_BADGES[level] || "badge-trial";
@@ -191,7 +201,7 @@ class AccountHub {
                 /* layout */
                 .ah-container { display: flex; gap: 16px; align-items: flex-start; }
                 .ah-left-panel { width: 320px; min-width: 280px; flex-shrink: 0;
-                    position: sticky; top: 12px; }
+                    position: sticky; top: calc(var(--navbar-height, 60px) + 12px); }
                 .ah-right-panel { flex: 1; min-width: 0; }
                 @media (max-width: 900px) {
                     .ah-container { flex-direction: column; }
@@ -669,8 +679,7 @@ class AccountHub {
 			const initial = (displayName || "?")[0].toUpperCase();
 			const levelLabel = getLevelLabel(level);
 			const levelBadge = getLevelBadge(level);
-			const tone = RESULT_STATUS_TONE[account.status];
-			const dotHtml = tone ? `<span class="ah-dot ah-dot-${tone}"></span>` : "";
+			const dotHtml = statusDotHtml(account.status);
 
 			const item = $(`
                 <div class="ah-result-item" data-id="${frappe.utils.escape_html(
@@ -876,7 +885,7 @@ class AccountHub {
 
 		const item = $(`
             <div class="ah-result-item" data-uuid="${account.uuid}">
-                <div class="ah-result-avatar">${initial}</div>
+                <div class="ah-result-avatar">${initial}${statusDotHtml(account.status)}</div>
                 <div class="ah-result-info">
                     <div class="ah-result-name">${frappe.utils.escape_html(
 						account.username || "Unknown"

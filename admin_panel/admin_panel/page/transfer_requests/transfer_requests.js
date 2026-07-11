@@ -684,7 +684,9 @@ class TransferRequestsManager {
 		main.find(".btn-refresh").on("click", () => this.load_requests());
 
 		$(document).on("keydown.transfer_requests", (e) => {
-			if (e.key === "Escape" && !window.cur_dialog) {
+			// wrapper visibility guard: desk keeps this page alive after
+			// navigation, and this handler must not fire on other pages
+			if (e.key === "Escape" && !window.cur_dialog && this.page.wrapper.is(":visible")) {
 				this.close_details();
 			}
 		});
@@ -798,10 +800,18 @@ class TransferRequestsManager {
         `);
 	}
 
+	server_now_ms() {
+		// Ages are measured against the server clock the payload ships, not
+		// the browser clock — operator tz must not skew warn/bad tones.
+		const raw = this.pulse && this.pulse.now;
+		const parsed = raw ? new Date(String(raw).replace(" ", "T")).getTime() : NaN;
+		return isNaN(parsed) ? Date.now() : parsed;
+	}
+
 	formatAge(dateStr) {
-		const then = new Date(dateStr);
+		const then = new Date(String(dateStr).replace(" ", "T"));
 		if (isNaN(then)) return "";
-		const mins = Math.max(0, Math.floor((Date.now() - then.getTime()) / 60000));
+		const mins = Math.max(0, Math.floor((this.server_now_ms() - then.getTime()) / 60000));
 		if (mins < 60) return `${mins}m`;
 		const hours = Math.floor(mins / 60);
 		if (hours < 24) return `${hours}h`;
@@ -809,9 +819,9 @@ class TransferRequestsManager {
 	}
 
 	age_tone(dateStr) {
-		const then = new Date(dateStr);
+		const then = new Date(String(dateStr).replace(" ", "T"));
 		if (isNaN(then)) return "";
-		const hours = (Date.now() - then.getTime()) / 3600e3;
+		const hours = (this.server_now_ms() - then.getTime()) / 3600e3;
 		if (hours >= 24) return "bad";
 		if (hours >= 6) return "warn";
 		return "";
@@ -886,6 +896,9 @@ class TransferRequestsManager {
 	}
 
 	load_requests() {
+		// tab switches re-render tiles from the cached pulse immediately —
+		// both datasets are in the payload; the fetch then freshens it
+		if (this.pulse) this.render_pulse();
 		this.load_pulse();
 		if (this.active_type === "bridge") {
 			this.load_bridge_requests();

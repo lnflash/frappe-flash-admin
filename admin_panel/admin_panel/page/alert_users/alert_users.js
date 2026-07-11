@@ -306,7 +306,7 @@ frappe.pages["alert-users"].on_page_load = function (wrapper) {
 					$descriptionInput.val("");
 					$titleCount.text("0");
 					$descriptionCount.text("0");
-					$previewContainer.fadeOut();
+					updatePreview();
 
 					loadAlertHistory();
 				} else {

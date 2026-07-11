@@ -44,7 +44,7 @@ def test_transfer_requests_page_fixture_replaces_cashout_requests_page():
 def test_transfer_requests_js_registers_page_and_bridge_tab():
 	js = read_text(PAGE_DIR / "transfer_requests.js")
 
-	assert "frappe.pages['transfer-requests']" in js
+	assert 'frappe.pages["transfer-requests"]' in js
 	assert "TransferRequestsManager" in js
 	assert "Cashouts" in js
 	assert "Bridge" in js
@@ -84,13 +84,13 @@ def test_transfer_requests_cashout_tab_has_account_management_style_action_butto
 	js = read_text(PAGE_DIR / "transfer_requests.js")
 
 	assert "create_request_row(req, showActions = true)" in js
-	assert "'Actions'" in js
+	assert '"Actions"' in js
 	assert "modern-icon-btn" in js
 	assert "btn-quick-create" in js
 	assert "btn-quick-confirm" in js
 	assert "btn-quick-complete" in js
 	assert "e.stopPropagation()" in js
-	assert "closest('button')" in js
+	assert 'closest("button")' in js
 	assert "create_cashout_request(req)" in js
 	assert "confirm_cashout_payment(req)" in js
 	assert "complete_cashout(req)" in js
@@ -101,8 +101,8 @@ def test_transfer_requests_bridge_tab_stays_read_only_without_actions_column():
 
 	assert "const cashoutHeaders" in js
 	assert "const bridgeHeaders" in js
-	assert "const headers = this.active_type === 'bridge' ? bridgeHeaders : cashoutHeaders" in js
-	assert "const bridgeHeaders = ['Request ID', 'Type', 'Amount', 'Status', 'Failure', 'Last Seen']" in js
+	assert 'const headers = this.active_type === "bridge" ? bridgeHeaders : cashoutHeaders' in js
+	assert 'const bridgeHeaders = ["Request ID", "Type", "Amount", "Status", "Failure", "Last Seen"]' in js
 
 
 def test_admin_api_exposes_cashout_action_endpoints():
@@ -141,7 +141,7 @@ def test_cashout_payment_bank_entry_sets_required_reference_fields():
 	cashout_py = read_text(ADMIN_PANEL / "admin_panel" / "doctype" / "cashout" / "cashout.py")
 
 	assert "def create_payment_journal_entry(self, reference_no=None, reference_date=None)" in cashout_py
-	assert "payment_reference_no = (reference_no or self.transaction_id or self.name)" in cashout_py
+	assert "payment_reference_no = reference_no or self.transaction_id or self.name" in cashout_py
 	assert '"cheque_no": payment_reference_no' in cashout_py
 	assert '"cheque_date": payment_reference_date' in cashout_py
 	assert "doc.create_payment_journal_entry(reference_no=confirmation_code" in api_py
@@ -153,4 +153,4 @@ def test_cashout_details_render_remarks_from_cashout_record():
 
 	assert '<span class="detail-label">Remarks</span>' in js
 	assert "detail-remarks" in js
-	assert "panel.find('.detail-remarks').text(req.remarks || '-')" in js
+	assert 'panel.find(".detail-remarks").text(req.remarks || "-")' in js

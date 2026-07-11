@@ -90,6 +90,24 @@ function getLevelLabel(level) {
 	return ACCOUNT_LEVEL_LABELS[level] || level;
 }
 
+const RESULT_STATUS_TONE = {
+	// account statuses (UPPERCASE) — account search results
+	[ACCOUNT_STATUSES.ACTIVE]: "ok",
+	[ACCOUNT_STATUSES.NEW]: "warn",
+	[ACCOUNT_STATUSES.PENDING]: "warn",
+	[ACCOUNT_STATUSES.LOCKED]: "bad",
+	[ACCOUNT_STATUSES.CLOSED]: "off",
+	// upgrade-request statuses arrive Title Case from the doctype; the
+	// lookup uppercases, so only the two extra vocabulary words go here
+	APPROVED: "ok",
+	REJECTED: "bad",
+};
+
+function statusDotHtml(status) {
+	const tone = RESULT_STATUS_TONE[String(status || "").toUpperCase()];
+	return tone ? `<span class="ah-dot ah-dot-${tone}"></span>` : "";
+}
+
 function getLevelBadge(level) {
 	return ACCOUNT_LEVEL_BADGES[level] || "badge-trial";
 }
@@ -115,6 +133,12 @@ function formatDate(ts) {
 		" " +
 		d.toLocaleTimeString()
 	);
+}
+
+function formatDateOnly(ts) {
+	if (!ts) return "-";
+	const d = new Date(ts * 1000);
+	return frappe.datetime.global_date_format(d.toISOString().split("T")[0]);
 }
 
 function formatCurrency(cents, currency) {
@@ -148,554 +172,217 @@ class AccountHub {
 	create_layout() {
 		this.page.main.html(`
             <style>
+                /* ═══ Ops-pulse design system — Account Hub (customer workbench) ═══
+                   Same tokens as the dashboard/census; legacy --color-* names are
+                   aliased so dynamic templates restyle without markup changes. */
                 .account-hub {
-                    --color-primary: #007856;
-                    --color-background: #F1F1F1;
-                    --color-layer: #FFFFFF;
-                    --color-text01: #212121;
-                    --color-text02: #939998;
-                    --color-border01: #DDE3E1;
-                    --color-green: #00A700;
-                    --color-error: #DC2626;
-                    --color-warning: #F59E0B;
-                }
-
-                .account-hub {
-                    max-width: 1600px;
-                    margin: 0 auto;
-                }
-
-                /* ── Layout ── */
-                .ah-container {
-                    display: flex;
-                    gap: 24px;
-                    align-items: flex-start;
-                }
-
-                .ah-left-panel {
-                    width: 30%;
-                    min-width: 300px;
-                    flex-shrink: 0;
-                }
-
-                .ah-right-panel {
-                    flex: 1;
-                    min-width: 0;
-                }
-
-                /* ── Cards ── */
-                .ah-card {
-                    background: var(--color-layer);
-                    border-radius: 16px;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-                    border: 1px solid var(--color-border01);
-                    overflow: hidden;
-                }
-
-                .ah-card-header {
-                    padding: 16px 20px;
-                    background: linear-gradient(135deg, var(--color-primary) 0%, #005a42 100%);
-                    color: white;
-                    font-size: 16px;
-                    font-weight: 600;
-                }
-
-                .ah-card-body {
-                    padding: 20px;
-                }
-
-                /* ── Search ── */
-                .ah-search-wrapper {
-                    padding: 20px;
-                }
-
-                .ah-search-input {
-                    width: 100%;
-                    padding: 12px 16px;
-                    border: 2px solid var(--color-border01);
-                    border-radius: 12px;
-                    font-size: 15px;
-                    transition: all 0.2s ease;
-                    background: var(--color-layer);
-                    color: var(--color-text01);
-                    box-sizing: border-box;
-                }
-
-                .ah-search-input:focus {
-                    outline: none;
-                    border-color: var(--color-primary);
-                    box-shadow: 0 0 0 3px rgba(0,120,86,0.1);
-                }
-
-                .ah-search-input::placeholder {
-                    color: var(--color-text02);
-                }
-
-                /* ── Search Results Area ── */
-                .ah-results-area {
-                    border-top: 1px solid var(--color-border01);
-                    min-height: 100px;
-                }
-
-                .ah-result-item {
-                    padding: 14px 20px;
-                    cursor: pointer;
-                    transition: background 0.15s;
-                    border-bottom: 1px solid var(--color-border01);
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                }
-
-                .ah-result-item:last-child {
-                    border-bottom: none;
-                }
-
-                .ah-result-item:hover {
-                    background: rgba(0,120,86,0.03);
-                }
-
-                .ah-result-item.active {
-                    background: rgba(0,120,86,0.1);
-                    border-left: 4px solid var(--color-primary);
-                }
-
-                .ah-result-avatar {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 50%;
-                    background: var(--color-primary);
-                    color: white;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-weight: 600;
-                    font-size: 16px;
-                    flex-shrink: 0;
-                }
-
-                .ah-result-info {
-                    flex: 1;
-                    min-width: 0;
-                }
-
-                .ah-result-name {
-                    font-weight: 600;
-                    color: var(--color-text01);
-                    font-size: 14px;
-                }
-
-                .ah-result-sub {
-                    font-size: 12px;
-                    color: var(--color-text02);
-                    margin-top: 2px;
-                }
-
-                /* ── Tabs ── */
-                .ah-tabs {
-                    display: flex;
-                    border-bottom: 2px solid var(--color-border01);
-                    background: var(--color-layer);
-                    padding: 0 4px;
-                }
-
-                .ah-tab {
-                    padding: 14px 20px;
-                    cursor: pointer;
-                    font-size: 14px;
-                    font-weight: 500;
-                    color: var(--color-text02);
-                    border-bottom: 2px solid transparent;
-                    margin-bottom: -2px;
-                    transition: all 0.2s;
-                    background: none;
-                    border-top: none;
-                    border-left: none;
-                    border-right: none;
-                }
-
-                .ah-tab:hover {
-                    color: var(--color-primary);
-                    background: rgba(0,120,86,0.03);
-                }
-
-                .ah-tab.active {
-                    color: var(--color-primary);
-                    border-bottom-color: var(--color-primary);
-                }
-
-                .ah-tab-content {
-                    display: none;
-                    padding: 24px;
-                }
-
-                .ah-tab-content.active {
-                    display: block;
-                }
-
-                /* ── Info Cards ── */
-                .ah-info-grid {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 24px;
-                    margin-bottom: 20px;
-                }
-
-                .ah-info-card {
-                    background: var(--color-layer);
-                    border: 1px solid var(--color-border01);
-                    border-radius: 12px;
-                    padding: 20px;
-                }
-
-                .ah-info-card h6 {
-                    font-size: 13px;
-                    font-weight: 600;
-                    color: var(--color-text02);
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                    margin: 0 0 16px 0;
-                    padding-bottom: 10px;
-                    border-bottom: 1px solid var(--color-border01);
-                }
-
-                .ah-info-row {
-                    display: flex;
-                    justify-content: space-between;
-                    padding: 6px 0;
-                    font-size: 14px;
-                }
-
-                .ah-info-label {
-                    color: var(--color-text02);
-                }
-
-                .ah-info-value {
-                    color: var(--color-text01);
-                    font-weight: 500;
-                    text-align: right;
-                }
-
-                .ah-verified-badge {
-                    background: rgba(0,167,0,0.1);
-                    color: var(--color-green);
-                    padding: 2px 8px;
-                    border-radius: 10px;
-                    font-size: 11px;
-                    font-weight: 600;
-                    margin-left: 6px;
-                }
-
-                /* ── Badges ── */
-                .ah-badge {
-                    display: inline-flex;
-                    align-items: center;
-                    padding: 4px 10px;
-                    border-radius: 20px;
-                    font-size: 11px;
-                    font-weight: 600;
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                }
-
-                .ah-badge.badge-trial {
-                    background: rgba(148,163,159,0.15);
-                    color: var(--color-text02);
-                }
-                .ah-badge.badge-personal {
-                    background: rgba(0,120,86,0.1);
-                    color: var(--color-primary);
-                }
-                .ah-badge.badge-business {
-                    background: rgba(232,211,21,0.15);
-                    color: #b8a00e;
-                }
-                .ah-badge.badge-merchant {
-                    background: rgba(245,158,11,0.15);
-                    color: var(--color-warning);
-                }
-                .ah-badge.badge-pending {
-                    background: rgba(245,158,11,0.15);
-                    color: var(--color-warning);
-                }
-                .ah-badge.badge-approved {
-                    background: #d4f7d9;
-                    color: #15803d;
-                }
-                .ah-badge.badge-rejected {
-                    background: #fde2e2;
-                    color: #b91c1c;
-                }
-                .ah-badge.badge-closed {
-                    background: rgba(100,116,139,0.15);
-                    color: #475569;
-                }
-
-                /* ── Action Toolbar ── */
-                .ah-action-bar {
-                    display: flex;
-                    gap: 10px;
-                    flex-wrap: wrap;
-                    padding-top: 20px;
-                    border-top: 1px solid var(--color-border01);
-                    margin-top: 20px;
-                }
-
-                .ah-btn {
-                    padding: 10px 18px;
-                    border-radius: 10px;
-                    font-weight: 500;
-                    font-size: 14px;
-                    border: none;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
-                }
-
-                .ah-btn-primary {
-                    background: var(--color-primary);
-                    color: white;
-                }
-                .ah-btn-primary:hover {
-                    background: #005a42;
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(0,120,86,0.2);
-                }
-
-                .ah-btn-success {
-                    background: var(--color-green);
-                    color: white;
-                }
-                .ah-btn-success:hover {
-                    background: #008f00;
-                }
-
-                .ah-btn-danger {
-                    background: var(--color-error);
-                    color: white;
-                }
-                .ah-btn-danger:hover {
-                    background: #b91c1c;
-                }
-
-                .ah-btn-secondary {
-                    background: var(--color-layer);
-                    color: var(--color-text01);
-                    border: 2px solid var(--color-border01);
-                }
-                .ah-btn-secondary:hover {
-                    background: var(--color-background);
-                    border-color: var(--color-text02);
-                }
-
-                .ah-btn-sm {
-                    padding: 6px 12px;
-                    font-size: 12px;
-                    border-radius: 8px;
-                }
-
-                /* ── Wallet Cards ── */
-                .ah-wallet-card {
-                    background: var(--color-layer);
-                    border: 1px solid var(--color-border01);
-                    border-radius: 12px;
-                    padding: 20px;
-                    margin-bottom: 16px;
-                }
-
-                .ah-wallet-row {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 6px 0;
-                    font-size: 14px;
-                }
-
-                .ah-wallet-balance {
-                    font-size: 28px;
-                    font-weight: 700;
-                    color: var(--color-text01);
-                }
-
-                .ah-wallet-currency-badge {
-                    display: inline-flex;
-                    align-items: center;
-                    padding: 4px 12px;
-                    border-radius: 20px;
-                    font-size: 12px;
-                    font-weight: 600;
-                    background: rgba(0,120,86,0.1);
-                    color: var(--color-primary);
-                }
-
-                /* ── Document Item ── */
-                .ah-doc-item {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 12px 16px;
-                    background: var(--color-background);
-                    border-radius: 10px;
-                    margin-bottom: 8px;
-                    border: 1px solid var(--color-border01);
-                }
-
-                .ah-doc-info {
-                    font-size: 14px;
-                    color: var(--color-text01);
-                }
-
-                /* ── Merchant Card ── */
-                .ah-merchant-card {
-                    background: var(--color-layer);
-                    border: 1px solid var(--color-border01);
-                    border-radius: 12px;
-                    padding: 16px;
-                    margin-bottom: 12px;
-                }
-
-                .ah-merchant-title {
-                    font-size: 16px;
-                    font-weight: 600;
-                    color: var(--color-text01);
-                    margin-bottom: 8px;
-                }
-
-                .ah-merchant-row {
-                    font-size: 13px;
-                    color: var(--color-text02);
-                    padding: 3px 0;
-                }
-
-                .ah-merchant-actions {
-                    margin-top: 12px;
-                    display: flex;
-                    gap: 8px;
-                }
-
-                /* ── Upgrade Table ── */
-                .ah-table {
-                    width: 100%;
-                    border-collapse: separate;
-                    border-spacing: 0;
-                }
-
-                .ah-table thead {
-                    background: var(--color-background);
-                }
-
-                .ah-table th {
-                    padding: 12px 16px;
-                    text-align: left;
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: var(--color-text02);
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                    border-bottom: 2px solid var(--color-border01);
-                }
-
-                .ah-table td {
-                    padding: 12px 16px;
-                    font-size: 14px;
-                    color: var(--color-text01);
-                    border-bottom: 1px solid var(--color-border01);
-                }
-
-                .ah-table tr:last-child td {
-                    border-bottom: none;
-                }
-
-                /* ── Empty State ── */
-                .ah-empty {
-                    padding: 60px 20px;
-                    text-align: center;
-                    color: var(--color-text02);
-                }
-
-                .ah-empty-icon {
-                    font-size: 40px;
-                    margin-bottom: 12px;
-                    opacity: 0.3;
-                }
-
-                .ah-empty-text {
-                    font-size: 15px;
-                    font-weight: 500;
-                }
-
-                .ah-empty-sub {
-                    font-size: 13px;
-                    margin-top: 4px;
-                }
-
-                /* ── Loading ── */
-                .ah-loading {
-                    padding: 40px 20px;
-                    text-align: center;
-                }
-
-                .ah-spinner {
-                    width: 36px;
-                    height: 36px;
-                    border: 3px solid var(--color-border01);
-                    border-top-color: var(--color-primary);
-                    border-radius: 50%;
-                    animation: ah-spin 0.8s linear infinite;
-                    margin: 0 auto 12px;
-                }
-
-                @keyframes ah-spin {
-                    to { transform: rotate(360deg); }
-                }
-
-                .ah-error-msg {
-                    padding: 16px 20px;
-                    color: var(--color-error);
-                    font-size: 14px;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    background: rgba(220,38,38,0.04);
-                    border-top: 1px solid rgba(220,38,38,0.15);
-                }
-
-                /* ── Right Panel Hidden State ── */
-                .ah-right-empty {
-                    padding: 80px 20px;
-                    text-align: center;
-                    color: var(--color-text02);
-                }
-
-                .ah-right-empty-icon {
-                    font-size: 56px;
-                    margin-bottom: 16px;
-                    opacity: 0.2;
-                }
-
-                .ah-right-empty-text {
-                    font-size: 18px;
-                    font-weight: 500;
-                }
-
-                .ah-right-empty-sub {
-                    font-size: 14px;
-                    margin-top: 4px;
-                }
-
+                    --ah-surface: var(--card-bg, #ffffff); --ah-ink: var(--text-color, #1a2420);
+                    --ah-ink2: var(--text-muted, #5c6b65); --ah-ink3: var(--text-light, #8fa098);
+                    --ah-line: var(--border-color, #e2e8e5); --ah-line-soft: var(--subtle-fg, #ecf1ee);
+                    --ah-accent: #007856; --ah-accent-ink: #007856; --ah-accent-soft: #e6f3ee;
+                    --ah-good: #0ca30c; --ah-warn: #b87d00; --ah-warn-bg: #fff3d6;
+                    --ah-serious: #c05a32; --ah-serious-bg: #fdeae2;
+                    --ah-shadow: 0 1px 2px rgba(26,36,32,0.05), 0 4px 14px rgba(26,36,32,0.04);
+                    /* legacy aliases (dynamic templates reference these inline) */
+                    --color-primary: var(--ah-accent); --color-background: transparent;
+                    --color-layer: var(--ah-surface); --color-text01: var(--ah-ink);
+                    --color-text02: var(--ah-ink2); --color-border01: var(--ah-line);
+                    --color-green: var(--ah-good); --color-error: var(--ah-serious);
+                    --color-warning: var(--ah-warn);
+                    max-width: 1400px; margin: 0 auto;
+                }
+                [data-theme="dark"] .account-hub, .dark .account-hub {
+                    --ah-accent: #1e9e75; --ah-accent-ink: #4cc29e; --ah-accent-soft: #12352a;
+                    --ah-good: #35c135; --ah-warn: #fab219; --ah-warn-bg: #33290d;
+                    --ah-serious: #ec835a; --ah-serious-bg: #38211a;
+                    --ah-shadow: 0 1px 2px rgba(0,0,0,0.35), 0 6px 18px rgba(0,0,0,0.25);
+                }
+
+                /* layout */
+                .ah-container { display: flex; gap: 16px; align-items: flex-start; }
+                .ah-left-panel { width: 320px; min-width: 280px; flex-shrink: 0;
+                    position: sticky; top: calc(var(--navbar-height, 60px) + 12px); }
+                .ah-right-panel { flex: 1; min-width: 0; }
                 @media (max-width: 900px) {
-                    .ah-container {
-                        flex-direction: column;
-                    }
-                    .ah-left-panel {
-                        width: 100%;
-                        min-width: 0;
-                    }
-                    .ah-info-grid {
-                        grid-template-columns: 1fr;
-                    }
+                    .ah-container { flex-direction: column; }
+                    .ah-left-panel { width: 100%; position: static; }
+                }
+
+                .ah-card { background: var(--ah-surface); border: 1px solid var(--ah-line);
+                    border-radius: 14px; box-shadow: var(--ah-shadow); overflow: hidden; }
+                .ah-card-header { padding: 13px 18px; border-bottom: 1px solid var(--ah-line);
+                    font-size: 13.5px; font-weight: 650; color: var(--ah-ink);
+                    display: flex; align-items: center; }
+                .ah-card-header .fa { color: var(--ah-accent-ink); }
+
+                /* search rail */
+                .ah-search-wrapper { padding: 14px 16px 10px; }
+                .ah-search-input { width: 100%; padding: 9px 13px; border: 1px solid var(--ah-line);
+                    border-radius: 10px; font-size: 13.5px; background: var(--ah-surface);
+                    color: var(--ah-ink); box-sizing: border-box; transition: border-color 0.15s; }
+                .ah-search-input:focus { outline: 2px solid var(--ah-accent); outline-offset: 1px;
+                    border-color: var(--ah-accent); }
+                .ah-search-input::placeholder { color: var(--ah-ink3); }
+                .ah-search-hint { padding: 0 2px; }
+                .ah-results-area { border-top: 1px solid var(--ah-line-soft); min-height: 90px;
+                    max-height: calc(100vh - 260px); overflow-y: auto; }
+
+                .ah-result-item { display: flex; align-items: center; gap: 11px;
+                    padding: 11px 16px; cursor: pointer; border-left: 3px solid transparent;
+                    border-bottom: 1px solid var(--ah-line-soft); transition: background 0.12s; }
+                .ah-result-item:last-child { border-bottom: none; }
+                .ah-result-item:hover { background: var(--ah-line-soft); }
+                .ah-result-item.active { background: var(--ah-accent-soft);
+                    border-left-color: var(--ah-accent); }
+                .ah-result-avatar { position: relative; width: 34px; height: 34px; border-radius: 50%;
+                    background: var(--ah-accent-soft); color: var(--ah-accent-ink);
+                    display: grid; place-items: center; font-weight: 700; font-size: 14px; flex: none; }
+                .ah-result-info { min-width: 0; flex: 1; }
+                .ah-result-name { font-weight: 600; font-size: 13px; color: var(--ah-ink);
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                .ah-result-sub { color: var(--ah-ink2); font-size: 11.5px;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+                .ah-loading { text-align: center; padding: 26px 0; }
+                .ah-spinner { width: 22px; height: 22px; border: 2px solid var(--ah-line);
+                    border-top-color: var(--ah-accent); border-radius: 50%;
+                    margin: 0 auto 8px; animation: ah-spin 0.8s linear infinite; }
+                @keyframes ah-spin { to { transform: rotate(360deg); } }
+                .ah-dot { position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px;
+                    border-radius: 50%; box-shadow: 0 0 0 2px var(--ah-surface); }
+                .ah-dot-ok { background: var(--ah-good); }
+                .ah-dot-warn { background: var(--ah-warn); }
+                .ah-dot-bad { background: var(--ah-serious); }
+                .ah-dot-off { background: var(--ah-ink3); }
+                .ah-error-msg { margin: 12px 16px; padding: 10px 14px; border-radius: 10px;
+                    background: var(--ah-serious-bg); color: var(--ah-serious);
+                    font-size: 12.5px; font-weight: 600; }
+                .ah-empty, .ah-right-empty { text-align: center; padding: 34px 20px; }
+                .ah-empty-icon, .ah-right-empty-icon { font-size: 26px; margin-bottom: 8px;
+                    filter: grayscale(0.4); opacity: 0.75; }
+                .ah-empty-text, .ah-right-empty-text { font-weight: 650; font-size: 13.5px;
+                    color: var(--ah-ink); }
+                .ah-empty-sub, .ah-right-empty-sub { color: var(--ah-ink3); font-size: 12px;
+                    margin-top: 4px; max-width: 340px; margin-left: auto; margin-right: auto; }
+                .ah-right-empty { padding: 90px 20px; }
+
+                /* identity band — who + what they hold, above the tabs */
+                .ah-ident { padding: 14px 20px 13px; border-bottom: 1px solid var(--ah-line); }
+                .ah-ident-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+                .ah-ident-name { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+                .ah-ident-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+                .ah-ident-meta { color: var(--ah-ink2); font-size: 12.5px; margin-top: 4px;
+                    display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+                .ah-ident-dot { color: var(--ah-ink3); }
+                .ah-ident-balances { display: flex; gap: 8px; margin-top: 11px; flex-wrap: wrap; }
+                .ah-bal-chip { display: inline-flex; align-items: baseline; gap: 7px;
+                    border: 1px solid var(--ah-line); border-radius: 10px; padding: 5px 12px;
+                    background: var(--ah-surface); }
+                .ah-bal-cur { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
+                    color: var(--ah-ink2); font-weight: 650; }
+                .ah-bal-amt { font-size: 15px; font-weight: 650; color: var(--ah-ink);
+                    font-variant-numeric: tabular-nums; }
+
+                /* tabs — underline style */
+                .ah-tabs { display: flex; gap: 2px; padding: 0 14px; border-bottom: 1px solid var(--ah-line);
+                    overflow-x: auto; }
+                .ah-tab { border: none; background: transparent; color: var(--ah-ink2);
+                    font-size: 12.5px; font-weight: 600; padding: 10px 12px 9px; cursor: pointer;
+                    border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
+                    transition: color 0.12s; }
+                .ah-tab:hover { color: var(--ah-ink); }
+                .ah-tab.active { color: var(--ah-accent-ink); border-bottom-color: var(--ah-accent); }
+                .ah-tab:focus-visible { outline: 2px solid var(--ah-accent); outline-offset: -2px; }
+                .ah-tab-content { display: none; padding: 18px 20px 20px; }
+                .ah-tab-content.active { display: block; }
+
+                /* overview kv cards */
+                .ah-info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+                    gap: 12px; margin-bottom: 16px; }
+                .ah-info-card { background: var(--ah-surface); border: 1px solid var(--ah-line);
+                    border-radius: 12px; padding: 14px 16px; }
+                .ah-info-card h6 { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+                    color: var(--ah-ink2); font-weight: 650; margin: 0 0 10px; }
+                .ah-info-card h6 .fa { display: none; }
+                .ah-info-row { display: flex; justify-content: space-between; gap: 12px;
+                    padding: 5px 0; align-items: baseline; }
+                .ah-info-row + .ah-info-row { border-top: 1px solid var(--ah-line-soft); }
+                .ah-info-label { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
+                    color: var(--ah-ink2); font-weight: 600; flex: none; }
+                .ah-info-value { font-size: 13px; font-weight: 600; color: var(--ah-ink);
+                    text-align: right; word-break: break-word; min-width: 0; }
+
+
+                .ah-btn { border: 1px solid var(--ah-line); background: var(--ah-surface);
+                    color: var(--ah-ink); border-radius: 9px; padding: 7px 14px; font-size: 13px;
+                    font-weight: 600; cursor: pointer; transition: all 0.13s; }
+                .ah-btn:hover { border-color: var(--ah-accent); }
+                .ah-btn:focus-visible { outline: 2px solid var(--ah-accent); outline-offset: 1px; }
+                .ah-btn .fa { margin-right: 5px; }
+                .ah-btn-primary { background: var(--ah-accent); border-color: var(--ah-accent); color: #fff; }
+                .ah-btn-primary:hover { filter: brightness(1.07); }
+                .ah-btn-secondary { background: var(--ah-surface); }
+                .ah-btn-success { color: var(--ah-good); border-color: var(--ah-good); background: transparent; }
+                .ah-btn-success:hover { background: var(--ah-accent-soft); }
+                .ah-btn-danger { color: var(--ah-serious); border-color: var(--ah-serious); background: transparent; }
+                .ah-btn-danger:hover { background: var(--ah-serious-bg); border-color: var(--ah-serious); }
+                .ah-btn-sm { padding: 4px 10px; font-size: 12px; }
+                .ah-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+                /* chips — level tiers express intensity of one accent; status is semantic */
+                .ah-badge { display: inline-flex; align-items: center; border-radius: 999px;
+                    padding: 3px 11px; font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em;
+                    background: var(--ah-line-soft); color: var(--ah-ink2); }
+                .badge-trial { background: var(--ah-line-soft); color: var(--ah-ink2); }
+                .badge-personal { background: var(--ah-accent-soft); color: var(--ah-accent-ink); opacity: 0.85; }
+                .badge-business { background: var(--ah-accent-soft); color: var(--ah-accent-ink); }
+                .badge-merchant { background: var(--ah-accent); color: #fff; }
+                .badge-pending { background: var(--ah-warn-bg); color: var(--ah-warn); }
+                .badge-approved { background: var(--ah-accent-soft); color: var(--ah-accent-ink); }
+                .badge-rejected { background: var(--ah-serious-bg); color: var(--ah-serious); }
+                .badge-closed { background: var(--ah-line-soft); color: var(--ah-ink3); }
+                .ah-verified-badge { display: inline-flex; align-items: center; border-radius: 999px;
+                    padding: 2px 9px; font-size: 11px; font-weight: 650;
+                    background: var(--ah-accent-soft); color: var(--ah-accent-ink); margin-left: 6px; }
+
+                /* wallets */
+                .ah-wallet-card { background: var(--ah-surface); border: 1px solid var(--ah-line);
+                    border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+                .ah-wallet-currency-badge { display: inline-flex; border-radius: 999px;
+                    padding: 3px 11px; font-size: 11.5px; font-weight: 650;
+                    background: var(--ah-accent-soft); color: var(--ah-accent-ink); }
+                .ah-wallet-balance { font-size: 20px; font-weight: 650; color: var(--ah-ink);
+                    font-variant-numeric: tabular-nums; }
+                .ah-wallet-row { display: flex; justify-content: space-between; gap: 12px;
+                    padding: 4px 0; align-items: baseline; }
+
+                /* documents */
+                .ah-doc-item { display: flex; align-items: center; justify-content: space-between;
+                    gap: 12px; background: var(--ah-surface); border: 1px solid var(--ah-line);
+                    border-radius: 12px; padding: 12px 16px; margin-bottom: 10px; }
+                .ah-doc-info { min-width: 0; flex: 1; font-size: 13px; color: var(--ah-ink); }
+
+                /* merchant */
+                .ah-merchant-card { background: var(--ah-surface); border: 1px solid var(--ah-line);
+                    border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+                .ah-merchant-title { font-weight: 650; font-size: 14px; color: var(--ah-ink);
+                    margin-bottom: 8px; }
+                .ah-merchant-row { display: flex; justify-content: space-between; gap: 12px;
+                    padding: 4px 0; font-size: 13px; align-items: baseline; }
+                .ah-merchant-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+                /* upgrade history table */
+                .ah-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+                .ah-table th { text-align: left; font-size: 11px; letter-spacing: 0.05em;
+                    text-transform: uppercase; color: var(--ah-ink2); font-weight: 650;
+                    padding: 9px 12px; border-bottom: 1px solid var(--ah-line); }
+                .ah-table td { padding: 9px 12px; border-bottom: 1px solid var(--ah-line-soft);
+                    color: var(--ah-ink); font-variant-numeric: tabular-nums; }
+                .ah-table tr:last-child td { border-bottom: none; }
+
+                @media (prefers-reduced-motion: no-preference) {
+                    .ah-detail-content, .ah-result-item { animation: ah-rise 0.3s ease; }
+                    @keyframes ah-rise { from { opacity: 0; transform: translateY(5px); } }
                 }
             </style>
 
@@ -747,11 +434,28 @@ class AccountHub {
 
                             <!-- Detail Content (shown when account is selected) -->
                             <div class="ah-detail-content" style="display:none;">
-                                <div class="ah-card-header detail-account-title" style="display:flex;align-items:center;gap:10px;">
-                                    <i class="fa fa-user"></i>
-                                    <span class="detail-username-display"></span>
-                                    <span class="ah-badge detail-level-badge" style="margin-left:auto;"></span>
-                                    <span class="ah-badge detail-status-badge"></span>
+                                <div class="ah-ident">
+                                    <div class="ah-ident-top">
+                                        <span class="detail-username-display ah-ident-name"></span>
+                                        <span class="ah-badge detail-level-badge"></span>
+                                        <span class="ah-badge detail-status-badge"></span>
+                                        <div class="ah-ident-actions">
+                                            <button class="ah-btn ah-btn-sm ah-btn-primary btn-change-level">
+                                                <i class="fa fa-level-up"></i> Change Level
+                                            </button>
+                                            <button class="ah-btn ah-btn-sm ah-btn-secondary btn-update-phone">
+                                                <i class="fa fa-phone"></i> Update Phone
+                                            </button>
+                                            <button class="ah-btn ah-btn-sm ah-btn-success btn-activate-account" style="display:none;">
+                                                <i class="fa fa-unlock"></i> Activate
+                                            </button>
+                                            <button class="ah-btn ah-btn-sm ah-btn-danger btn-lock-account" style="display:none;">
+                                                <i class="fa fa-lock"></i> Lock
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="ah-ident-meta detail-ident-meta"></div>
+                                    <div class="ah-ident-balances detail-ident-balances"></div>
                                 </div>
 
                                 <!-- Tabs -->
@@ -808,24 +512,6 @@ class AccountHub {
                                             </div>
                                         </div>
                                     </div>
-
-                                    <!-- Action Bar -->
-                                    <div class="ah-action-bar">
-                                        <div class="btn-group">
-                                            <button class="ah-btn ah-btn-primary btn-change-level">
-                                                <i class="fa fa-level-up"></i> Change Level
-                                            </button>
-                                        </div>
-                                        <button class="ah-btn ah-btn-danger btn-lock-account" style="display:none;">
-                                            <i class="fa fa-lock"></i> Lock Account
-                                        </button>
-                                        <button class="ah-btn ah-btn-success btn-activate-account" style="display:none;">
-                                            <i class="fa fa-unlock"></i> Activate Account
-                                        </button>
-                                        <button class="ah-btn ah-btn-secondary btn-update-phone">
-                                            <i class="fa fa-phone"></i> Update Phone
-                                        </button>
-                                    </div>
                                 </div>
 
                                 <!-- Tab: Wallets -->
@@ -869,6 +555,8 @@ class AccountHub {
 			detailUsername: main.find(".detail-username-display"),
 			detailLevelBadge: main.find(".detail-level-badge"),
 			detailStatusBadge: main.find(".detail-status-badge"),
+			identMeta: main.find(".detail-ident-meta"),
+			identBalances: main.find(".detail-ident-balances"),
 			tabs: main.find(".ah-tab"),
 			tabContents: main.find(".ah-tab-content"),
 			// Overview
@@ -991,6 +679,7 @@ class AccountHub {
 			const initial = (displayName || "?")[0].toUpperCase();
 			const levelLabel = getLevelLabel(level);
 			const levelBadge = getLevelBadge(level);
+			const dotHtml = statusDotHtml(account.status);
 
 			const item = $(`
                 <div class="ah-result-item" data-id="${frappe.utils.escape_html(
@@ -1000,7 +689,7 @@ class AccountHub {
 			)}" data-phone="${frappe.utils.escape_html(
 				account.phone_number || ""
 			)}" data-email="${frappe.utils.escape_html(account.email || "")}">
-                    <div class="ah-result-avatar">${initial}</div>
+                    <div class="ah-result-avatar">${initial}${dotHtml}</div>
                     <div class="ah-result-info">
                         <div class="ah-result-name">${frappe.utils.escape_html(displayName)}</div>
                         <div class="ah-result-sub">${frappe.utils.escape_html(subInfo)}</div>
@@ -1196,7 +885,7 @@ class AccountHub {
 
 		const item = $(`
             <div class="ah-result-item" data-uuid="${account.uuid}">
-                <div class="ah-result-avatar">${initial}</div>
+                <div class="ah-result-avatar">${initial}${statusDotHtml(account.status)}</div>
                 <div class="ah-result-info">
                     <div class="ah-result-name">${frappe.utils.escape_html(
 						account.username || "Unknown"
@@ -1234,6 +923,37 @@ class AccountHub {
 		this.$.detailStatusBadge
 			.text(getStatusLabel(account.status))
 			.attr("class", "ah-badge " + getStatusBadge(account.status));
+
+		// Identity band: who they are + what they hold, zero clicks in
+		const metaBits = [];
+		if (account.owner?.phone) metaBits.push(formatPhone(account.owner.phone));
+		if (account.owner?.email?.address) metaBits.push(account.owner.email.address);
+		if (account.createdAt) metaBits.push("Joined " + formatDateOnly(account.createdAt));
+		this.$.identMeta.html(
+			metaBits
+				.map((bit) => `<span>${frappe.utils.escape_html(bit)}</span>`)
+				.join('<span class="ah-ident-dot">\u00b7</span>')
+		);
+		this.$.identMeta.toggle(metaBits.length > 0);
+		const balanceWallets = [...(account.wallets || [])].sort((a, b) => {
+			if (a.walletCurrency === "USD") return -1;
+			if (b.walletCurrency === "USD") return 1;
+			return 0;
+		});
+		this.$.identBalances.html(
+			balanceWallets
+				.map(
+					(w) =>
+						`<span class="ah-bal-chip"><span class="ah-bal-cur">${frappe.utils.escape_html(
+							w.walletCurrency || "USD"
+						)}</span><span class="ah-bal-amt">${formatCurrency(
+							w.balance,
+							w.walletCurrency
+						)}</span></span>`
+				)
+				.join("")
+		);
+		this.$.identBalances.toggle(balanceWallets.length > 0);
 
 		// Activate first tab
 		this.$.tabs.removeClass("active");

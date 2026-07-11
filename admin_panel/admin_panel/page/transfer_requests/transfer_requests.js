@@ -23,7 +23,7 @@ frappe.pages["transfer-requests"].on_page_load = function (wrapper) {
 		single_column: true,
 	});
 
-	new TransferRequestsManager(page);
+	wrapper.transfer_requests = new TransferRequestsManager(page);
 };
 
 const CashoutStatus = {
@@ -117,6 +117,7 @@ class TransferRequestsManager {
 			requestsTable: main.find(".requests-list table"),
 			noRequests: main.find(".no-requests"),
 			requestDetails: main.find(".request-details"),
+			pulseTiles: main.find(".pulse-tiles"),
 			paginationControls: main.find(".pagination-controls"),
 			requestsTbody: main.find(".requests-tbody"),
 			searchLoading: main.find(".search-loading"),
@@ -133,380 +134,205 @@ class TransferRequestsManager {
 	create_layout() {
 		this.page.main.html(`
             <style>
+                /* ═══ Ops-pulse design system — Transfer Requests (daily queue) ═══
+                   Same tokens as dashboard/census/account-hub; legacy --color-*
+                   names aliased so dynamic templates + inline styles convert. */
                 .flash-cashout-manager {
-                    --color-primary: #007856;
-                    --color-background: #F1F1F1;
-                    --color-layer: #FFFFFF;
-                    --color-text01: #212121;
-                    --color-text02: #939998;
-                    --color-border01: #DDE3E1;
-                    --color-green: #00A700;
-                    --color-error: #DC2626;
-                    --color-warning: #F59E0B;
+                    --tr-surface: var(--card-bg, #ffffff); --tr-ink: var(--text-color, #1a2420);
+                    --tr-ink2: var(--text-muted, #5c6b65); --tr-ink3: var(--text-light, #8fa098);
+                    --tr-line: var(--border-color, #e2e8e5); --tr-line-soft: var(--subtle-fg, #ecf1ee);
+                    --tr-accent: #007856; --tr-accent-ink: #007856; --tr-accent-soft: #e6f3ee;
+                    --tr-good: #0ca30c; --tr-warn: #b87d00; --tr-warn-bg: #fff3d6;
+                    --tr-serious: #c05a32; --tr-serious-bg: #fdeae2;
+                    --tr-shadow: 0 1px 2px rgba(26,36,32,0.05), 0 4px 14px rgba(26,36,32,0.04);
+                    /* legacy aliases */
+                    --color-primary: var(--tr-accent); --color-background: transparent;
+                    --color-layer: var(--tr-surface); --color-text01: var(--tr-ink);
+                    --color-text02: var(--tr-ink2); --color-border01: var(--tr-line);
+                    --color-green: var(--tr-good); --color-error: var(--tr-serious);
+                    --color-warning: var(--tr-warn);
+                    max-width: 1400px; margin: 0 auto;
+                }
+                [data-theme="dark"] .flash-cashout-manager, .dark .flash-cashout-manager {
+                    --tr-accent: #1e9e75; --tr-accent-ink: #4cc29e; --tr-accent-soft: #12352a;
+                    --tr-good: #35c135; --tr-warn: #fab219; --tr-warn-bg: #33290d;
+                    --tr-serious: #ec835a; --tr-serious-bg: #38211a;
+                    --tr-shadow: 0 1px 2px rgba(0,0,0,0.35), 0 6px 18px rgba(0,0,0,0.25);
                 }
 
-                .flash-cashout-manager {
-                    max-width: 1400px;
-                    margin: 0 auto;
-                }
+                /* dataset switch — segmented control */
+                .flash-cashout-manager .transfer-tabs { display: inline-flex; gap: 3px;
+                    background: var(--tr-line-soft); border: 1px solid var(--tr-line);
+                    border-radius: 11px; padding: 3px; margin-bottom: 14px; }
+                .flash-cashout-manager .transfer-tab { border: 0; background: transparent;
+                    color: var(--tr-ink2); font-size: 13px; font-weight: 600;
+                    padding: 6px 18px; border-radius: 8px; cursor: pointer; transition: all 0.13s; }
+                .flash-cashout-manager .transfer-tab:hover { color: var(--tr-ink); }
+                .flash-cashout-manager .transfer-tab.active { background: var(--tr-surface);
+                    color: var(--tr-accent-ink); box-shadow: var(--tr-shadow); }
+                .flash-cashout-manager .transfer-tab:focus-visible { outline: 2px solid var(--tr-accent);
+                    outline-offset: 1px; }
 
-                .flash-cashout-manager .modern-search-card {
-                    background: var(--color-layer);
-                    border-radius: 16px;
-                    padding: 24px;
-                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-                    border: 1px solid var(--color-border01);
-                    margin-bottom: 24px;
-                }
+                /* toolbar */
+                .flash-cashout-manager .modern-search-card { background: var(--tr-surface);
+                    border: 1px solid var(--tr-line); border-radius: 14px;
+                    box-shadow: var(--tr-shadow); padding: 14px 16px; margin-bottom: 14px; }
+                .flash-cashout-manager .modern-search-wrapper { display: flex; gap: 10px;
+                    flex-wrap: wrap; align-items: center; }
+                .flash-cashout-manager .modern-search-wrapper[style*="margin-bottom"] {
+                    margin-bottom: 10px !important; }
+                .flash-cashout-manager .modern-search-input { flex: 1; min-width: 220px;
+                    padding: 8px 13px; border: 1px solid var(--tr-line); border-radius: 10px;
+                    font-size: 13.5px; background: var(--tr-surface); color: var(--tr-ink); }
+                .flash-cashout-manager .modern-search-input:focus { outline: 2px solid var(--tr-accent);
+                    outline-offset: 1px; border-color: var(--tr-accent); }
+                .flash-cashout-manager .modern-search-input::placeholder { color: var(--tr-ink3); }
+                .flash-cashout-manager .modern-search-select { flex: 0 1 220px; min-width: 170px;
+                    appearance: auto; }
 
-                .flash-cashout-manager .transfer-tabs {
-                    display: inline-flex;
-                    background: var(--color-layer);
-                    border: 1px solid var(--color-border01);
-                    border-radius: 12px;
-                    padding: 4px;
-                    margin-bottom: 16px;
-                    gap: 4px;
-                }
+                /* buttons */
+                .flash-cashout-manager .modern-btn { display: inline-flex; align-items: center;
+                    gap: 6px; border: 1px solid var(--tr-line); background: var(--tr-surface);
+                    color: var(--tr-ink); border-radius: 9px; padding: 7px 14px; font-size: 13px;
+                    font-weight: 600; cursor: pointer; transition: all 0.13s; }
+                .flash-cashout-manager .modern-btn:hover { border-color: var(--tr-accent); }
+                .flash-cashout-manager .modern-btn:focus-visible { outline: 2px solid var(--tr-accent);
+                    outline-offset: 1px; }
+                .flash-cashout-manager .modern-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+                .flash-cashout-manager .modern-btn-primary { background: var(--tr-accent);
+                    border-color: var(--tr-accent); color: #fff; }
+                .flash-cashout-manager .modern-btn-primary:hover { filter: brightness(1.07); }
 
-                .flash-cashout-manager .transfer-tab {
-                    border: 0;
-                    background: transparent;
-                    color: var(--color-text02);
-                    border-radius: 8px;
-                    padding: 10px 18px;
-                    font-size: 14px;
-                    font-weight: 600;
-                    cursor: pointer;
-                }
+                /* quick actions — quiet round icon buttons */
+                .flash-cashout-manager .modern-icon-btn { width: 28px; height: 28px;
+                    display: inline-grid; place-items: center; border-radius: 8px;
+                    border: 1px solid var(--tr-line); background: var(--tr-surface);
+                    color: var(--tr-ink2); cursor: pointer; margin: 0 2px;
+                    font-size: 12px; transition: all 0.13s; }
+                .flash-cashout-manager .modern-icon-btn:hover { border-color: currentColor; }
+                .flash-cashout-manager .modern-icon-btn-primary { color: var(--tr-accent-ink); }
+                .flash-cashout-manager .modern-icon-btn-primary:hover { background: var(--tr-accent-soft); }
+                .flash-cashout-manager .modern-icon-btn-success { color: var(--tr-good); }
+                .flash-cashout-manager .modern-icon-btn-success:hover { background: var(--tr-accent-soft); }
 
-                .flash-cashout-manager .transfer-tab.active {
-                    background: var(--color-primary);
-                    color: white;
-                }
+                /* cards */
+                .flash-cashout-manager .modern-requests-card { background: var(--tr-surface);
+                    border: 1px solid var(--tr-line); border-radius: 14px;
+                    box-shadow: var(--tr-shadow); overflow: hidden; margin-bottom: 14px; }
+                .flash-cashout-manager .modern-card-header { display: flex; align-items: center;
+                    justify-content: space-between; gap: 12px; padding: 13px 18px;
+                    border-bottom: 1px solid var(--tr-line); }
+                .flash-cashout-manager .modern-card-title { margin: 0; font-size: 13.5px;
+                    font-weight: 650; color: var(--tr-ink); display: flex; align-items: center; }
+                .flash-cashout-manager .modern-card-title .fa { color: var(--tr-accent-ink); }
 
-                .flash-cashout-manager .modern-search-wrapper {
-                    display: flex;
-                    gap: 12px;
-                    align-items: center;
-                }
+                /* table */
+                .flash-cashout-manager .modern-table-wrapper { overflow-x: auto; }
+                .flash-cashout-manager .modern-table { width: 100%; border-collapse: collapse;
+                    font-size: 13px; }
+                .flash-cashout-manager .modern-table th { text-align: left; font-size: 11px;
+                    letter-spacing: 0.05em; text-transform: uppercase; color: var(--tr-ink2);
+                    font-weight: 650; padding: 10px 14px; border-bottom: 1px solid var(--tr-line);
+                    white-space: nowrap; }
+                .flash-cashout-manager .modern-table td { padding: 10px 14px;
+                    border-bottom: 1px solid var(--tr-line-soft); color: var(--tr-ink);
+                    font-variant-numeric: tabular-nums; }
+                .flash-cashout-manager .modern-table td strong { font-weight: 600; }
+                .flash-cashout-manager .modern-table tbody tr { cursor: pointer;
+                    border-left: 3px solid transparent; transition: background 0.12s; }
+                .flash-cashout-manager .modern-table tbody tr:hover { background: var(--tr-line-soft); }
+                .flash-cashout-manager .modern-table tbody tr.selected { background: var(--tr-accent-soft);
+                    border-left-color: var(--tr-accent); }
+                .flash-cashout-manager .modern-table tbody tr:last-child td { border-bottom: none; }
 
-                .flash-cashout-manager .modern-search-input {
-                    flex: 1;
-                    max-width: 450px;
-                    padding: 12px 16px;
-                    border: 2px solid var(--color-border01);
-                    border-radius: 12px;
-                    font-size: 15px;
-                    transition: all 0.2s ease;
-                    background: var(--color-layer);
-                    color: var(--color-text01);
-                }
+                /* status chips — pending work is amber, settled is green, failed is serious */
+                .flash-cashout-manager .modern-badge { display: inline-flex; align-items: center;
+                    border-radius: 999px; padding: 3px 11px; font-size: 11.5px; font-weight: 650;
+                    letter-spacing: 0.02em; white-space: nowrap; }
+                .flash-cashout-manager .cashout-badge-pending { background: var(--tr-warn-bg);
+                    color: var(--tr-warn); }
+                .flash-cashout-manager .cashout-badge-paid { background: var(--tr-accent-soft);
+                    color: var(--tr-accent-ink); }
+                .flash-cashout-manager .cashout-badge-cancelled { background: var(--tr-line-soft);
+                    color: var(--tr-ink3); }
+                .flash-cashout-manager .cashout-badge-failed { background: var(--tr-serious-bg);
+                    color: var(--tr-serious); }
 
-                .flash-cashout-manager .modern-search-input:focus {
-                    outline: none;
-                    border-color: var(--color-primary);
-                    box-shadow: 0 0 0 3px rgba(0, 120, 86, 0.1);
-                }
+                /* empty + loading */
+                .flash-cashout-manager .no-requests { text-align: center; padding: 40px 20px; }
+                .flash-cashout-manager .no-requests-icon { font-size: 26px; margin-bottom: 8px;
+                    filter: grayscale(0.4); opacity: 0.75; }
+                .flash-cashout-manager .no-requests-title { color: var(--tr-ink); margin: 0; }
+                .flash-cashout-manager .no-requests-body { color: var(--tr-ink3); margin: 4px 0 0; }
+                .flash-cashout-manager .loading-spinner { text-align: center; padding: 34px 0; }
+                .flash-cashout-manager .loading-spinner p { margin: 8px 0 0; font-size: 12.5px; }
+                .flash-cashout-manager .spinner { width: 22px; height: 22px;
+                    border: 2px solid var(--tr-line); border-top-color: var(--tr-accent);
+                    border-radius: 50%; margin: 0 auto; animation: tr-spin 0.8s linear infinite; }
+                @keyframes tr-spin { to { transform: rotate(360deg); } }
 
-                .flash-cashout-manager .modern-search-input::placeholder {
-                    color: var(--color-text02);
-                }
+                /* detail panel */
+                .flash-cashout-manager .detail-section { margin-bottom: 18px; }
+                .flash-cashout-manager .section-header { font-size: 11px; letter-spacing: 0.06em;
+                    text-transform: uppercase; color: var(--tr-ink2); font-weight: 650;
+                    margin: 0 0 8px; display: flex; align-items: center; }
+                .flash-cashout-manager .detail-item { display: flex; justify-content: space-between;
+                    gap: 12px; align-items: baseline; padding: 6px 0;
+                    border-bottom: 1px solid var(--tr-line-soft); }
+                .flash-cashout-manager .detail-label { font-size: 11px; letter-spacing: 0.05em;
+                    text-transform: uppercase; color: var(--tr-ink2); font-weight: 600; flex: none; }
+                .flash-cashout-manager .detail-value { font-size: 13px; font-weight: 600;
+                    color: var(--tr-ink); text-align: right; word-break: break-word; min-width: 0;
+                    font-variant-numeric: tabular-nums; }
+                .flash-cashout-manager .detail-value.amount-display { font-size: 15px;
+                    font-weight: 650; }
+                .flash-cashout-manager .detail-link { color: var(--tr-accent-ink);
+                    text-decoration: none; font-weight: 600; }
+                .flash-cashout-manager .detail-link:hover { text-decoration: underline; }
+                .flash-cashout-manager .detail-remarks { white-space: pre-wrap; text-align: right; }
 
-                .flash-cashout-manager .modern-search-select {
-                    max-width: 250px;
-                }
+                /* pagination */
+                .flash-cashout-manager .pagination-controls { display: flex; }
 
-                .flash-cashout-manager .modern-btn {
-                    padding: 12px 24px;
-                    border-radius: 12px;
-                    font-weight: 500;
-                    font-size: 15px;
-                    border: none;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 8px;
-                }
+                /* queue pulse tiles */
+                .flash-cashout-manager .tr-tiles { display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+                    gap: 12px; margin-bottom: 14px; }
+                .flash-cashout-manager .tr-tile { background: var(--tr-surface);
+                    border: 1px solid var(--tr-line); border-radius: 14px;
+                    box-shadow: var(--tr-shadow); padding: 12px 16px; }
+                .flash-cashout-manager .tr-tile-label { font-size: 11px; letter-spacing: 0.06em;
+                    text-transform: uppercase; color: var(--tr-ink2); font-weight: 650; }
+                .flash-cashout-manager .tr-tile-value { font-size: 22px; font-weight: 650;
+                    color: var(--tr-ink); font-variant-numeric: tabular-nums; margin-top: 2px; }
+                .flash-cashout-manager .tr-tile-value.warn { color: var(--tr-warn); }
+                .flash-cashout-manager .tr-tile-value.bad { color: var(--tr-serious); }
+                .flash-cashout-manager .tr-tile-sub { font-size: 11.5px; color: var(--tr-ink3);
+                    margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-                .flash-cashout-manager .modern-btn-primary {
-                    background: var(--color-primary);
-                    color: white;
-                }
+                /* row age chips */
+                .flash-cashout-manager .tr-age { display: inline-flex; border-radius: 999px;
+                    padding: 2px 8px; font-size: 11px; font-weight: 650; margin-left: 8px;
+                    background: var(--tr-line-soft); color: var(--tr-ink2); }
+                .flash-cashout-manager .tr-age.warn { background: var(--tr-warn-bg); color: var(--tr-warn); }
+                .flash-cashout-manager .tr-age.bad { background: var(--tr-serious-bg); color: var(--tr-serious); }
 
-                .flash-cashout-manager .modern-btn-primary:hover {
-                    background: #005a42;
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(0, 120, 86, 0.2);
-                }
+                /* details as a right drawer — no scroll-jump on row click */
+                .flash-cashout-manager .request-details { position: fixed; top: 0; right: 0;
+                    bottom: 0; width: min(620px, 94vw); z-index: 1040; margin: 0;
+                    border-radius: 16px 0 0 16px; border-right: none;
+                    box-shadow: -20px 0 50px rgba(26, 36, 32, 0.18); overflow-y: auto; }
+                [data-theme="dark"] .flash-cashout-manager .request-details,
+                .dark .flash-cashout-manager .request-details {
+                    box-shadow: -20px 0 50px rgba(0, 0, 0, 0.5); }
+                .flash-cashout-manager .request-details .modern-card-header { position: sticky;
+                    top: 0; background: var(--tr-surface); z-index: 1; }
 
-                .flash-cashout-manager .modern-btn-secondary {
-                    background: var(--color-layer);
-                    color: var(--color-text01);
-                    border: 2px solid var(--color-border01);
-                }
-
-                .flash-cashout-manager .modern-btn-secondary:hover {
-                    background: var(--color-background);
-                    border-color: var(--color-text02);
-                }
-
-                .flash-cashout-manager .modern-icon-btn {
-                    padding: 8px 12px;
-                    border-radius: 8px;
-                    border: none;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    margin: 0 2px;
-                    font-size: 14px;
-                    line-height: 1;
-                }
-
-                .flash-cashout-manager .modern-icon-btn:disabled {
-                    cursor: not-allowed;
-                    opacity: 0.6;
-                }
-
-                .flash-cashout-manager .modern-icon-btn-primary {
-                    background: rgba(0, 120, 86, 0.1);
-                    color: var(--color-primary);
-                }
-
-                .flash-cashout-manager .modern-icon-btn-primary:hover:not(:disabled) {
-                    background: var(--color-primary);
-                    color: white;
-                }
-
-                .flash-cashout-manager .modern-icon-btn-success {
-                    background: rgba(0, 167, 0, 0.1);
-                    color: var(--color-green);
-                }
-
-                .flash-cashout-manager .modern-icon-btn-success:hover:not(:disabled) {
-                    background: var(--color-green);
-                    color: white;
-                }
-
-                .flash-cashout-manager .modern-requests-card {
-                    background: var(--color-layer);
-                    border-radius: 16px;
-                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-                    border: 1px solid var(--color-border01);
-                    overflow: hidden;
-                    margin-bottom: 24px;
-                }
-
-                .flash-cashout-manager .modern-card-header {
-                    padding: 20px 24px;
-                    background: linear-gradient(135deg, var(--color-primary) 0%, #005a42 100%);
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }
-
-                .flash-cashout-manager .modern-card-title {
-                    font-size: 20px;
-                    font-weight: 600;
-                    color: white;
-                    margin: 0;
-                }
-
-                .flash-cashout-manager .modern-table-wrapper {
-                    overflow-x: auto;
-                }
-
-                .flash-cashout-manager .modern-table {
-                    width: 100%;
-                    border-collapse: separate;
-                    border-spacing: 0;
-                }
-
-                .flash-cashout-manager .modern-table thead {
-                    background: var(--color-background);
-                }
-
-                .flash-cashout-manager .modern-table th {
-                    padding: 16px 20px;
-                    text-align: left;
-                    font-size: 13px;
-                    font-weight: 600;
-                    color: var(--color-text02);
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                    border-bottom: 2px solid var(--color-border01);
-                }
-
-                .flash-cashout-manager .modern-table tbody tr {
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    border-bottom: 1px solid var(--color-border01);
-                }
-
-                .flash-cashout-manager .modern-table tbody tr:hover {
-                    background: rgba(0, 120, 86, 0.03);
-                }
-
-                .flash-cashout-manager .modern-table tbody tr.selected {
-                    background: rgba(0, 120, 86, 0.15) !important;
-                    border-left: 4px solid var(--color-primary);
-                }
-
-                .flash-cashout-manager .modern-table td {
-                    padding: 16px 20px;
-                    color: var(--color-text01);
-                    font-size: 14px;
-                }
-
-                .flash-cashout-manager .modern-badge {
-                    display: inline-flex;
-                    align-items: center;
-                    padding: 6px 12px;
-                    border-radius: 20px;
-                    font-size: 12px;
-                    font-weight: 600;
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                }
-
-                .flash-cashout-manager .cashout-badge-pending {
-                    background: rgba(245, 158, 11, 0.15);
-                    color: var(--color-warning);
-                }
-
-                .flash-cashout-manager .cashout-badge-paid {
-                    background: #d4f7d9;
-                    color: #15803d;
-                }
-
-                .flash-cashout-manager .cashout-badge-cancelled {
-                    background: rgba(100, 116, 139, 0.15);
-                    color: #475569;
-                }
-
-                .flash-cashout-manager .cashout-badge-failed {
-                    background: #fde2e2;
-                    color: #b91c1c;
-                }
-
-                .flash-cashout-manager .no-requests {
-                    padding: 60px 20px;
-                    text-align: center;
-                    color: var(--color-text02);
-                }
-
-                .flash-cashout-manager .no-requests-icon {
-                    font-size: 48px;
-                    margin-bottom: 16px;
-                    opacity: 0.3;
-                }
-
-                .flash-cashout-manager .loading-spinner {
-                    padding: 60px 20px;
-                    text-align: center;
-                }
-
-                .flash-cashout-manager .spinner {
-                    width: 40px;
-                    height: 40px;
-                    border: 3px solid var(--color-border01);
-                    border-top-color: var(--color-primary);
-                    border-radius: 50%;
-                    animation: cashout-spin 0.8s linear infinite;
-                    margin: 0 auto 16px;
-                }
-
-                @keyframes cashout-spin {
-                    to { transform: rotate(360deg); }
-                }
-
-                .flash-cashout-manager .section-header {
-                    font-size: 16px;
-                    font-weight: 600;
-                    color: var(--color-text01);
-                    margin-bottom: 16px;
-                    padding-bottom: 12px;
-                    border-bottom: 2px solid var(--color-border01);
-                }
-
-                .flash-cashout-manager .detail-item {
-                    margin-bottom: 16px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 4px;
-                }
-
-                .flash-cashout-manager .detail-label {
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: var(--color-text02);
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
-                }
-
-                .flash-cashout-manager .detail-value {
-                    font-size: 15px;
-                    color: var(--color-text01);
-                    font-weight: 500;
-                }
-
-                .flash-cashout-manager .detail-remarks {
-                    white-space: pre-wrap;
-                }
-
-                .flash-cashout-manager .detail-link {
-                    color: var(--color-primary);
-                    text-decoration: none;
-                    font-weight: 600;
-                }
-
-                .flash-cashout-manager .detail-link:hover {
-                    text-decoration: underline;
-                }
-
-                .flash-cashout-manager .amount-display {
-                    font-size: 20px;
-                    font-weight: 700;
-                    color: var(--color-primary);
-                }
-
-                @media (max-width: 768px) {
-                    .flash-cashout-manager .modern-search-wrapper {
-                        flex-direction: column;
-                        align-items: stretch;
-                    }
-
-                    .flash-cashout-manager .modern-search-input {
-                        max-width: 100%;
-                        width: 100%;
-                    }
-
-                    .flash-cashout-manager .modern-btn {
-                        width: 100%;
-                        justify-content: center;
-                    }
-
-                    .flash-cashout-manager .modern-table th,
-                    .flash-cashout-manager .modern-table td {
-                        padding: 12px 10px;
-                        font-size: 13px;
-                    }
-
-                    .flash-cashout-manager .modern-table-wrapper {
-                        overflow-x: auto;
-                    }
-
-                    .flash-cashout-manager .request-details .card-body {
-                        padding: 16px !important;
-                    }
-
-                    .flash-cashout-manager .request-details .d-flex {
-                        flex-direction: column;
-                    }
-
-                    .flash-cashout-manager .request-details .d-flex button {
-                        width: 100%;
-                    }
+                @media (prefers-reduced-motion: no-preference) {
+                    .flash-cashout-manager .modern-requests-card { animation: tr-rise 0.3s ease; }
+                    @keyframes tr-rise { from { opacity: 0; transform: translateY(5px); } }
+                    .flash-cashout-manager .request-details { animation: tr-slide 0.22s ease; }
+                    @keyframes tr-slide { from { opacity: 0.4; transform: translateX(40px); } }
                 }
             </style>
 
@@ -515,6 +341,9 @@ class TransferRequestsManager {
                     <button class="transfer-tab active" data-type="cashout" role="tab" aria-selected="true">Cashouts</button>
                     <button class="transfer-tab" data-type="bridge" role="tab" aria-selected="false">Bridge</button>
                 </div>
+
+                <!-- Queue pulse -->
+                <div class="tr-tiles pulse-tiles" style="display:none;"></div>
 
                 <!-- Search & Filter -->
                 <div class="modern-search-card">
@@ -853,6 +682,14 @@ class TransferRequestsManager {
 		this.$cache.searchInput.on("input", debouncedSearch);
 
 		main.find(".btn-refresh").on("click", () => this.load_requests());
+
+		$(document).on("keydown.transfer_requests", (e) => {
+			// wrapper visibility guard: desk keeps this page alive after
+			// navigation, and this handler must not fire on other pages
+			if (e.key === "Escape" && !window.cur_dialog && this.page.wrapper.is(":visible")) {
+				this.close_details();
+			}
+		});
 		main.find(".btn-close-details").on("click", () => this.close_details());
 		main.on("click", ".btn-create-cashout", () =>
 			this.create_cashout_request(this.selected_request)
@@ -963,7 +800,106 @@ class TransferRequestsManager {
         `);
 	}
 
+	server_now_ms() {
+		// Ages are measured against the server clock the payload ships, not
+		// the browser clock — operator tz must not skew warn/bad tones.
+		const raw = this.pulse && this.pulse.now;
+		const parsed = raw ? new Date(String(raw).replace(" ", "T")).getTime() : NaN;
+		return isNaN(parsed) ? Date.now() : parsed;
+	}
+
+	formatAge(dateStr) {
+		const then = new Date(String(dateStr).replace(" ", "T"));
+		if (isNaN(then)) return "";
+		const mins = Math.max(0, Math.floor((this.server_now_ms() - then.getTime()) / 60000));
+		if (mins < 60) return `${mins}m`;
+		const hours = Math.floor(mins / 60);
+		if (hours < 24) return `${hours}h`;
+		return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+	}
+
+	age_tone(dateStr) {
+		const then = new Date(String(dateStr).replace(" ", "T"));
+		if (isNaN(then)) return "";
+		const hours = (this.server_now_ms() - then.getTime()) / 3600e3;
+		if (hours >= 24) return "bad";
+		if (hours >= 6) return "warn";
+		return "";
+	}
+
+	is_actionable(req) {
+		const status = req.display_status || req.status || "";
+		return (
+			status === CashoutStatus.PENDING ||
+			status === CashoutStatus.DRAFT ||
+			status === CashoutStatus.IN_PROGRESS
+		);
+	}
+
+	render_age_chip(req) {
+		if (!this.is_actionable(req) || !req.creation) return "";
+		const age = this.formatAge(req.creation);
+		if (!age) return "";
+		return `<span class="tr-age ${this.age_tone(req.creation)}">${age}</span>`;
+	}
+
+	load_pulse() {
+		frappe.call({
+			method: "admin_panel.api.pulse.get_transfer_pulse",
+			callback: (res) => {
+				this.pulse = res.message;
+				this.render_pulse();
+			},
+			error: () => this.$cache.pulseTiles.hide(),
+		});
+	}
+
+	render_pulse() {
+		if (!this.pulse) return;
+		const tiles = [];
+		if (this.active_type === "bridge") {
+			const b = this.pulse.bridge || {};
+			tiles.push({ label: "Pending", value: b.pending ?? 0 });
+			tiles.push({ label: "Fiat Received", value: b.fiat_received ?? 0 });
+			tiles.push({
+				label: "Failed",
+				value: b.failed ?? 0,
+				tone: b.failed ? "bad" : "",
+				sub: b.failed ? "needs review" : "none unresolved",
+			});
+		} else {
+			const c = this.pulse.cashouts || {};
+			tiles.push({ label: "Pending", value: c.pending ?? 0 });
+			tiles.push({ label: "In Progress", value: c.in_progress ?? 0 });
+			tiles.push({
+				label: "Oldest Waiting",
+				value: c.oldest_at ? this.formatAge(c.oldest_at) : "\u2014",
+				tone: c.oldest_at ? this.age_tone(c.oldest_at) : "",
+				sub: c.oldest_id || "queue clear",
+			});
+		}
+		this.$cache.pulseTiles.html(
+			tiles
+				.map(
+					(t) => `
+                <div class="tr-tile">
+                    <div class="tr-tile-label">${this.escapeHtml(t.label)}</div>
+                    <div class="tr-tile-value ${t.tone || ""}">${this.escapeHtml(
+						String(t.value)
+					)}</div>
+                    ${t.sub ? `<div class="tr-tile-sub">${this.escapeHtml(t.sub)}</div>` : ""}
+                </div>`
+				)
+				.join("")
+		);
+		this.$cache.pulseTiles.show();
+	}
+
 	load_requests() {
+		// tab switches re-render tiles from the cached pulse immediately —
+		// both datasets are in the payload; the fetch then freshens it
+		if (this.pulse) this.render_pulse();
+		this.load_pulse();
 		if (this.active_type === "bridge") {
 			this.load_bridge_requests();
 		} else {
@@ -1052,7 +988,7 @@ class TransferRequestsManager {
                 <td><span class="modern-badge ${this.escapeHtml(statusBadge)}">${this.escapeHtml(
 			displayStatus
 		)}</span></td>
-                <td>${this.formatDateTime(req.creation)}</td>
+                <td>${this.formatDateTime(req.creation)}${this.render_age_chip(req)}</td>
                 ${actionsHtml}
             </tr>
         `);
@@ -1372,11 +1308,6 @@ class TransferRequestsManager {
 		completeBtn.toggle(this.canSettleCashout(req));
 
 		panel.show();
-
-		const row = this.page.main.find(`tr[data-request-id="${req.name}"]`);
-		if (row.length) {
-			row[0].scrollIntoView({ behavior: "smooth", block: "start" });
-		}
 	}
 
 	set_cashout_action_buttons_disabled(disabled) {
@@ -1672,11 +1603,6 @@ class TransferRequestsManager {
         `);
 
 		panel.show();
-
-		const row = this.page.main.find(`tr[data-request-id="${this.escapeHtml(req.name)}"]`);
-		if (row.length) {
-			row[0].scrollIntoView({ behavior: "smooth", block: "start" });
-		}
 	}
 
 	close_details() {

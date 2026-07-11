@@ -95,3 +95,67 @@ def get_dashboard_pulse():
 		"upgrades": upgrades,
 		"now": str(frappe.utils.now_datetime()),
 	}
+
+
+@frappe.whitelist()
+@require_admin()
+@handle_api_errors
+def get_transfer_pulse():
+	"""Queue vitals for the Transfer Requests page tiles.
+
+	Counts are DB-wide (not the current table page/filter) so the tiles
+	stay honest under pagination and status filters.
+	"""
+	oldest = frappe.get_all(
+		"Cashout",
+		filters={"status": ["in", ACTIONABLE_CASHOUT_STATUSES]},
+		fields=["name", "creation"],
+		order_by="creation asc",
+		limit=1,
+	)
+	bridge_counts = {
+		key: frappe.db.count("Bridge Transfer Request", {"status": status})
+		for key, status in (
+			("pending", "Pending"),
+			("fiat_received", "Fiat Received"),
+			("failed", "Failed"),
+		)
+	}
+	return {
+		"cashouts": {
+			"pending": frappe.db.count("Cashout", {"status": "Pending"}),
+			"in_progress": frappe.db.count("Cashout", {"status": "In Progress"}),
+			"oldest_at": str(oldest[0].creation) if oldest else None,
+			"oldest_id": oldest[0].name if oldest else None,
+		},
+		"bridge": bridge_counts,
+		"now": str(frappe.utils.now_datetime()),
+	}
+
+
+@frappe.whitelist()
+@require_admin()
+@handle_api_errors
+def get_upgrade_pulse():
+	"""Queue vitals for the Account Management (upgrade requests) tiles."""
+	oldest = frappe.get_all(
+		"Account Upgrade Request",
+		filters={"status": "Pending"},
+		fields=["name", "username", "creation"],
+		order_by="creation asc",
+		limit=1,
+	)
+	week_ago = frappe.utils.add_days(frappe.utils.now_datetime(), -7)
+	return {
+		"pending": frappe.db.count("Account Upgrade Request", {"status": "Pending"}),
+		# Approximation: `modified` bumps on ANY re-save of an already
+		# processed request (e.g. phone sync), not just the approve/reject
+		# transition — the doctype records no processed-at timestamp.
+		"processed_week": frappe.db.count(
+			"Account Upgrade Request",
+			{"status": ["in", ["Approved", "Rejected"]], "modified": [">=", week_ago]},
+		),
+		"oldest_at": str(oldest[0].creation) if oldest else None,
+		"oldest_who": (oldest[0].username or oldest[0].name) if oldest else None,
+		"now": str(frappe.utils.now_datetime()),
+	}

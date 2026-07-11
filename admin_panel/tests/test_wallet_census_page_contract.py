@@ -66,3 +66,20 @@ def test_customer_detail_caps_tx_limit():
 	customer_py = read_text(ADMIN_PANEL / "api" / "customer.py")
 
 	assert "cint(tx_limit)" in customer_py
+
+
+def test_admin_dashboard_has_wallet_census_card():
+	js = (ADMIN_PANEL / "admin_panel" / "page" / "admin_dashboard" / "admin_dashboard.js").read_text()
+
+	assert 'data-route="/app/wallet-census"' in js
+	assert 'ad-tool-title">Wallet Census' in js
+
+
+def test_workspace_links_include_wallet_census_page():
+	workspace = json.loads((ADMIN_PANEL / "fixtures" / "workspace.json").read_text())
+	ws = workspace[0] if isinstance(workspace, list) else workspace
+	links = [l for l in ws["links"] if l.get("link_to") == "wallet-census"]
+
+	assert len(links) == 1
+	assert links[0]["link_type"] == "Page"
+	assert links[0]["label"] == "Wallet Census"

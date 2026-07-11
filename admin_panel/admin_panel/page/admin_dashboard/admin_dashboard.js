@@ -440,6 +440,13 @@ frappe.pages["admin-dashboard"].on_page_load = function (wrapper) {
                         <div class="ad-tool-desc">Review cashout payments and Bridge transfer audit records from one operations queue.</div>
                     </div>
                 </div>
+                <div class="ad-tool-card" data-route="/app/wallet-census">
+                    <div class="ad-tool-icon" style="background:#ede9fe;color:#6d28d9;">💰</div>
+                    <div class="ad-tool-content">
+                        <div class="ad-tool-title">Wallet Census</div>
+                        <div class="ad-tool-desc">Live IBEX balances for every account — totals, buckets, per-customer detail, CSV export.</div>
+                    </div>
+                </div>
                 <div class="ad-tool-card" data-route="/app/alert-users">
                     <div class="ad-tool-icon" style="background:#fef3c7;color:#d97706;">🔔</div>
                     <div class="ad-tool-content">

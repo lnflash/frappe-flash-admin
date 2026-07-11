@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2026-07-11 18:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-07-11 10:44:23.376547",
+ "modified_by": "Administrator",
+ "module": "Admin Panel",
+ "name": "system-accounts",
+ "owner": "Administrator",
+ "page_name": "system-accounts",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "System Accounts"
+}

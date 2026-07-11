@@ -16,6 +16,11 @@ def handle_api_errors(func):
 	def wrapper(*args, **kwargs):
 		try:
 			return func(*args, **kwargs)
+		except (frappe.ValidationError, frappe.PermissionError):
+			# Deliberate frappe.throw() calls are user-facing by design —
+			# let frappe's normal messaging surface them instead of masking
+			# them as a generic internal error.
+			raise
 		except (GraphQLError, IbexError) as e:
 			frappe.logger().error(f"Upstream API error in {func.__name__}: {e}")
 			frappe.response["http_status_code"] = 500

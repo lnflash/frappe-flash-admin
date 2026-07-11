@@ -64,6 +64,13 @@ def sync_pages():
 			"roles": [],
 		},
 		{
+			"name": "system-accounts",
+			"title": "System Accounts",
+			"module": "Admin Panel",
+			"standard": "Yes",
+			"roles": [],
+		},
+		{
 			"name": "wallet-census",
 			"title": "Wallet Census",
 			"module": "Admin Panel",

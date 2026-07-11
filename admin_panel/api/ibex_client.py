@@ -71,7 +71,7 @@ class IbexError(Exception):
 
 
 class IbexClient:
-	"""Minimal read-only IBEX Hub client with client-credentials auth."""
+	"""Read-mostly (two gated treasury writes) IBEX Hub client with client-credentials auth."""
 
 	def __init__(self):
 		env = frappe.conf.get("ibex_environment") or "production"
@@ -154,6 +154,51 @@ class IbexClient:
 		if not resp.ok:
 			raise IbexError(f"IBEX GET {path} failed: {resp.status_code} {resp.text[:200]}")
 		return resp
+
+	def _post(self, path: str, body: dict) -> requests.Response:
+		"""POST with the same raw-token auth + 401/429 handling as _get.
+
+		Only the two treasury calls below use this — the client is otherwise
+		read-only by design. Never add a write here without a matching
+		System-Manager-gated endpoint and a System Transfer Log record.
+		"""
+		url = f"{self.hub_url}{path}"
+		headers = {"Authorization": self._get_token()}
+		resp = self._session.post(url, json=body, headers=headers, timeout=30)
+		if resp.status_code == 401:
+			self._fetch_token()
+			headers = {"Authorization": self._get_token()}
+			resp = self._session.post(url, json=body, headers=headers, timeout=30)
+		if resp.status_code == 429:
+			time.sleep(RATE_LIMIT_BACKOFF_SECONDS)
+			resp = self._session.post(url, json=body, headers=headers, timeout=30)
+		if not resp.ok:
+			raise IbexError(f"IBEX POST {path} failed: {resp.status_code} {resp.text[:200]}")
+		return resp
+
+	def add_invoice(self, account_id: str, amount: float, memo: str = "", expiration: int = 45) -> dict:
+		"""Create an LN invoice ON one of our own accounts: POST /v2/invoice/add.
+
+		amount is in the account's MAJOR units (dollars for USD/USDT — same
+		as toIbex() in the flash backend). IBEX silently caps non-msat
+		receive invoices at 60s expiration; we pay immediately, so 45s.
+		Returns the response dict; bolt11 at invoice.bolt11.
+		"""
+		resp = self._post(
+			"/v2/invoice/add",
+			{"accountId": account_id, "amount": amount, "memo": memo, "expiration": expiration},
+		)
+		return resp.json()
+
+	def pay_invoice(self, account_id: str, bolt11: str) -> dict:
+		"""Pay a bolt11 FROM one of our own accounts: POST /v2/invoice/pay.
+
+		Amount omitted — the invoice face value is paid. This is the same
+		add-invoice-on-receiver / pay-from-sender primitive the flash
+		cutover code uses for treasury moves.
+		"""
+		resp = self._post("/v2/invoice/pay", {"accountId": account_id, "bolt11": bolt11})
+		return resp.json()
 
 	def get_account_details(self, account_id: str) -> dict:
 		"""Live single-account read: GET /v2/account/{id}. balance in dollars.

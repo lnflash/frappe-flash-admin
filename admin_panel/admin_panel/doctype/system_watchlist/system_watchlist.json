@@ -1,0 +1,72 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:account_ref",
+ "creation": "2026-07-11 19:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "account_ref",
+  "label",
+  "allow_transfers",
+  "column_break_1",
+  "added_by"
+ ],
+ "fields": [
+  {
+   "fieldname": "account_ref",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Account (username or mongo id)",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_transfers",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Allow Transfers"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "added_by",
+   "fieldtype": "Data",
+   "label": "Added By",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-07-11 19:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Admin Panel",
+ "name": "System Watchlist",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Accounts Manager"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

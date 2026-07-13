@@ -361,7 +361,7 @@ def approve_bank_account_update_request(request_id):
 	if req.status != "Pending":
 		return {"success": False, "error": f"Request has already been {req.status.lower()}"}
 
-	if not req.bank_name or not req.account_number:
+	if not req.bank_name or not req.bank_branch or not req.account_type or not req.account_number:
 		return {"success": False, "error": "Request is missing required bank details."}
 
 	bank_account = frappe.get_doc("Bank Account", req.bank_account, for_update=True)

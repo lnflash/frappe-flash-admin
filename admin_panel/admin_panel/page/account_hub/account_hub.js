@@ -147,6 +147,22 @@ function formatCurrency(cents, currency) {
 	return sym + (cents / 100).toFixed(2);
 }
 
+function formatApiErrors(errors) {
+	// Flash GraphQL mutations return validation failures as an array of
+	// { message } objects, not strings. String()-ing them (e.g. via
+	// Array.join) renders "[object Object]" — pull the message out of each.
+	if (!errors) return "";
+	const list = Array.isArray(errors) ? errors : [errors];
+	return list
+		.map((e) => {
+			if (typeof e === "string") return e;
+			if (e && typeof e === "object") return e.message || e.error || JSON.stringify(e);
+			return e == null ? "" : String(e);
+		})
+		.filter(Boolean)
+		.join(", ");
+}
+
 /* ─────────────────────────────────────────────
    AccountHub Class
    ───────────────────────────────────────────── */
@@ -1391,9 +1407,7 @@ class AccountHub {
 							frappe.msgprint({
 								title: "Error",
 								indicator: "red",
-								message: Array.isArray(result.errors)
-									? result.errors.join(", ")
-									: result.errors,
+								message: formatApiErrors(result.errors),
 							});
 						} else {
 							frappe.show_alert(
@@ -1462,9 +1476,7 @@ class AccountHub {
 							frappe.msgprint({
 								title: "Error",
 								indicator: "red",
-								message: Array.isArray(result.errors)
-									? result.errors.join(", ")
-									: result.errors,
+								message: formatApiErrors(result.errors),
 							});
 						} else {
 							frappe.show_alert(
@@ -1532,9 +1544,7 @@ class AccountHub {
 							frappe.msgprint({
 								title: "Error",
 								indicator: "red",
-								message: Array.isArray(result.errors)
-									? result.errors.join(", ")
-									: result.errors,
+								message: formatApiErrors(result.errors),
 							});
 						} else {
 							frappe.show_alert(
@@ -1579,9 +1589,7 @@ class AccountHub {
 						frappe.msgprint({
 							title: "Error",
 							indicator: "red",
-							message: Array.isArray(result.errors)
-								? result.errors.join(", ")
-								: result.errors,
+							message: formatApiErrors(result.errors),
 						});
 					} else {
 						frappe.show_alert(
@@ -1620,9 +1628,7 @@ class AccountHub {
 							frappe.msgprint({
 								title: "Error",
 								indicator: "red",
-								message: Array.isArray(result.errors)
-									? result.errors.join(", ")
-									: result.errors,
+								message: formatApiErrors(result.errors),
 							});
 						} else {
 							frappe.show_alert(

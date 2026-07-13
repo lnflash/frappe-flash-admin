@@ -1392,12 +1392,32 @@ class AccountHub {
 				const selectedOption = options.find((o) => o.label === values.new_level);
 				if (!selectedOption) return;
 
+				// Flash requires an ERP party for level 2 (Pro) and 3 (Merchant)
+				// accounts. Existing Pro/Merchant accounts already carry one — pass
+				// it back so a re-level doesn't strip it. Minting a new party is the
+				// upgrade-request approval flow's job (it creates the ERP Customer/
+				// Address/Bank records), so don't fabricate one here.
+				const needsErpParty =
+					selectedOption.value === ACCOUNT_LEVELS.TWO ||
+					selectedOption.value === ACCOUNT_LEVELS.THREE;
+				if (needsErpParty && !account.erpParty) {
+					frappe.msgprint({
+						title: "ERP Party Required",
+						indicator: "orange",
+						message: `${
+							ACCOUNT_LEVEL_LABELS[selectedOption.value]
+						} accounts require an ERP party, and this account has none. Approve an account upgrade request instead — that flow creates the ERP Customer, Address, and Bank Account records.`,
+					});
+					return;
+				}
+
 				d.hide();
 				frappe.call({
 					method: "admin_panel.api.admin_api.update_account_level",
 					args: {
 						uid: account.id || account.uuid,
 						level: selectedOption.value,
+						erp_party: needsErpParty ? account.erpParty : undefined,
 					},
 					freeze: true,
 					freeze_message: "Updating account level...",

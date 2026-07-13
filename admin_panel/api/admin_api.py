@@ -27,10 +27,15 @@ def get_account_by_phone(phone):
 @frappe.whitelist()
 @require_admin()
 @handle_api_errors
-def update_account_level(uid, level):
-	"""Update account level"""
+def update_account_level(uid, level, erp_party=None):
+	"""Update account level.
+
+	Flash requires an erpParty for level TWO/THREE accounts. Existing Pro/
+	Merchant accounts already have one, so the Account Hub passes it back to
+	avoid stripping it on a re-level. Creating a brand-new party is the
+	upgrade-request approval flow's job (see _create_erp_records)."""
 	client = GraphQLClient()
-	return client.update_account_level(uid, level)
+	return client.update_account_level(uid, level, erp_party=erp_party)
 
 
 @frappe.whitelist()

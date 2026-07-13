@@ -1,0 +1,120 @@
+{
+	"actions": [],
+	"allow_rename": 1,
+	"creation": "2026-07-13 00:00:00.000000",
+	"custom": 0,
+	"default_view": "List",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": [
+		"party",
+		"bank_account",
+		"status",
+		"support_note",
+		"new_details_section",
+		"bank_name",
+		"bank_branch",
+		"account_type",
+		"account_number",
+		"currency"
+	],
+	"fields": [
+		{
+			"fieldname": "party",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Customer",
+			"options": "Customer",
+			"reqd": 1
+		},
+		{
+			"fieldname": "bank_account",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Bank Account",
+			"options": "Bank Account",
+			"reqd": 1
+		},
+		{
+			"default": "Pending",
+			"fieldname": "status",
+			"fieldtype": "Select",
+			"in_list_view": 1,
+			"label": "Status",
+			"options": "Pending\nApproved\nRejected\nClosed"
+		},
+		{
+			"fieldname": "support_note",
+			"fieldtype": "Small Text",
+			"label": "Support Note"
+		},
+		{
+			"fieldname": "new_details_section",
+			"fieldtype": "Section Break",
+			"label": "Requested New Details"
+		},
+		{
+			"fieldname": "bank_name",
+			"fieldtype": "Data",
+			"label": "Bank Name"
+		},
+		{
+			"fieldname": "bank_branch",
+			"fieldtype": "Data",
+			"label": "Bank Branch"
+		},
+		{
+			"fieldname": "account_type",
+			"fieldtype": "Link",
+			"label": "Account Type",
+			"options": "Bank Account Type"
+		},
+		{
+			"fieldname": "account_number",
+			"fieldtype": "Data",
+			"label": "Account Number"
+		},
+		{
+			"fieldname": "currency",
+			"fieldtype": "Link",
+			"label": "Currency",
+			"options": "Currency"
+		}
+	],
+	"index_web_pages_for_search": 1,
+	"links": [],
+	"modified": "2026-07-13 00:00:00.000000",
+	"modified_by": "Administrator",
+	"module": "Admin Panel",
+	"name": "Bank Account Update Request",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 1,
+			"write": 1
+		},
+		{
+			"create": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "Flash Admin",
+			"write": 1
+		}
+	],
+	"row_format": "Dynamic",
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": []
+}

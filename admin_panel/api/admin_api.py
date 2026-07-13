@@ -354,6 +354,113 @@ def reject_upgrade_request(request_id, reason=None):
 @frappe.whitelist()
 @require_admin()
 @handle_api_errors
+def approve_bank_account_update_request(request_id):
+	"""Approve a bank account update request by patching the Bank Account in place.
+
+	The Bank Account document's `name` (and its `is_default` flag) are preserved so
+	that in-flight cashout offers and Cashout documents that reference the account
+	by name keep resolving. Currency is never changed (it is locked at request time).
+	"""
+	req = frappe.get_doc("Bank Account Update Request", request_id, for_update=True)
+
+	if req.status != "Pending":
+		return {"success": False, "error": f"Request has already been {req.status.lower()}"}
+
+	if not req.bank_name or not req.bank_branch or not req.account_type or not req.account_number:
+		return {"success": False, "error": "Request is missing required bank details."}
+
+	bank_account = frappe.get_doc("Bank Account", req.bank_account, for_update=True)
+
+	# Re-verify ownership at approval time (mirror of Cashout.validate).
+	if bank_account.party_type != "Customer" or bank_account.party != req.party:
+		return {"success": False, "error": "Bank Account does not belong to the requesting customer."}
+
+	# Reject a collision with a different account's number (mirror of create-time dedupe).
+	if req.account_number and frappe.db.exists(
+		"Bank Account",
+		{"bank_account_no": req.account_number, "name": ["!=", bank_account.name]},
+	):
+		return {"success": False, "error": "Another bank account already uses that account number."}
+
+	old_values = {
+		"bank": bank_account.bank,
+		"branch_code": bank_account.branch_code,
+		"account_type": bank_account.account_type,
+		"bank_account_no": bank_account.bank_account_no,
+	}
+
+	# Ensure the Bank master exists before linking to it (mirror of _create_erp_records).
+	if req.bank_name and not frappe.db.exists("Bank", req.bank_name):
+		frappe.get_doc({"doctype": "Bank", "bank_name": req.bank_name}).insert(ignore_permissions=True)
+
+	# Patch in place. `name` and `is_default` are intentionally left untouched.
+	bank_account.bank = req.bank_name
+	bank_account.branch_code = req.bank_branch or ""
+	bank_account.account_type = req.account_type or ""
+	bank_account.bank_account_no = req.account_number
+	bank_account.save(ignore_permissions=True)
+
+	req.status = "Approved"
+	req.save()
+
+	# Supersede any other still-open requests for the same account so a stale
+	# duplicate can't later be approved and revert the account to old details.
+	siblings = frappe.get_all(
+		"Bank Account Update Request",
+		filters={"bank_account": req.bank_account, "status": "Pending", "name": ["!=", req.name]},
+		pluck="name",
+	)
+	for sibling in siblings:
+		frappe.db.set_value("Bank Account Update Request", sibling, "status", "Closed")
+
+	frappe.db.commit()
+
+	audit_log(
+		"approve_bank_account_update",
+		"Bank Account Update Request",
+		request_id,
+		{
+			"bank_account": req.bank_account,
+			"old": old_values,
+			"new": {
+				"bank": req.bank_name,
+				"branch_code": req.bank_branch,
+				"account_type": req.account_type,
+				"bank_account_no": req.account_number,
+			},
+		},
+	)
+
+	return {"success": True, "message": "Bank account details updated."}
+
+
+@frappe.whitelist()
+@require_admin()
+@handle_api_errors
+def reject_bank_account_update_request(request_id, reason=None):
+	"""Reject a bank account update request (local record only; account unchanged)."""
+	req = frappe.get_doc("Bank Account Update Request", request_id, for_update=True)
+
+	if req.status != "Pending":
+		return {"success": False, "error": f"Request has already been {req.status.lower()}"}
+
+	req.status = "Rejected"
+	req.support_note = reason or "No reason provided"
+	req.save()
+
+	frappe.db.commit()
+	audit_log(
+		"reject_bank_account_update",
+		"Bank Account Update Request",
+		request_id,
+		{"reason": reason or "No reason provided"},
+	)
+	return {"success": True, "message": "Request rejected."}
+
+
+@frappe.whitelist()
+@require_admin()
+@handle_api_errors
 def get_id_document_url(file_key):
 	"""Get pre-signed URL for ID document from Digital Ocean Spaces"""
 	if not file_key:

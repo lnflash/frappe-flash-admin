@@ -40,11 +40,15 @@ const AccountStatus = {
 	CLOSED: "Closed",
 };
 
+// ENG-516 nomenclature: Pro and International are retired, Merchant is now
+// Business, L1 is Verified. Levels are internal, so this admin page shows the
+// new name with the level number for disambiguation (L1 and L2 share the
+// "Verified" headline — L2 adds the bank-payout capability).
 const ACCOUNT_LEVEL_MAP = {
-	[AccountLevels.TRIAL]: "Trial",
-	[AccountLevels.PERSONAL]: "Personal",
-	[AccountLevels.PRO]: "Pro",
-	[AccountLevels.MERCHANT]: "Merchant",
+	[AccountLevels.TRIAL]: "Trial (L0)",
+	[AccountLevels.PERSONAL]: "Verified (L1)",
+	[AccountLevels.PRO]: "Verified + Bank payout (L2)",
+	[AccountLevels.MERCHANT]: "Business (L3)",
 };
 
 const LEVEL_BADGE_MAP = {
@@ -344,10 +348,10 @@ class FlashAccountManager {
                         </select>
                         <select id="filter-level" class="modern-search-input modern-search-select">
                             <option value="">Requested Level (All)</option>
-                            <option value="${AccountLevels.TRIAL}">Trial</option>
-                            <option value="${AccountLevels.PERSONAL}">Personal</option>
-                            <option value="${AccountLevels.PRO}">Pro</option>
-                            <option value="${AccountLevels.MERCHANT}">Merchant</option>
+                            <option value="${AccountLevels.TRIAL}">Trial (L0)</option>
+                            <option value="${AccountLevels.PERSONAL}">Verified (L1)</option>
+                            <option value="${AccountLevels.PRO}">Verified + Bank payout (L2)</option>
+                            <option value="${AccountLevels.MERCHANT}">Business (L3)</option>
                         </select>
                     </div>
                 </div>

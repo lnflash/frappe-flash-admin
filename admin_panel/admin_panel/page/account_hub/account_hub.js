@@ -56,11 +56,46 @@ const ACCOUNT_STATUSES = {
 	CLOSED: "CLOSED",
 };
 
+// ENG-516 nomenclature: Pro and International are retired, Merchant is now
+// Business, and levels are internal. The account leads with one headline word
+// (Trial → Verified → Business, the "light headline status" decision) with
+// capability badges as supporting detail. L1 and L2 both read "Verified" —
+// bank payout is a badge, not a tier.
 const ACCOUNT_LEVEL_LABELS = {
 	[ACCOUNT_LEVELS.ZERO]: "Trial",
-	[ACCOUNT_LEVELS.ONE]: "Personal",
-	[ACCOUNT_LEVELS.TWO]: "Pro",
-	[ACCOUNT_LEVELS.THREE]: "Merchant",
+	[ACCOUNT_LEVELS.ONE]: "Verified",
+	[ACCOUNT_LEVELS.TWO]: "Verified",
+	[ACCOUNT_LEVELS.THREE]: "Business",
+};
+
+// On an upgrade request, requested_level reads as the capability being
+// requested, not a tier the user picked.
+const REQUESTED_LEVEL_LABELS = {
+	[ACCOUNT_LEVELS.ZERO]: "Trial",
+	[ACCOUNT_LEVELS.ONE]: "Verified",
+	[ACCOUNT_LEVELS.TWO]: "Bank payout",
+	[ACCOUNT_LEVELS.THREE]: "Business",
+};
+
+const STATUS_HEADLINE_LABELS = {
+	TRIAL: "Trial",
+	VERIFIED: "Verified",
+	BUSINESS: "Business",
+};
+
+const STATUS_HEADLINE_BADGES = {
+	TRIAL: "badge-trial",
+	VERIFIED: "badge-personal",
+	BUSINESS: "badge-merchant",
+};
+
+// Internal levels for the admin change-level action — disambiguated with the
+// level number because L1 and L2 share the "Verified" headline.
+const ADMIN_LEVEL_OPTIONS = {
+	[ACCOUNT_LEVELS.ZERO]: "Trial (L0)",
+	[ACCOUNT_LEVELS.ONE]: "Verified (L1)",
+	[ACCOUNT_LEVELS.TWO]: "Verified + Bank payout (L2)",
+	[ACCOUNT_LEVELS.THREE]: "Business (L3)",
 };
 
 const ACCOUNT_LEVEL_BADGES = {
@@ -88,6 +123,38 @@ const ACCOUNT_STATUS_BADGES = {
 
 function getLevelLabel(level) {
 	return ACCOUNT_LEVEL_LABELS[level] || level;
+}
+
+function getRequestedLevelLabel(level) {
+	return REQUESTED_LEVEL_LABELS[level] || level;
+}
+
+// Headline status straight from the backend when available (ENG-516);
+// falls back to the stored level for older backends.
+function getHeadlineLabel(account) {
+	if (account.statusHeadline) {
+		return STATUS_HEADLINE_LABELS[account.statusHeadline] || account.statusHeadline;
+	}
+	return getLevelLabel(account.level);
+}
+
+function getHeadlineBadge(account) {
+	if (account.statusHeadline) {
+		return STATUS_HEADLINE_BADGES[account.statusHeadline] || "badge-trial";
+	}
+	return getLevelBadge(account.level);
+}
+
+// Supporting capability badges next to the headline. verified/business are
+// already the headline; bankPayout and usdAccount are the orthogonal extras.
+function capabilityBadgesHtml(capabilities) {
+	if (!capabilities) return "";
+	const badges = [];
+	if (capabilities.bankPayout) badges.push("Bank payout");
+	if (capabilities.usdAccount) badges.push("USD account");
+	return badges
+		.map((b) => `<span class="ah-badge badge-capability">${b}</span>`)
+		.join(" ");
 }
 
 const RESULT_STATUS_TONE = {
@@ -353,6 +420,7 @@ class AccountHub {
                 .badge-personal { background: var(--ah-accent-soft); color: var(--ah-accent-ink); opacity: 0.85; }
                 .badge-business { background: var(--ah-accent-soft); color: var(--ah-accent-ink); }
                 .badge-merchant { background: var(--ah-accent); color: #fff; }
+                .badge-capability { background: var(--ah-line-soft); color: var(--ah-ink2); }
                 .badge-pending { background: var(--ah-warn-bg); color: var(--ah-warn); }
                 .badge-approved { background: var(--ah-accent-soft); color: var(--ah-accent-ink); }
                 .badge-rejected { background: var(--ah-serious-bg); color: var(--ah-serious); }
@@ -454,6 +522,7 @@ class AccountHub {
                                     <div class="ah-ident-top">
                                         <span class="detail-username-display ah-ident-name"></span>
                                         <span class="ah-badge detail-level-badge"></span>
+                                        <span class="detail-cap-badges"></span>
                                         <span class="ah-badge detail-status-badge"></span>
                                         <div class="ah-ident-actions">
                                             <button class="ah-btn ah-btn-sm ah-btn-primary btn-change-level">
@@ -479,7 +548,7 @@ class AccountHub {
                                     <button class="ah-tab active" data-tab="overview">Overview</button>
                                     <button class="ah-tab" data-tab="wallets">Wallets</button>
                                     <button class="ah-tab" data-tab="documents">Documents</button>
-                                    <button class="ah-tab" data-tab="merchant">Merchant</button>
+                                    <button class="ah-tab" data-tab="merchant">Business</button>
                                     <button class="ah-tab" data-tab="upgrade">Upgrade History</button>
                                 </div>
 
@@ -570,6 +639,7 @@ class AccountHub {
 			detailContent: main.find(".ah-detail-content"),
 			detailUsername: main.find(".detail-username-display"),
 			detailLevelBadge: main.find(".detail-level-badge"),
+			detailCapBadges: main.find(".detail-cap-badges"),
 			detailStatusBadge: main.find(".detail-status-badge"),
 			identMeta: main.find(".detail-ident-meta"),
 			identBalances: main.find(".detail-ident-balances"),
@@ -693,7 +763,7 @@ class AccountHub {
 				[account.phone_number, account.email].filter(Boolean).join(" · ") || "—";
 			const level = account.requested_level || "ZERO";
 			const initial = (displayName || "?")[0].toUpperCase();
-			const levelLabel = getLevelLabel(level);
+			const levelLabel = getRequestedLevelLabel(level);
 			const levelBadge = getLevelBadge(level);
 			const dotHtml = statusDotHtml(account.status);
 
@@ -896,8 +966,8 @@ class AccountHub {
 			account.owner?.email?.address ||
 			account.username ||
 			account.id;
-		const levelLabel = getLevelLabel(account.level);
-		const levelBadge = getLevelBadge(account.level);
+		const levelLabel = getHeadlineLabel(account);
+		const levelBadge = getHeadlineBadge(account);
 
 		const item = $(`
             <div class="ah-result-item" data-uuid="${account.uuid}">
@@ -934,8 +1004,9 @@ class AccountHub {
 		// Update header
 		this.$.detailUsername.text(account.username || "Unknown");
 		this.$.detailLevelBadge
-			.text(getLevelLabel(account.level))
-			.attr("class", "ah-badge " + getLevelBadge(account.level));
+			.text(getHeadlineLabel(account))
+			.attr("class", "ah-badge " + getHeadlineBadge(account));
+		this.$.detailCapBadges.html(capabilityBadgesHtml(account.capabilities));
 		this.$.detailStatusBadge
 			.text(getStatusLabel(account.status))
 			.attr("class", "ah-badge " + getStatusBadge(account.status));
@@ -1039,8 +1110,8 @@ class AccountHub {
 
 		// Account State
 		this.$.ovLevelBadge
-			.text(getLevelLabel(account.level))
-			.attr("class", "ah-badge " + getLevelBadge(account.level));
+			.text(getHeadlineLabel(account))
+			.attr("class", "ah-badge " + getHeadlineBadge(account));
 		this.$.ovStatusBadge
 			.text(getStatusLabel(account.status))
 			.attr("class", "ah-badge " + getStatusBadge(account.status));
@@ -1321,7 +1392,7 @@ class AccountHub {
 				requests.forEach((r) => {
 					const statusLabel = getStatusLabel(r.status || "PENDING");
 					const statusBadge = getStatusBadge(r.status || "PENDING");
-					const levelLabel = getLevelLabel(r.requested_level);
+					const levelLabel = getRequestedLevelLabel(r.requested_level);
 					const levelBadge = getLevelBadge(r.requested_level);
 
 					const row = $(`
@@ -1359,10 +1430,10 @@ class AccountHub {
 		const account = this.current_account;
 
 		const currentLevel = account.level;
-		const options = Object.keys(ACCOUNT_LEVEL_LABELS)
+		const options = Object.keys(ADMIN_LEVEL_OPTIONS)
 			.filter((k) => k !== currentLevel)
 			.map((k) => ({
-				label: ACCOUNT_LEVEL_LABELS[k],
+				label: ADMIN_LEVEL_OPTIONS[k],
 				value: k,
 			}));
 

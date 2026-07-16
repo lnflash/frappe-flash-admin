@@ -152,9 +152,7 @@ function capabilityBadgesHtml(capabilities) {
 	const badges = [];
 	if (capabilities.bankPayout) badges.push("Bank payout");
 	if (capabilities.usdAccount) badges.push("USD account");
-	return badges
-		.map((b) => `<span class="ah-badge badge-capability">${b}</span>`)
-		.join(" ");
+	return badges.map((b) => `<span class="ah-badge badge-capability">${b}</span>`).join(" ");
 }
 
 const RESULT_STATUS_TONE = {
@@ -1476,7 +1474,7 @@ class AccountHub {
 						title: "ERP Party Required",
 						indicator: "orange",
 						message: `${
-							ACCOUNT_LEVEL_LABELS[selectedOption.value]
+							ADMIN_LEVEL_OPTIONS[selectedOption.value]
 						} accounts require an ERP party, and this account has none. Approve an account upgrade request instead — that flow creates the ERP Customer, Address, and Bank Account records.`,
 					});
 					return;
@@ -1504,7 +1502,7 @@ class AccountHub {
 							frappe.show_alert(
 								{
 									message: `Account level updated to ${
-										ACCOUNT_LEVEL_LABELS[selectedOption.value]
+										ADMIN_LEVEL_OPTIONS[selectedOption.value]
 									}`,
 									indicator: "green",
 								},

@@ -133,6 +133,13 @@ class GraphQLClient:
 		username
 		npub
 		level
+		statusHeadline
+		capabilities {
+			verified
+			bankPayout
+			business
+			usdAccount
+		}
 		status
 		title
 		erpParty

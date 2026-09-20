@@ -60,16 +60,26 @@ class Cashout(Document):
 						"credit": self.user_receives / self.exchange_rate if is_jmd else self.user_receives,
 						"exchange_rate": 1 / self.exchange_rate if is_jmd else 1,
 					},
-					{
-						"account": settings.service_fees_account,
-						"account_currency": "USD",
-						"credit_in_account_currency": self.flash_fee,
-						"credit": self.flash_fee,
-						"exchange_rate": 1,
-					},
 				],
 			}
 		)
+
+		# A fully fee-discounted cashout (Fee Discount whitelist at 100%, or a
+		# discounted fee that rounds to $0.00) arrives with flash_fee = 0. ERPNext
+		# rejects any Journal Entry row whose debit and credit are both zero, which
+		# failed the whole Cashout insert — so only book the fee row when there is
+		# a fee. The entry still balances: with no fee, user_pays == user_receives.
+		if self.flash_fee:
+			je.append(
+				"accounts",
+				{
+					"account": settings.service_fees_account,
+					"account_currency": "USD",
+					"credit_in_account_currency": self.flash_fee,
+					"credit": self.flash_fee,
+					"exchange_rate": 1,
+				},
+			)
 
 		# No ignore_permissions: enforce Journal Entry perms. Cashout creation is
 		# restricted to Accounts Manager (see cashout.json), which holds Journal

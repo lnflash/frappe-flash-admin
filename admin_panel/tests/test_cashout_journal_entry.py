@@ -96,13 +96,26 @@ def test_zero_fee_cashout_books_no_fee_row(entries, fee):
 	assert doc.saved == {"journal_entry": "JE-0001"}
 
 
-def test_zero_fee_entry_balances_in_company_currency(entries):
-	make(currency="USD", exchange_rate=None, user_pays=730, user_receives=730).create_payable_journal_entry()
+@pytest.mark.parametrize(
+	("currency", "exchange_rate", "user_receives"),
+	[
+		("USD", None, 730),
+		# The JMD path is the one with arithmetic: credit = user_receives / exchange_rate.
+		("JMD", 151.8, 110814),
+	],
+)
+def test_zero_fee_entry_balances_in_company_currency(entries, currency, exchange_rate, user_receives):
+	make(
+		currency=currency, exchange_rate=exchange_rate, user_pays=730, user_receives=user_receives
+	).create_payable_journal_entry()
 
 	(je,) = entries
+	assert je.inserted
 	debit = sum(row.get("debit") or 0 for row in je.accounts)
 	credit = sum(row.get("credit") or 0 for row in je.accounts)
-	assert debit == credit == 730
+	assert debit == 730
+	assert credit == pytest.approx(730)
+	assert debit == pytest.approx(credit)
 
 
 def test_fee_bearing_cashout_still_books_the_fee_row(entries):

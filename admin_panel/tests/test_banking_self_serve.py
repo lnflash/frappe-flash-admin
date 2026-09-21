@@ -101,6 +101,11 @@ def bank(fake, monkeypatch):
 	return fake
 
 
+def removed(name, **extra):
+	"""An account the customer removed (soft delete): disabled AND marked."""
+	return account(name, disabled=1, removed_by_customer=1, **extra)
+
+
 def row(bank, name, doctype="Bank Account"):
 	return next((r for r in bank.rows(doctype) if r.get("name") == name), None)
 
@@ -150,6 +155,8 @@ def test_delete_falls_back_to_disable_when_links_exist(bank):
 	assert result["disabled"] is True
 	kept = row(bank, "A - NCB")
 	assert kept["disabled"] == 1
+	# Marked as the customer's own removal, which is what makes it revivable.
+	assert kept["removed_by_customer"] == 1
 	assert kept["is_default"] == 0
 	# The refused delete was rolled back to the savepoint, side effects and all.
 	assert "on_trash_ran" not in kept
@@ -267,6 +274,33 @@ def test_disabled_accounts_hidden_from_the_list(bank):
 	assert [a["name"] for a in result["bank_accounts"]] == ["Live - NCB"]
 
 
+def test_support_view_includes_disabled_accounts_with_the_removal_marker(bank):
+	bank.seed(
+		"Bank Account",
+		account("Live - NCB", number="1", is_default=1),
+		removed("Gone - NCB", number="2"),
+		account("Held - NCB", number="3", disabled=1),
+	)
+
+	result = banking.get_customer_banking(erp_party=PARTY, include_disabled=1)
+
+	assert {a["name"]: (a["disabled"], a["removed_by_customer"]) for a in result["bank_accounts"]} == {
+		"Live - NCB": (0, None),
+		"Gone - NCB": (1, 1),
+		"Held - NCB": (1, None),
+	}
+
+
+@pytest.mark.parametrize("flag", [0, "0", None, ""])
+def test_falsy_include_disabled_keeps_them_hidden(bank, flag):
+	"""The flag arrives as a string over HTTP — "0" must not read as truthy."""
+	bank.seed("Bank Account", account("Live - NCB", number="1"), removed("Gone - NCB", number="2"))
+
+	result = banking.get_customer_banking(erp_party=PARTY, include_disabled=flag)
+
+	assert [a["name"] for a in result["bank_accounts"]] == ["Live - NCB"]
+
+
 def test_disabled_account_cannot_become_default(bank):
 	bank.seed(
 		"Bank Account",
@@ -309,7 +343,7 @@ def test_readding_a_removed_account_reenables_it(bank):
 	bank.seed(
 		"Bank Account",
 		account("Live - NCB", number="1", is_default=1),
-		account("Gone - NCB", number="2", disabled=1, currency="JMD", account_type="Savings"),
+		removed("Gone - NCB", number="2", currency="JMD", account_type="Savings"),
 	)
 
 	result = banking.add_bank_account(PARTY, "NCB", "2", "Chequing", "USD", bank_branch="042")
@@ -317,6 +351,7 @@ def test_readding_a_removed_account_reenables_it(bank):
 	assert result == {"success": True, "bank_account": "Gone - NCB", "reenabled": True}
 	revived = row(bank, "Gone - NCB")
 	assert revived["disabled"] == 0
+	assert revived["removed_by_customer"] == 0
 	assert (revived["account_type"], revived["currency"], revived["branch_code"]) == (
 		"Chequing",
 		"USD",
@@ -327,7 +362,7 @@ def test_readding_a_removed_account_reenables_it(bank):
 
 
 def test_readded_account_becomes_default_when_it_is_the_only_live_one(bank):
-	bank.seed("Bank Account", account("Gone - NCB", number="2", disabled=1))
+	bank.seed("Bank Account", removed("Gone - NCB", number="2"))
 
 	banking.add_bank_account(PARTY, "NCB", "2", "Savings", "JMD")
 
@@ -338,13 +373,185 @@ def test_readd_with_set_default_clears_the_previous_default(bank):
 	bank.seed(
 		"Bank Account",
 		account("Live - NCB", number="1", is_default=1),
-		account("Gone - NCB", number="2", disabled=1),
+		removed("Gone - NCB", number="2"),
 	)
 
 	banking.add_bank_account(PARTY, "NCB", "2", "Savings", "JMD", set_default=1)
 
 	assert row(bank, "Gone - NCB")["is_default"] == 1
 	assert row(bank, "Live - NCB")["is_default"] == 0
+
+
+def test_admin_disabled_account_is_not_revived_by_a_readd(bank):
+	"""Support disabled it from the desk (fraud hold, ownership dispute): no
+	removal marker, so self-serve must not switch it back on."""
+	bank.seed("Bank Account", account("Held - NCB", number="2", disabled=1))
+
+	with pytest.raises(bank.Thrown, match="already exists"):
+		banking.add_bank_account(PARTY, "NCB", "2", "Savings", "JMD")
+
+	held = row(bank, "Held - NCB")
+	assert held["disabled"] == 1
+	assert len(bank.rows("Bank Account")) == 1
+	assert audit_entries(bank, "add_bank_account") == []
+
+
+def test_remove_then_readd_round_trip(bank):
+	"""The marker is written by the real delete path and consumed by the real add path."""
+	bank.seed("Bank Account", account("A - NCB", number="2"))
+	bank.seed("Cashout", {"name": "CO-1", "bank_account": "A - NCB"})
+
+	banking.delete_bank_account("A - NCB", PARTY)
+	result = banking.add_bank_account(PARTY, "NCB", "2", "Savings", "JMD")
+
+	assert result["reenabled"] is True
+	assert (row(bank, "A - NCB")["disabled"], row(bank, "A - NCB")["removed_by_customer"]) == (0, 0)
+
+
+def test_marker_is_cleared_when_an_account_is_enabled_from_the_desk(bank):
+	"""Otherwise a LATER admin hold on the same doc would look customer-removed."""
+	doc = frappe.get_doc(removed("Gone - NCB", number="2"))
+	doc.disabled = 0
+
+	banking.clear_removal_marker_when_enabled(doc)
+
+	assert doc.removed_by_customer == 0
+
+
+def test_marker_survives_a_save_while_still_disabled(bank):
+	doc = frappe.get_doc(removed("Gone - NCB", number="2"))
+
+	banking.clear_removal_marker_when_enabled(doc)
+
+	assert doc.removed_by_customer == 1
+
+
+def test_marker_hook_and_fixture_are_wired():
+	import json
+	from pathlib import Path
+
+	root = Path(banking.__file__).resolve().parents[1]
+	hooks = (root / "hooks.py").read_text()
+	assert '"validate": "admin_panel.api.banking.clear_removal_marker_when_enabled"' in hooks
+	# The export filter must keep covering the field or a fixture re-export drops it.
+	assert '["fieldname", "in", ["currency", "removed_by_customer"]]' in hooks
+	fields = json.loads((root / "fixtures" / "custom_field.json").read_text())
+	(marker,) = [f for f in fields if f["fieldname"] == banking.REMOVED_BY_CUSTOMER]
+	assert (marker["dt"], marker["fieldtype"], marker["read_only"]) == ("Bank Account", "Check", 1)
+
+
+def test_add_audit_masks_the_account_number(bank):
+	banking.add_bank_account(PARTY, "NCB", "1111222233334444", "Savings", "JMD", account_name="Jo")
+
+	(entry,) = audit_entries(bank, "add_bank_account")
+	assert "…4444" in entry["content"]
+	assert "1111222233334444" not in entry["content"]
+
+
+def test_readd_audit_masks_the_account_number(bank):
+	bank.seed("Bank Account", removed("Gone - NCB", number="1111222233334444"))
+
+	banking.add_bank_account(PARTY, "NCB", "1111222233334444", "Savings", "JMD")
+
+	(entry,) = audit_entries(bank, "add_bank_account")
+	assert "…4444" in entry["content"]
+	assert "1111222233334444" not in entry["content"]
+
+
+# ---- number collisions on edit -------------------------------------------------
+
+
+def test_edit_onto_own_removed_number_says_to_add_it_again(bank):
+	bank.seed("Bank Account", account("Live - NCB", number="1"), removed("Gone - NCB", number="111"))
+
+	with pytest.raises(bank.Thrown, match="was removed. Add it again"):
+		banking.update_bank_account("Live - NCB", PARTY, "NCB", "111", "Savings", "JMD")
+
+	assert row(bank, "Live - NCB")["bank_account_no"] == "1"
+
+
+@pytest.mark.parametrize(
+	"holder",
+	[
+		account("Mine - NCB", number="111"),
+		account("Held - NCB", number="111", disabled=1),
+		account("Theirs - NCB", number="111", party=OTHER_PARTY),
+		removed("TheirsGone - NCB", number="111", party=OTHER_PARTY),
+	],
+	ids=["own-live", "own-admin-disabled", "other-party", "other-party-removed"],
+)
+def test_edit_onto_any_other_holder_stays_a_generic_collision(bank, holder):
+	"""The specific hint is only for the party's OWN customer-removed account;
+	anything else must not leak who holds the number or why."""
+	bank.seed("Bank Account", account("Live - NCB", number="1"), holder)
+
+	with pytest.raises(bank.Thrown, match="Another bank account already uses"):
+		banking.update_bank_account("Live - NCB", PARTY, "NCB", "111", "Savings", "JMD")
+
+	assert row(bank, "Live - NCB")["bank_account_no"] == "1"
+
+
+def test_edit_keeping_the_same_number_is_not_a_collision(bank):
+	bank.seed("Bank Account", account("Live - NCB", number="1"))
+
+	assert banking.update_bank_account("Live - NCB", PARTY, "NCB", "1", "Chequing", "JMD") == {
+		"success": True
+	}
+
+
+def _approve(bank, request):
+	import sys
+	import types
+
+	if "admin_panel.api.admin_api" not in sys.modules:
+		for name in ("pymongo", "bson"):
+			sys.modules.setdefault(name, types.ModuleType(name))
+	from admin_panel.api import admin_api
+
+	return admin_api.approve_bank_account_update_request(request)
+
+
+def _update_request(name, bank_account, number):
+	return {
+		"name": name,
+		"status": "Pending",
+		"party": PARTY,
+		"bank_account": bank_account,
+		"bank_name": "NCB",
+		"bank_branch": "001",
+		"account_type": "Savings",
+		"account_number": number,
+	}
+
+
+def test_approve_onto_own_removed_number_says_to_add_it_again(bank):
+	bank.seed("Bank Account", account("Live - NCB", number="1"), removed("Gone - NCB", number="111"))
+	bank.seed("Bank Account Update Request", _update_request("REQ-1", "Live - NCB", "111"))
+
+	result = _approve(bank, "REQ-1")
+
+	assert result == {"success": False, "error": banking.OWN_REMOVED_NUMBER_MESSAGE}
+	assert row(bank, "Live - NCB")["bank_account_no"] == "1"
+	assert row(bank, "REQ-1", "Bank Account Update Request")["status"] == "Pending"
+
+
+def test_approve_onto_another_holders_number_stays_generic(bank):
+	bank.seed(
+		"Bank Account",
+		account("Live - NCB", number="1"),
+		account("Theirs - NCB", number="111", party=OTHER_PARTY),
+	)
+	bank.seed("Bank Account Update Request", _update_request("REQ-1", "Live - NCB", "111"))
+
+	assert _approve(bank, "REQ-1") == {"success": False, "error": banking.NUMBER_IN_USE_MESSAGE}
+
+
+def test_approve_still_patches_a_free_number(bank):
+	bank.seed("Bank Account", account("Live - NCB", number="1"))
+	bank.seed("Bank Account Update Request", _update_request("REQ-1", "Live - NCB", "222"))
+
+	assert _approve(bank, "REQ-1")["success"] is True
+	assert row(bank, "Live - NCB")["bank_account_no"] == "222"
 
 
 def test_number_held_by_another_party_is_still_a_duplicate(bank):

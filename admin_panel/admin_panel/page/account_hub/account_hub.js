@@ -1148,7 +1148,13 @@ class AccountHub {
 			"";
 		frappe.call({
 			method: "admin_panel.api.banking.get_customer_banking",
-			args: { erp_party: account.erpParty || "", account_ref: accountRef },
+			// Support must see accounts the customer removed (or an admin disabled):
+			// Cashout history still points at them.
+			args: {
+				erp_party: account.erpParty || "",
+				account_ref: accountRef,
+				include_disabled: 1,
+			},
 			callback: (res) => {
 				if (this.current_account !== account) return; // switched customers mid-flight
 				const d = res.message;
@@ -1345,14 +1351,21 @@ class AccountHub {
                 <h6><i class="fa fa-university" style="margin-right:6px;color:var(--color-primary);"></i>
                     Cashout — ${esc(b.bank || "Bank")}
                     ${b.is_default ? okBadge("Default") : ""}
-                    ${b.disabled ? warnBadge("Disabled") : ""}
+                    ${
+						b.disabled
+							? warnBadge(b.removed_by_customer ? "Removed by customer" : "Disabled")
+							: ""
+					}
                 </h6>
                 ${row("Account name", b.account_name)}
                 ${row("Account number", b.bank_account_no)}
                 ${row("Branch", b.branch_code)}
                 ${row("Type", b.account_type)}
                 ${row("Currency", b.currency)}
-                <div style="margin-top:10px;display:flex;gap:8px;">
+                ${
+					b.disabled
+						? "" // edit / set-default 404 for disabled docs: history only
+						: `<div style="margin-top:10px;display:flex;gap:8px;">
                     <button class="btn btn-xs btn-default banking-edit-btn" data-name="${esc(
 						b.name
 					)}">Edit</button>
@@ -1363,7 +1376,8 @@ class AccountHub {
 									b.name
 							  )}">Set default</button>`
 					}
-                </div>
+                </div>`
+				}
             </div>`
 			)
 			.join("");

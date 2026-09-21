@@ -10,5 +10,19 @@
     "insert_after": "bank_account_no",
     "in_list_view": 0,
     "reqd": 1
+  },
+  {
+    "doctype": "Custom Field",
+    "name": "Bank Account-removed_by_customer",
+    "dt": "Bank Account",
+    "fieldname": "removed_by_customer",
+    "fieldtype": "Check",
+    "label": "Removed by Customer",
+    "description": "Set when the customer removed this account in the app. Only accounts with this mark can be re-enabled by the customer adding the number again.",
+    "insert_after": "disabled",
+    "default": "0",
+    "read_only": 1,
+    "in_list_view": 0,
+    "reqd": 0
   }
 ]

@@ -15,6 +15,13 @@ class Cashout(Document):
 		bank_account = frappe.get_doc("Bank Account", self.bank_account)
 		if bank_account.party_type != "Customer" or bank_account.party != self.customer:
 			frappe.throw("Bank Account does not belong to the selected Customer.")
+		# Soft-deleted accounts keep their name (it is the app's bankAccountId), so
+		# a stale offer or cached client can still point at one the customer
+		# removed. New cashouts to it are refused. Checked on insert only: a
+		# Cashout created BEFORE the removal has already debited the customer and
+		# must stay submittable.
+		if self.is_new() and (bank_account.disabled or bank_account.is_company_account):
+			frappe.throw("Bank Account is no longer available.")
 
 	def after_insert(self):
 		self.create_payable_journal_entry()

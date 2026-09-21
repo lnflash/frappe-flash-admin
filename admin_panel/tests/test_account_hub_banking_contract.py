@@ -100,7 +100,13 @@ def test_writes_enforce_cashout_safe_fields():
 
 def test_account_number_collisions_rejected():
 	assert 'frappe.db.exists("Bank Account", {"bank_account_no": account_number})' in BANKING_PY
-	assert '"bank_account_no": account_number, "name": ("!=", bank_account.name)' in BANKING_PY
+	# The edit-time check lives in number_collision_message (shared with the
+	# ENG-509 approve flow); it still excludes the account being edited.
+	assert 'filters={"bank_account_no": account_number, "name": ("!=", bank_account_name)}' in BANKING_PY
+	assert "collision = number_collision_message(erp_party, account_number, bank_account.name)" in BANKING_PY
+	assert "number_collision_message(req.party, req.account_number, bank_account.name)" in read(
+		API / "admin_api.py"
+	)
 
 
 def test_update_never_touches_identity_or_default():
@@ -152,3 +158,17 @@ def test_js_error_chain_surfaces_envelope_errors():
 	"""handle_api_errors failures arrive as HTTP 500 with responseJSON.error —
 	without it in the chain, a mongo/Bridge outage shows a generic message."""
 	assert "err?.responseJSON?.error" in ACCOUNT_HUB_JS
+
+
+def test_hub_asks_for_disabled_accounts():
+	"""Cashout history points at removed accounts; support has to be able to see them."""
+	assert "include_disabled: 1," in ACCOUNT_HUB_JS
+	assert 'warnBadge(b.removed_by_customer ? "Removed by customer" : "Disabled")' in ACCOUNT_HUB_JS
+
+
+def test_hub_offers_no_actions_on_disabled_accounts():
+	"""update / set_default 404 for disabled docs, so the row is history only."""
+	guard = ACCOUNT_HUB_JS.index('b.disabled\n\t\t\t\t\t\t? "" //')
+	edit = ACCOUNT_HUB_JS.index('class="btn btn-xs btn-default banking-edit-btn"')
+	default = ACCOUNT_HUB_JS.index('class="btn btn-xs btn-default banking-default-btn"')
+	assert guard < edit < default

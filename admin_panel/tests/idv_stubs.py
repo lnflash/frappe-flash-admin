@@ -142,6 +142,9 @@ def _matches(row, filters):
 			elif op == ">=":
 				if actual is None or actual < operand:
 					return False
+			elif op == "!=":
+				if actual == operand:
+					return False
 			elif op == "is":
 				if (operand == "set") != (actual is not None):
 					return False
@@ -252,6 +255,8 @@ class FakeFrappe:
 		limit_page_length = limit_page_length or limit
 		if limit_page_length:
 			rows = rows[:limit_page_length]
+		if kwargs.get("pluck"):
+			return [r.get(kwargs["pluck"]) for r in rows]
 		if fields:
 			return [AttrDict({f: r.get(f) for f in fields}) for r in rows]
 		return [AttrDict(r) for r in rows]

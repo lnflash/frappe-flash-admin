@@ -20,22 +20,43 @@ from .bridge_client import CUSTOMER_ID_RE, BridgeApiError, BridgeClient
 from .common import handle_api_errors
 from .mongo_reader import find_account
 
+# Check custom field on Bank Account (fixtures/custom_field.json). `disabled` is
+# ERPNext's generic flag and support also sets it from the desk (fraud hold,
+# ownership dispute); this marker is what says "the CUSTOMER removed this one".
+# Only marked accounts may be revived by self-serve.
+REMOVED_BY_CUSTOMER = "removed_by_customer"
+OWN_REMOVED_NUMBER_MESSAGE = (
+	"This account number belongs to a bank account that was removed. "
+	"Add it again instead of editing another account."
+)
+NUMBER_IN_USE_MESSAGE = "Another bank account already uses this account number."
 
-def _erp_bank_accounts(erp_party):
+
+def _erp_bank_accounts(erp_party, include_disabled=False):
+	# A disabled account (removed by the customer, or held by an admin) no longer
+	# exists as far as the customer is concerned, so the default read hides it.
+	# Support still has to see it — Cashout history points at it — so the Account
+	# Hub asks for include_disabled and gets the removal marker alongside.
+	filters = {"party_type": "Customer", "party": erp_party}
+	fields = [
+		"name",
+		"account_name",
+		"bank",
+		"bank_account_no",
+		"branch_code",
+		"account_type",
+		"currency",
+		"is_default",
+		"disabled",
+	]
+	if include_disabled:
+		fields.append(REMOVED_BY_CUSTOMER)
+	else:
+		filters["disabled"] = 0
 	return frappe.get_all(
 		"Bank Account",
-		filters={"party_type": "Customer", "party": erp_party},
-		fields=[
-			"name",
-			"account_name",
-			"bank",
-			"bank_account_no",
-			"branch_code",
-			"account_type",
-			"currency",
-			"is_default",
-			"disabled",
-		],
+		filters=filters,
+		fields=fields,
 		order_by="is_default desc, creation asc",
 	)
 
@@ -71,8 +92,14 @@ def _bridge_banking(account_ref):
 @frappe.whitelist()
 @require_admin()
 @handle_api_errors
-def get_customer_banking(erp_party=None, account_ref=None):
-	"""Full banking picture for one customer: ERP cashout accounts + Bridge."""
+def get_customer_banking(erp_party=None, account_ref=None, include_disabled=0):
+	"""Full banking picture for one customer: ERP cashout accounts + Bridge.
+
+	include_disabled=1 is for support surfaces (the Account Hub); customer-facing
+	callers leave it off and never see removed or held accounts.
+	"""
+	from frappe.utils import cint
+
 	erp_party = cstr(erp_party).strip()
 	account_ref = cstr(account_ref).strip()
 	if not erp_party and not account_ref:
@@ -81,7 +108,7 @@ def get_customer_banking(erp_party=None, account_ref=None):
 	return {
 		"success": True,
 		"erp_party": erp_party or None,
-		"bank_accounts": _erp_bank_accounts(erp_party) if erp_party else [],
+		"bank_accounts": _erp_bank_accounts(erp_party, bool(cint(include_disabled))) if erp_party else [],
 		"bridge": _bridge_banking(account_ref) if account_ref else {"linked": False},
 	}
 
@@ -127,7 +154,85 @@ def _owned_bank_account(bank_account_id, erp_party, for_update=False):
 	bank_account = frappe.get_doc("Bank Account", cstr(bank_account_id).strip(), for_update=for_update)
 	if bank_account.party_type != "Customer" or bank_account.party != erp_party:
 		frappe.throw("Bank Account does not belong to this customer.")
+	if bank_account.is_company_account:
+		frappe.throw("Bank Account does not belong to this customer.")
+	if bank_account.disabled:
+		# Soft-deleted (see delete_bank_account): same answer as a missing doc.
+		frappe.throw("Bank Account not found.", frappe.DoesNotExistError)
 	return bank_account
+
+
+def _enabled_bank_account_names(erp_party, exclude=None):
+	filters = {"party_type": "Customer", "party": erp_party, "disabled": 0}
+	if exclude:
+		filters["name"] = ("!=", exclude)
+	return frappe.get_all("Bank Account", filters=filters, pluck="name")
+
+
+def _mask_account_number(account_number):
+	"""Audit entries for customer-initiated writes (add, re-add, removal) carry
+	the last 4 only."""
+	account_number = cstr(account_number)
+	return f"…{account_number[-4:]}" if account_number else ""
+
+
+def _removed_account_to_revive(erp_party, account_number):
+	"""A customer re-adding an account they removed earlier: the soft-deleted
+	doc still holds the number, so it is re-enabled instead of rejected as a
+	duplicate. Only when this party's customer-removed doc is the sole holder of
+	the number — any other match is a genuine duplicate. An account support
+	disabled from the desk carries no removal marker and is never revived here:
+	self-serve must not undo an admin hold."""
+	name = frappe.db.get_value(
+		"Bank Account",
+		{
+			"party_type": "Customer",
+			"party": erp_party,
+			"bank_account_no": account_number,
+			"disabled": 1,
+			REMOVED_BY_CUSTOMER: 1,
+		},
+		"name",
+	)
+	if not name:
+		return None
+	if frappe.db.exists("Bank Account", {"bank_account_no": account_number, "name": ("!=", name)}):
+		return None
+	return name
+
+
+def number_collision_message(erp_party, account_number, bank_account_name):
+	"""Why `account_number` cannot be moved onto `bank_account_name`, or None.
+
+	Shared by update_bank_account and the ENG-509 approve flow. A collision with
+	the party's own customer-removed account gets its own message: that doc is
+	hidden from the customer, so the generic one is a dead end for everybody.
+	"""
+	others = frappe.get_all(
+		"Bank Account",
+		filters={"bank_account_no": account_number, "name": ("!=", bank_account_name)},
+		fields=["name", "party_type", "party", "disabled", REMOVED_BY_CUSTOMER],
+	)
+	if not others:
+		return None
+	if all(
+		row.party_type == "Customer"
+		and row.party == erp_party
+		and row.disabled
+		and row.get(REMOVED_BY_CUSTOMER)
+		for row in others
+	):
+		return OWN_REMOVED_NUMBER_MESSAGE
+	return NUMBER_IN_USE_MESSAGE
+
+
+def clear_removal_marker_when_enabled(doc, method=None):
+	"""Bank Account validate hook (hooks.py doc_events). The marker only means
+	something while the account is disabled; once anyone re-enables it (desk or
+	re-add) it is cleared, so a LATER admin hold cannot be mistaken for a
+	customer removal and revived through self-serve."""
+	if not doc.get("disabled") and doc.get(REMOVED_BY_CUSTOMER):
+		doc.set(REMOVED_BY_CUSTOMER, 0)
 
 
 @frappe.whitelist()
@@ -155,22 +260,60 @@ def add_bank_account(
 	bank_name, account_number, account_type, currency = _validate_bank_fields(
 		bank_name, account_number, account_type, currency
 	)
-	if frappe.db.exists("Bank Account", {"bank_account_no": account_number}):
+	revive = _removed_account_to_revive(erp_party, account_number)
+	if not revive and frappe.db.exists("Bank Account", {"bank_account_no": account_number}):
 		frappe.throw("A bank account with this account number already exists.")
 
 	_ensure_bank_master(bank_name)
-	existing = frappe.get_all(
-		"Bank Account", filters={"party_type": "Customer", "party": erp_party}, pluck="name"
-	)
+	existing = _enabled_bank_account_names(erp_party)
 	make_default = 1 if (cint(set_default) or not existing) else 0
+
+	if revive:
+		# The doc name (the app's bankAccountId) is kept; details are refreshed
+		# from this request since the customer may have retyped them.
+		doc = frappe.get_doc("Bank Account", revive, for_update=True)
+		doc.bank = bank_name
+		doc.branch_code = cstr(bank_branch).strip()
+		doc.account_type = account_type
+		doc.currency = currency
+		if cstr(account_name).strip():
+			doc.account_name = cstr(account_name).strip()
+		doc.disabled = 0
+		doc.set(REMOVED_BY_CUSTOMER, 0)
+		doc.is_default = make_default
+		doc.save(ignore_permissions=True)
+		if make_default:
+			for name in existing:
+				frappe.db.set_value("Bank Account", name, "is_default", 0)
+		frappe.db.commit()
+
+		audit_log(
+			"add_bank_account",
+			"Bank Account",
+			doc.name,
+			{
+				"party": erp_party,
+				"bank": bank_name,
+				"bank_account_no": _mask_account_number(account_number),
+				"currency": currency,
+				"is_default": make_default,
+				"reenabled": 1,
+			},
+		)
+		return {"success": True, "bank_account": doc.name, "reenabled": True}
 
 	# ERPNext autonames Bank Accounts "{account_name} - {bank}", and the doc
 	# name is load-bearing (it is the app's bankAccountId). Disambiguate the
 	# holder with the account number's last 4 so a second account at the same
-	# bank can exist; existing docs keep their names.
+	# bank can exist; existing docs keep their names. Two numbers can share
+	# their last 4, so keep counting until the name is free.
 	holder = cstr(account_name).strip() or erp_party
 	if frappe.db.exists("Bank Account", f"{holder} - {bank_name}"):
 		holder = f"{holder} (…{account_number[-4:]})"
+		base, suffix = holder, 2
+		while frappe.db.exists("Bank Account", f"{holder} - {bank_name}"):
+			holder = f"{base} {suffix}"
+			suffix += 1
 
 	doc = frappe.get_doc(
 		{
@@ -200,12 +343,12 @@ def add_bank_account(
 		{
 			"party": erp_party,
 			"bank": bank_name,
-			"bank_account_no": account_number,
+			"bank_account_no": _mask_account_number(account_number),
 			"currency": currency,
 			"is_default": make_default,
 		},
 	)
-	return {"success": True, "bank_account": doc.name}
+	return {"success": True, "bank_account": doc.name, "reenabled": False}
 
 
 @frappe.whitelist()
@@ -236,10 +379,9 @@ def update_bank_account(
 	# bankAccountId, and changing it would strand mobile references.
 	bank_account = _owned_bank_account(bank_account_id, erp_party, for_update=True)
 
-	if frappe.db.exists(
-		"Bank Account", {"bank_account_no": account_number, "name": ("!=", bank_account.name)}
-	):
-		frappe.throw("Another bank account already uses this account number.")
+	collision = number_collision_message(erp_party, account_number, bank_account.name)
+	if collision:
+		frappe.throw(collision)
 
 	_ensure_bank_master(bank_name)
 	old_values = {
@@ -285,15 +427,98 @@ def set_default_bank_account(bank_account_id, erp_party):
 	"""Make one of the customer's bank accounts the default (clears the rest)."""
 	erp_party = cstr(erp_party).strip()
 	bank_account = _owned_bank_account(bank_account_id, erp_party)
-	others = frappe.get_all(
-		"Bank Account",
-		filters={"party_type": "Customer", "party": erp_party, "name": ("!=", bank_account.name)},
-		pluck="name",
-	)
-	for name in others:
+	for name in _enabled_bank_account_names(erp_party, exclude=bank_account.name):
 		frappe.db.set_value("Bank Account", name, "is_default", 0)
 	frappe.db.set_value("Bank Account", bank_account.name, "is_default", 1)
 	frappe.db.commit()
 
 	audit_log("set_default_bank_account", "Bank Account", bank_account.name, {"party": erp_party})
 	return {"success": True}
+
+
+def _elect_new_default(erp_party, removed_name, currency):
+	"""Most recently modified remaining account, same currency first."""
+	remaining = frappe.get_all(
+		"Bank Account",
+		filters={
+			"party_type": "Customer",
+			"party": erp_party,
+			"disabled": 0,
+			"name": ("!=", removed_name),
+		},
+		fields=["name", "currency"],
+		order_by="modified desc",
+	)
+	if not remaining:
+		return None
+	same_currency = [row for row in remaining if row.currency == currency]
+	new_default = (same_currency or remaining)[0].name
+	frappe.db.set_value("Bank Account", new_default, "is_default", 1)
+	return new_default
+
+
+@frappe.whitelist()
+@require_admin()
+@handle_api_errors
+def delete_bank_account(bank_account_id, erp_party):
+	"""Remove one of the customer's bank accounts (customer self-serve).
+
+	Hard delete when nothing references the record; otherwise (Cashouts,
+	Payment Entries, past update requests) it is disabled and marked
+	removed_by_customer, which hides it from every customer-facing read and write
+	in this module; Cashout.validate refuses new cashouts to it.
+	"""
+	erp_party = cstr(erp_party).strip()
+	bank_account = _owned_bank_account(bank_account_id, erp_party, for_update=True)
+	name = bank_account.name
+	was_default = bool(bank_account.is_default)
+
+	# A pending edit for an account the customer just removed must not be
+	# approvable later (same supersede rule as the ENG-509 approve flow).
+	pending = frappe.get_all(
+		"Bank Account Update Request",
+		filters={"bank_account": name, "status": "Pending"},
+		pluck="name",
+	)
+	for request in pending:
+		frappe.db.set_value("Bank Account Update Request", request, "status", "Closed")
+
+	# delete_doc runs on_trash hooks before its link check, so a refused delete
+	# is rolled back to the savepoint rather than trusted to be side-effect free.
+	frappe.db.savepoint("delete_bank_account")
+	try:
+		frappe.delete_doc("Bank Account", name, ignore_permissions=True)
+		deleted = True
+	except frappe.LinkExistsError:
+		frappe.db.rollback(save_point="delete_bank_account")
+		frappe.db.set_value("Bank Account", name, "disabled", 1)
+		frappe.db.set_value("Bank Account", name, REMOVED_BY_CUSTOMER, 1)
+		frappe.db.set_value("Bank Account", name, "is_default", 0)
+		deleted = False
+
+	new_default = _elect_new_default(erp_party, name, bank_account.currency) if was_default else None
+	frappe.db.commit()
+
+	# A hard-deleted doc cannot anchor a Comment, so that entry goes on the Customer.
+	audit_log(
+		"delete_bank_account",
+		"Bank Account" if not deleted else "Customer",
+		name if not deleted else erp_party,
+		{
+			"party": erp_party,
+			"bank_account": name,
+			"bank": bank_account.bank,
+			"bank_account_no": _mask_account_number(bank_account.bank_account_no),
+			"deleted": deleted,
+			"disabled": not deleted,
+			"closed_requests": pending,
+			"new_default": new_default,
+		},
+	)
+	return {
+		"success": True,
+		"bank_account_id": name,
+		"deleted": deleted,
+		"disabled": not deleted,
+		"new_default": new_default,
+	}

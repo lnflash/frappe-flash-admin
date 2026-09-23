@@ -141,6 +141,13 @@ app_include_js = "/assets/admin_panel/js/back_to_dashboard.js"
 # 	}
 # }
 
+doc_events = {
+	"Bank Account": {
+		# The customer-removal marker never outlives a re-enable (see the handler).
+		"validate": "admin_panel.api.banking.clear_removal_marker_when_enabled",
+	},
+}
+
 # Scheduled Tasks
 # ---------------
 # Only `daily` is enabled. These fire ONLY when a scheduler worker is running
@@ -258,7 +265,10 @@ doctype_dashboards = {
 fixtures = [
 	{"doctype": "Workspace", "filters": [["module", "=", "Admin Panel"]]},
 	{"doctype": "Client Script", "filters": [["module", "=", "Admin Panel"]]},
-	{"doctype": "Custom Field", "filters": [["dt", "=", "Bank Account"], ["fieldname", "=", "currency"]]},
+	{
+		"doctype": "Custom Field",
+		"filters": [["dt", "=", "Bank Account"], ["fieldname", "in", ["currency", "removed_by_customer"]]],
+	},
 	{"doctype": "Number Card", "filters": [["module", "=", "Admin Panel"]]},
 	{"doctype": "Dashboard Chart", "filters": [["module", "=", "Admin Panel"]]},
 ]

@@ -895,12 +895,14 @@ def approve_bank_account_update_request(request_id):
 	if bank_account.party_type != "Customer" or bank_account.party != req.party:
 		return {"success": False, "error": "Bank Account does not belong to the requesting customer."}
 
-	# Reject a collision with a different account's number (mirror of create-time dedupe).
-	if req.account_number and frappe.db.exists(
-		"Bank Account",
-		{"bank_account_no": req.account_number, "name": ["!=", bank_account.name]},
-	):
-		return {"success": False, "error": "Another bank account already uses that account number."}
+	# Reject a collision with a different account's number (mirror of create-time
+	# dedupe). The party's own customer-removed account gets a specific message.
+	if req.account_number:
+		from .banking import number_collision_message
+
+		collision = number_collision_message(req.party, req.account_number, bank_account.name)
+		if collision:
+			return {"success": False, "error": collision}
 
 	old_values = {
 		"bank": bank_account.bank,

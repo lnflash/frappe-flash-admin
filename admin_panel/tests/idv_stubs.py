@@ -32,6 +32,17 @@ frappe = ensure_module("frappe")
 frappe_utils = ensure_module("frappe.utils")
 if not hasattr(frappe, "utils"):
 	frappe.utils = frappe_utils
+if not hasattr(frappe_utils, "cstr"):
+	frappe_utils.cstr = lambda value: "" if value is None else str(value)
+if not hasattr(frappe_utils, "cint"):
+
+	def _cint(value):
+		try:
+			return int(value)
+		except (TypeError, ValueError):
+			return 0
+
+	frappe_utils.cint = _cint
 frappe_model = ensure_module("frappe.model")
 frappe_document = ensure_module("frappe.model.document")
 if not hasattr(frappe_document, "Document"):

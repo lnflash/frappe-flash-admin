@@ -5,6 +5,7 @@ import frappe
 import requests as requests_lib
 
 from .auth import audit_log, require_admin, require_financial, require_roles
+from .banking import _enabled_bank_account_names, _ensure_bank_master, validate_request_bank_fields
 from .common import handle_api_errors
 from .compliance_audit import record_event
 from .flash_identifiers import is_flash_username_candidate
@@ -481,25 +482,37 @@ def _create_erp_records(req):
 	# 3. Create Bank Account (requires bank_name and account_number)
 	if req.bank_name and req.account_number:
 		try:
-			if not frappe.db.exists("Bank", req.bank_name):
-				frappe.get_doc(
-					{
-						"doctype": "Bank",
-						"bank_name": req.bank_name,
-					}
-				).insert(ignore_permissions=True)
+			# Same checks as the self-serve add/update paths (ENG-606): the
+			# account must come out editable from the app, which means a
+			# cashout-accepted currency and a canonical account type. A request
+			# without a usable currency is JMD — every cashout bank holder is
+			# Jamaican — and the fallback is logged so it can be spotted.
+			bank_name, account_number, account_type, currency, defaulted = validate_request_bank_fields(
+				req.bank_name, req.account_number, req.account_type, req.currency
+			)
+			if defaulted:
+				frappe.logger().warning(
+					f"Account Upgrade Request {req.name}: currency {req.currency!r} not accepted, "
+					f"Bank Account created as {currency}"
+				)
+			_ensure_bank_master(bank_name)
 
-			if not frappe.db.exists("Bank Account", {"bank_account_no": req.account_number}):
+			if not frappe.db.exists("Bank Account", {"bank_account_no": account_number}):
+				# First enabled account for the customer becomes the default
+				# (add_bank_account does the same); a customer who already has
+				# one keeps it.
+				is_default = 0 if _enabled_bank_account_names(customer_name) else 1
 				bank_account = frappe.get_doc(
 					{
 						"doctype": "Bank Account",
 						"account_name": req.address_title or req.full_name,
-						"bank": req.bank_name,
-						"bank_account_no": req.account_number,
+						"bank": bank_name,
+						"bank_account_no": account_number,
 						"branch_code": req.bank_branch or "",
-						"account_type": req.account_type or "",
-						"currency": req.currency or "",
+						"account_type": account_type,
+						"currency": currency,
 						"is_company_account": 0,
+						"is_default": is_default,
 						"party_type": "Customer",
 						"party": customer_name,
 					}

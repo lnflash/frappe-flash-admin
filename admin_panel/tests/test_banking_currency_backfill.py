@@ -104,6 +104,20 @@ def test_approval_defaults_a_missing_currency_to_jmd_and_audit_logs_it(env):
 	assert "5550001" not in entries[0]["content"]
 
 
+def test_approval_does_not_audit_log_a_default_when_the_number_is_already_held(env):
+	"""A held number creates nothing, so no Comment may claim a JMD account was assigned."""
+	env.seed("Bank Account", account("Held - NCB", party=OTHER_PARTY, number="5550001", currency="USD"))
+	before = len(env.rows("Bank Account"))
+
+	errors, party = admin_api._create_erp_records(request(currency=None))
+
+	assert (errors, party) == ([], PARTY)
+	assert created_account(env) is None
+	assert len(env.rows("Bank Account")) == before
+	assert row(env, "Held - NCB")["currency"] == "USD"
+	assert audit_entries(env, "approve_upgrade_currency_defaulted") == []
+
+
 @pytest.mark.parametrize("currency", ["", "  ", "EUR", "jamaican dollars"])
 def test_approval_never_inserts_an_empty_or_unaccepted_currency(env, currency):
 	errors, _ = admin_api._create_erp_records(request(currency=currency))

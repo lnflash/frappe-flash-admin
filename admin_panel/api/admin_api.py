@@ -496,17 +496,6 @@ def _create_erp_records(req):
 			bank_name, account_number, account_type, currency, defaulted = validate_request_bank_fields(
 				req.bank_name, req.account_number, req.account_type, req.currency
 			)
-			if defaulted:
-				audit_log(
-					"approve_upgrade_currency_defaulted",
-					"Account Upgrade Request",
-					req.name,
-					{
-						"requested": req.currency,
-						"currency": currency,
-						"bank_account_no": _mask_account_number(account_number),
-					},
-				)
 			_ensure_bank_master(bank_name)
 
 			if not frappe.db.exists("Bank Account", {"bank_account_no": account_number}):
@@ -530,6 +519,20 @@ def _create_erp_records(req):
 					}
 				)
 				bank_account.insert(ignore_permissions=True)
+				# Logged only once an account actually exists with the defaulted
+				# currency — a number already held creates nothing, and must not
+				# leave a Comment claiming a JMD account was assigned.
+				if defaulted:
+					audit_log(
+						"approve_upgrade_currency_defaulted",
+						"Account Upgrade Request",
+						req.name,
+						{
+							"requested": req.currency,
+							"currency": currency,
+							"bank_account_no": _mask_account_number(account_number),
+						},
+					)
 		except Exception as e:
 			frappe.log_error(frappe.get_traceback(), f"Bank Account creation failed for request {req.name}")
 			errors.append(f"Bank Account: {e}")

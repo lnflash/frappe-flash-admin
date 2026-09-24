@@ -5,7 +5,12 @@ import frappe
 import requests as requests_lib
 
 from .auth import audit_log, require_admin, require_financial, require_roles
-from .banking import _enabled_bank_account_names, _ensure_bank_master, validate_request_bank_fields
+from .banking import (
+	_enabled_bank_account_names,
+	_ensure_bank_master,
+	_mask_account_number,
+	validate_request_bank_fields,
+)
 from .common import handle_api_errors
 from .compliance_audit import record_event
 from .flash_identifiers import is_flash_username_candidate
@@ -486,14 +491,21 @@ def _create_erp_records(req):
 			# account must come out editable from the app, which means a
 			# cashout-accepted currency and a canonical account type. A request
 			# without a usable currency is JMD — every cashout bank holder is
-			# Jamaican — and the fallback is logged so it can be spotted.
+			# Jamaican — and the fallback is audit-logged on the request (a
+			# Comment row survives redeploys; frappe.logger() output does not).
 			bank_name, account_number, account_type, currency, defaulted = validate_request_bank_fields(
 				req.bank_name, req.account_number, req.account_type, req.currency
 			)
 			if defaulted:
-				frappe.logger().warning(
-					f"Account Upgrade Request {req.name}: currency {req.currency!r} not accepted, "
-					f"Bank Account created as {currency}"
+				audit_log(
+					"approve_upgrade_currency_defaulted",
+					"Account Upgrade Request",
+					req.name,
+					{
+						"requested": req.currency,
+						"currency": currency,
+						"bank_account_no": _mask_account_number(account_number),
+					},
 				)
 			_ensure_bank_master(bank_name)
 
@@ -924,9 +936,9 @@ def approve_bank_account_update_request(request_id):
 		"bank_account_no": bank_account.bank_account_no,
 	}
 
-	# Ensure the Bank master exists before linking to it (mirror of _create_erp_records).
-	if req.bank_name and not frappe.db.exists("Bank", req.bank_name):
-		frappe.get_doc({"doctype": "Bank", "bank_name": req.bank_name}).insert(ignore_permissions=True)
+	# Ensure the Bank master exists before linking to it (same helper as _create_erp_records).
+	if req.bank_name:
+		_ensure_bank_master(req.bank_name)
 
 	# Patch in place. `name` and `is_default` are intentionally left untouched.
 	bank_account.bank = req.bank_name

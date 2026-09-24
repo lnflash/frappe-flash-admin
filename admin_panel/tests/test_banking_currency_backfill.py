@@ -85,16 +85,23 @@ def test_approval_inserts_the_request_currency(env):
 
 	assert (errors, party) == ([], PARTY)
 	assert created_account(env)["currency"] == "USD"
-	assert env.warnings == []
+	assert audit_entries(env, "approve_upgrade_currency_defaulted") == []
 
 
-def test_approval_defaults_a_missing_currency_to_jmd_and_logs_it(env):
+def test_approval_defaults_a_missing_currency_to_jmd_and_audit_logs_it(env):
 	errors, _ = admin_api._create_erp_records(request(currency=None))
 
 	assert errors == []
 	assert created_account(env)["currency"] == "JMD"
-	assert len(env.warnings) == 1
-	assert "AUR-0001" in env.warnings[0] and "JMD" in env.warnings[0]
+	entries = audit_entries(env, "approve_upgrade_currency_defaulted")
+	assert len(entries) == 1
+	assert entries[0]["reference_doctype"] == "Account Upgrade Request"
+	assert entries[0]["reference_name"] == "AUR-0001"
+	assert "'currency': 'JMD'" in entries[0]["content"]
+	assert "'requested': None" in entries[0]["content"]
+	# account number is masked, never written in full
+	assert "…0001" in entries[0]["content"]
+	assert "5550001" not in entries[0]["content"]
 
 
 @pytest.mark.parametrize("currency", ["", "  ", "EUR", "jamaican dollars"])
@@ -109,7 +116,7 @@ def test_approval_normalises_currency_case(env):
 	admin_api._create_erp_records(request(currency="usd"))
 
 	assert created_account(env)["currency"] == "USD"
-	assert env.warnings == []
+	assert audit_entries(env, "approve_upgrade_currency_defaulted") == []
 
 
 def test_approval_normalises_the_account_type_like_self_serve(env):
@@ -166,6 +173,17 @@ def test_approval_ignores_disabled_accounts_when_electing_the_default(env):
 		"Sagicor Bank",
 		"CIBC FirstCaribbean",
 		"JMMB",
+		"JMMB Bank (Jamaica) Ltd",
+		"Bank of Nova Scotia Jamaica",
+		"BNS",
+		"Jamaica National Building Society",
+		"JNBank",
+		"JNBS",
+		"First Global Bank",
+		"Victoria Mutual Building Society",
+		"VMBS",
+		"VM Building Society",
+		"Jamaica Co-operative Credit Union",
 	],
 )
 def test_jamaican_banks_are_recognised(name):
@@ -181,6 +199,9 @@ def test_jamaican_banks_are_recognised(name):
 		"Citibank",
 		"US Bank",
 		"Chase Jamaica",
+		"Citi Jamaica",
+		"Bank of America Jamaica",
+		"Wells Fargo Jamaica",
 		"Some Credit Union",
 		"",
 	],
@@ -205,6 +226,7 @@ def seed_backfill(env):
 		account("Fine - NCB", party="CUST-0004", currency="USD", number="5", is_default=1),
 		account("Removed - NCB", currency="", number="6", disabled=1, removed_by_customer=1),
 		account("Company - NCB", party=None, party_type="Company", currency="", number="7"),
+		account("NoType - NCB", party="CUST-0005", currency="", account_type="", number="8"),
 	)
 
 
@@ -217,10 +239,21 @@ def test_backfill_dry_run_reports_without_writing(env):
 	assert result == {
 		"dry_run": True,
 		"updated": ["Null - NCB", "Blank - NCB"],
-		"defaults_set": ["Null - NCB", "Foreign - Chase", "Unknown - Local"],
+		"defaults_set": ["Null - NCB", "Foreign - Chase", "Unknown - Local", "NoType - NCB"],
 		"skipped_needs_review": [
-			{"name": "Foreign - Chase", "bank": "Chase", "party": OTHER_PARTY},
-			{"name": "Unknown - Local", "bank": "Local", "party": "CUST-0003"},
+			{
+				"name": "Foreign - Chase",
+				"bank": "Chase",
+				"party": OTHER_PARTY,
+				"reason": "bank not recognised",
+			},
+			{
+				"name": "Unknown - Local",
+				"bank": "Local",
+				"party": "CUST-0003",
+				"reason": "bank not recognised",
+			},
+			{"name": "NoType - NCB", "bank": "NCB", "party": "CUST-0005", "reason": "no account_type"},
 		],
 	}
 	assert {r["name"]: dict(r) for r in env.rows("Bank Account")} == before
@@ -242,7 +275,22 @@ def test_backfill_real_run_sets_jmd_on_jamaican_banks_only(env):
 	assert row(env, "Fine - NCB")["currency"] == "USD"
 	assert row(env, "Removed - NCB")["currency"] == ""
 	assert row(env, "Company - NCB")["currency"] == ""
+	assert row(env, "NoType - NCB")["currency"] == ""
 	assert env.commits == 1
+
+
+def test_backfill_skips_a_jamaican_account_with_no_account_type(env):
+	env.seed("Bank Account", account("NoType - NCB", currency="", account_type=""))
+
+	result = banking.backfill_bank_account_currency(dry_run=0)
+
+	assert result["updated"] == []
+	assert result["skipped_needs_review"] == [
+		{"name": "NoType - NCB", "bank": "NCB", "party": PARTY, "reason": "no account_type"}
+	]
+	assert row(env, "NoType - NCB")["currency"] == ""
+	assert row(env, "NoType - NCB")["account_type"] == ""
+	assert audit_entries(env, "backfill_bank_account_currency") == []
 
 
 def test_backfill_real_run_elects_a_default_per_party_without_one(env):
@@ -250,7 +298,7 @@ def test_backfill_real_run_elects_a_default_per_party_without_one(env):
 
 	result = banking.backfill_bank_account_currency(dry_run="0")
 
-	assert result["defaults_set"] == ["Null - NCB", "Foreign - Chase", "Unknown - Local"]
+	assert result["defaults_set"] == ["Null - NCB", "Foreign - Chase", "Unknown - Local", "NoType - NCB"]
 	# most recently modified of the party's enabled accounts
 	assert row(env, "Null - NCB")["is_default"] == 1
 	assert row(env, "Blank - NCB")["is_default"] == 0
@@ -280,7 +328,11 @@ def test_backfill_is_idempotent(env):
 
 	assert second["updated"] == []
 	assert second["defaults_set"] == []
-	assert [s["name"] for s in second["skipped_needs_review"]] == ["Foreign - Chase", "Unknown - Local"]
+	assert [s["name"] for s in second["skipped_needs_review"]] == [
+		"Foreign - Chase",
+		"Unknown - Local",
+		"NoType - NCB",
+	]
 	assert env.commits == 1
 
 

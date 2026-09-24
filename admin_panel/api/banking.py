@@ -634,8 +634,9 @@ def backfill_bank_account_currency(dry_run=1):
 	"""Give currency-less customer Bank Accounts a currency and a default.
 
 	For every enabled ``party_type="Customer"`` account with an empty currency:
-	JMD when the Bank master is recognisably Jamaican, otherwise listed under
-	``skipped_needs_review`` and left alone. Then every party with enabled
+	JMD when the Bank master is recognisably Jamaican and the row has an
+	account_type, otherwise listed under ``skipped_needs_review`` (with a
+	``reason``) and left alone. Then every party with enabled
 	accounts but no default gets one (most recently modified, the same choice
 	delete_bank_account makes). ``dry_run=1`` (the default) writes nothing and
 	returns what a real run would do; a real run audit-logs each change.
@@ -649,7 +650,7 @@ def backfill_bank_account_currency(dry_run=1):
 	accounts = frappe.get_all(
 		"Bank Account",
 		filters={"party_type": "Customer", "disabled": 0},
-		fields=["name", "bank", "party", "bank_account_no", "currency", "is_default"],
+		fields=["name", "bank", "party", "bank_account_no", "currency", "account_type", "is_default"],
 		order_by="modified desc",
 	)
 	bank_labels = {row.name: row.bank_name for row in frappe.get_all("Bank", fields=["name", "bank_name"])}
@@ -658,9 +659,20 @@ def backfill_bank_account_currency(dry_run=1):
 	for row in accounts:
 		if cstr(row.currency).strip():
 			continue
+		# The pre-ENG-606 approval wrote account_type "" through the same Link
+		# fieldtype, and flash's BankAccount.accountType is NonNull exactly like
+		# currency — a currency alone would not make such a row visible, so it
+		# is reported for review rather than counted as healed.
+		if not cstr(row.account_type).strip():
+			skipped.append(
+				{"name": row.name, "bank": row.bank, "party": row.party, "reason": "no account_type"}
+			)
+			continue
 		label = bank_labels.get(row.bank) or cstr(row.bank)
 		if not (is_jamaican_bank(row.bank) or is_jamaican_bank(label)):
-			skipped.append({"name": row.name, "bank": row.bank, "party": row.party})
+			skipped.append(
+				{"name": row.name, "bank": row.bank, "party": row.party, "reason": "bank not recognised"}
+			)
 			continue
 		updated.append(row.name)
 		if dry_run:

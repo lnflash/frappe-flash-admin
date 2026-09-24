@@ -11,6 +11,8 @@ failure is reported inside the payload instead of failing the whole call, so
 ERP bank accounts still render when the other side is down or unconfigured.
 """
 
+import re
+
 import frappe
 from frappe.utils import cstr
 
@@ -140,6 +142,56 @@ def _validate_bank_fields(bank_name, account_number, account_type, currency):
 	if currency not in ALLOWED_CURRENCIES:
 		frappe.throw("currency must be JMD or USD — cashout accepts nothing else")
 	return bank_name, account_number, account_type, currency
+
+
+# Account Upgrade Request.account_type is a free Link (Bank Account Type), so
+# the approve flow maps what customers actually type onto the two values the
+# self-serve validator accepts. Unknown spellings still fail validation.
+_ACCOUNT_TYPE_ALIASES = {
+	"chequing": "Chequing",
+	"checking": "Chequing",
+	"cheque": "Chequing",
+	"current": "Chequing",
+	"savings": "Savings",
+	"saving": "Savings",
+}
+
+# Every cashout bank holder is Jamaican today (ENG-606), so an upgrade request
+# that carries no usable currency is treated as JMD rather than written empty
+# — an empty currency blanks the app's bankAccounts list and can never be
+# edited back (update_bank_account rejects it, and flash resends the current
+# value).
+DEFAULT_CURRENCY = "JMD"
+
+
+def normalize_account_type(account_type):
+	"""Canonical self-serve spelling for a request's account type, or the
+	stripped input when it matches nothing (so _validate_bank_fields rejects it)."""
+	raw = cstr(account_type).strip()
+	return _ACCOUNT_TYPE_ALIASES.get(raw.lower(), raw)
+
+
+def resolve_request_currency(currency):
+	"""(currency, defaulted): the request's currency when cashout accepts it,
+	else DEFAULT_CURRENCY with defaulted=True so the caller can log it."""
+	value = cstr(currency).strip().upper()
+	if value in ALLOWED_CURRENCIES:
+		return value, False
+	return DEFAULT_CURRENCY, True
+
+
+def validate_request_bank_fields(bank_name, account_number, account_type, currency):
+	"""The self-serve checks, applied to an Account Upgrade Request's bank block.
+
+	Returns (bank_name, account_number, account_type, currency, currency_defaulted).
+	Raises (frappe.throw) exactly like _validate_bank_fields for a missing bank
+	or number, or an account type that maps to neither Chequing nor Savings.
+	"""
+	currency, defaulted = resolve_request_currency(currency)
+	bank_name, account_number, account_type, currency = _validate_bank_fields(
+		bank_name, account_number, normalize_account_type(account_type), currency
+	)
+	return bank_name, account_number, account_type, currency, defaulted
 
 
 def _ensure_bank_master(bank_name):
@@ -436,24 +488,30 @@ def set_default_bank_account(bank_account_id, erp_party):
 	return {"success": True}
 
 
-def _elect_new_default(erp_party, removed_name, currency):
-	"""Most recently modified remaining account, same currency first."""
+def _pick_new_default(erp_party, removed_name=None, currency=None):
+	"""Name of the most recently modified enabled account (same currency first),
+	excluding `removed_name`; None when the party has nothing left. Read-only —
+	_elect_new_default writes the choice, the backfill dry run only reports it."""
+	filters = {"party_type": "Customer", "party": erp_party, "disabled": 0}
+	if removed_name:
+		filters["name"] = ("!=", removed_name)
 	remaining = frappe.get_all(
 		"Bank Account",
-		filters={
-			"party_type": "Customer",
-			"party": erp_party,
-			"disabled": 0,
-			"name": ("!=", removed_name),
-		},
+		filters=filters,
 		fields=["name", "currency"],
 		order_by="modified desc",
 	)
 	if not remaining:
 		return None
-	same_currency = [row for row in remaining if row.currency == currency]
-	new_default = (same_currency or remaining)[0].name
-	frappe.db.set_value("Bank Account", new_default, "is_default", 1)
+	same_currency = [row for row in remaining if currency is not None and row.currency == currency]
+	return (same_currency or remaining)[0].name
+
+
+def _elect_new_default(erp_party, removed_name, currency):
+	"""Most recently modified remaining account, same currency first."""
+	new_default = _pick_new_default(erp_party, removed_name, currency)
+	if new_default:
+		frappe.db.set_value("Bank Account", new_default, "is_default", 1)
 	return new_default
 
 
@@ -521,4 +579,144 @@ def delete_bank_account(bank_account_id, erp_party):
 		"deleted": deleted,
 		"disabled": not deleted,
 		"new_default": new_default,
+	}
+
+
+# ── ENG-606 maintenance: heal approval-created accounts ───────────────────
+#
+# Before ENG-606 the upgrade-approval flow inserted Bank Accounts with
+# currency "" and is_default 0. The backfill sets JMD only where the bank is
+# recognisably Jamaican; anything else is reported for a human to decide, and
+# a bank whose name reads as US/foreign is never touched.
+
+# Lower-case fragments of the banks Jamaican customers cash out to.
+JAMAICAN_BANK_MARKERS = (
+	"ncb",
+	"national commercial",
+	"scotia",
+	"bns",
+	"bank of nova scotia",
+	"jn bank",
+	"jnbank",
+	"jamaica national",
+	"jnbs",
+	"sagicor",
+	"cibc",
+	"first caribbean",
+	"firstcaribbean",
+	"jmmb",
+	"first global",
+	"victoria mutual",
+	"vmbs",
+	"vm building",
+	"jamaica",
+)
+# Any of these (as whole words, case-insensitive) marks a bank as NOT Jamaican
+# even when a Jamaican marker also matches ("Chase Jamaica" is still Chase).
+FOREIGN_BANK_MARKERS = ("us", "u.s", "usa", "america", "american", "chase", "citi", "citibank", "wells")
+
+
+def is_jamaican_bank(bank_name):
+	"""True only when `bank_name` carries a Jamaican marker and no foreign one."""
+	label = cstr(bank_name).strip().lower()
+	if not label:
+		return False
+	for marker in FOREIGN_BANK_MARKERS:
+		if re.search(rf"(?<![a-z0-9]){re.escape(marker)}(?![a-z0-9])", label):
+			return False
+	return any(marker in label for marker in JAMAICAN_BANK_MARKERS)
+
+
+@frappe.whitelist()
+@require_admin()
+@handle_api_errors
+def backfill_bank_account_currency(dry_run=1):
+	"""Give currency-less customer Bank Accounts a currency and a default.
+
+	For every enabled ``party_type="Customer"`` account with an empty currency:
+	JMD when the Bank master is recognisably Jamaican and the row has an
+	account_type, otherwise listed under ``skipped_needs_review`` (with a
+	``reason``) and left alone. Then every party with enabled
+	accounts but no default gets one (most recently modified, the same choice
+	delete_bank_account makes). ``dry_run=1`` (the default) writes nothing and
+	returns what a real run would do; a real run audit-logs each change.
+
+	    bench --site <site> execute admin_panel.api.banking.backfill_bank_account_currency \\
+	        --kwargs '{"dry_run": 0}'
+	"""
+	from frappe.utils import cint
+
+	dry_run = bool(cint(dry_run))
+	accounts = frappe.get_all(
+		"Bank Account",
+		filters={"party_type": "Customer", "disabled": 0},
+		fields=["name", "bank", "party", "bank_account_no", "currency", "account_type", "is_default"],
+		order_by="modified desc",
+	)
+	bank_labels = {row.name: row.bank_name for row in frappe.get_all("Bank", fields=["name", "bank_name"])}
+
+	updated, skipped = [], []
+	for row in accounts:
+		if cstr(row.currency).strip():
+			continue
+		# The pre-ENG-606 approval wrote account_type "" through the same Link
+		# fieldtype, and flash's BankAccount.accountType is NonNull exactly like
+		# currency — a currency alone would not make such a row visible, so it
+		# is reported for review rather than counted as healed.
+		if not cstr(row.account_type).strip():
+			skipped.append(
+				{"name": row.name, "bank": row.bank, "party": row.party, "reason": "no account_type"}
+			)
+			continue
+		label = bank_labels.get(row.bank) or cstr(row.bank)
+		if not (is_jamaican_bank(row.bank) or is_jamaican_bank(label)):
+			skipped.append(
+				{"name": row.name, "bank": row.bank, "party": row.party, "reason": "bank not recognised"}
+			)
+			continue
+		updated.append(row.name)
+		if dry_run:
+			continue
+		frappe.db.set_value("Bank Account", row.name, "currency", DEFAULT_CURRENCY)
+		audit_log(
+			"backfill_bank_account_currency",
+			"Bank Account",
+			row.name,
+			{
+				"party": row.party,
+				"bank": row.bank,
+				"bank_account_no": _mask_account_number(row.bank_account_no),
+				"currency": DEFAULT_CURRENCY,
+			},
+		)
+
+	defaults_set = []
+	by_party = {}
+	for row in accounts:
+		by_party.setdefault(row.party, []).append(row)
+	for party, rows in by_party.items():
+		if any(row.is_default for row in rows):
+			continue
+		elected = _pick_new_default(party)
+		if not elected:
+			continue
+		defaults_set.append(elected)
+		if dry_run:
+			continue
+		frappe.db.set_value("Bank Account", elected, "is_default", 1)
+		audit_log(
+			"backfill_bank_account_default",
+			"Bank Account",
+			elected,
+			{"party": party, "is_default": 1},
+		)
+
+	if not dry_run and (updated or defaults_set):
+		frappe.db.commit()
+
+	return {
+		"dry_run": dry_run,
+		"updated": updated,
+		"defaults_set": defaults_set,
+		"skipped_needs_review": skipped,
 	}

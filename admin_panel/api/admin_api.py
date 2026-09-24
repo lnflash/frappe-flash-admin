@@ -5,6 +5,12 @@ import frappe
 import requests as requests_lib
 
 from .auth import audit_log, require_admin, require_financial, require_roles
+from .banking import (
+	_enabled_bank_account_names,
+	_ensure_bank_master,
+	_mask_account_number,
+	validate_request_bank_fields,
+)
 from .common import handle_api_errors
 from .compliance_audit import record_event
 from .flash_identifiers import is_flash_username_candidate
@@ -481,30 +487,52 @@ def _create_erp_records(req):
 	# 3. Create Bank Account (requires bank_name and account_number)
 	if req.bank_name and req.account_number:
 		try:
-			if not frappe.db.exists("Bank", req.bank_name):
-				frappe.get_doc(
-					{
-						"doctype": "Bank",
-						"bank_name": req.bank_name,
-					}
-				).insert(ignore_permissions=True)
+			# Same checks as the self-serve add/update paths (ENG-606): the
+			# account must come out editable from the app, which means a
+			# cashout-accepted currency and a canonical account type. A request
+			# without a usable currency is JMD — every cashout bank holder is
+			# Jamaican — and the fallback is audit-logged on the request (a
+			# Comment row survives redeploys; frappe.logger() output does not).
+			bank_name, account_number, account_type, currency, defaulted = validate_request_bank_fields(
+				req.bank_name, req.account_number, req.account_type, req.currency
+			)
+			_ensure_bank_master(bank_name)
 
-			if not frappe.db.exists("Bank Account", {"bank_account_no": req.account_number}):
+			if not frappe.db.exists("Bank Account", {"bank_account_no": account_number}):
+				# First enabled account for the customer becomes the default
+				# (add_bank_account does the same); a customer who already has
+				# one keeps it.
+				is_default = 0 if _enabled_bank_account_names(customer_name) else 1
 				bank_account = frappe.get_doc(
 					{
 						"doctype": "Bank Account",
 						"account_name": req.address_title or req.full_name,
-						"bank": req.bank_name,
-						"bank_account_no": req.account_number,
+						"bank": bank_name,
+						"bank_account_no": account_number,
 						"branch_code": req.bank_branch or "",
-						"account_type": req.account_type or "",
-						"currency": req.currency or "",
+						"account_type": account_type,
+						"currency": currency,
 						"is_company_account": 0,
+						"is_default": is_default,
 						"party_type": "Customer",
 						"party": customer_name,
 					}
 				)
 				bank_account.insert(ignore_permissions=True)
+				# Logged only once an account actually exists with the defaulted
+				# currency — a number already held creates nothing, and must not
+				# leave a Comment claiming a JMD account was assigned.
+				if defaulted:
+					audit_log(
+						"approve_upgrade_currency_defaulted",
+						"Account Upgrade Request",
+						req.name,
+						{
+							"requested": req.currency,
+							"currency": currency,
+							"bank_account_no": _mask_account_number(account_number),
+						},
+					)
 		except Exception as e:
 			frappe.log_error(frappe.get_traceback(), f"Bank Account creation failed for request {req.name}")
 			errors.append(f"Bank Account: {e}")
@@ -911,9 +939,9 @@ def approve_bank_account_update_request(request_id):
 		"bank_account_no": bank_account.bank_account_no,
 	}
 
-	# Ensure the Bank master exists before linking to it (mirror of _create_erp_records).
-	if req.bank_name and not frappe.db.exists("Bank", req.bank_name):
-		frappe.get_doc({"doctype": "Bank", "bank_name": req.bank_name}).insert(ignore_permissions=True)
+	# Ensure the Bank master exists before linking to it (same helper as _create_erp_records).
+	if req.bank_name:
+		_ensure_bank_master(req.bank_name)
 
 	# Patch in place. `name` and `is_default` are intentionally left untouched.
 	bank_account.bank = req.bank_name

@@ -511,13 +511,13 @@ def _approve(bank, request):
 	return admin_api.approve_bank_account_update_request(request)
 
 
-def _update_request(name, bank_account, number):
+def _update_request(name, bank_account, number, bank_name="NCB"):
 	return {
 		"name": name,
 		"status": "Pending",
 		"party": PARTY,
 		"bank_account": bank_account,
-		"bank_name": "NCB",
+		"bank_name": bank_name,
 		"bank_branch": "001",
 		"account_type": "Savings",
 		"account_number": number,
@@ -551,6 +551,24 @@ def test_approve_still_patches_a_free_number(bank):
 	bank.seed("Bank Account Update Request", _update_request("REQ-1", "Live - NCB", "222"))
 
 	assert _approve(bank, "REQ-1")["success"] is True
+	assert row(bank, "Live - NCB")["bank_account_no"] == "222"
+
+
+def test_approve_creates_a_missing_bank_master_before_linking(bank):
+	"""An update request naming a bank with no Bank master yet must still approve;
+	the master is created (via _ensure_bank_master) and the account links to it."""
+	# Real ERPNext names Bank by field:bank_name; the stand-in needs telling.
+	bank.autoname["Bank"] = lambda doc: doc.bank_name
+	bank.seed("Bank Account", account("Live - NCB", number="1"))
+	bank.seed(
+		"Bank Account Update Request", _update_request("REQ-1", "Live - NCB", "222", bank_name="Sagicor Bank")
+	)
+	assert "Sagicor Bank" not in [r["name"] for r in bank.rows("Bank")]
+
+	assert _approve(bank, "REQ-1")["success"] is True
+
+	assert "Sagicor Bank" in [r["name"] for r in bank.rows("Bank")]
+	assert row(bank, "Live - NCB")["bank"] == "Sagicor Bank"
 	assert row(bank, "Live - NCB")["bank_account_no"] == "222"
 
 

@@ -12,6 +12,7 @@
   "auto_approve_sampling_percent",
   "identity_section",
   "bridge_kyc_satisfies_identity",
+  "auto_upgrade_bridge_kyc",
   "retention_section",
   "retention_years",
   "service_section",
@@ -64,6 +65,14 @@
    "label": "Bridge KYC Satisfies Identity"
   },
   {
+   "default": "0",
+   "depends_on": "eval:doc.bridge_kyc_satisfies_identity",
+   "description": "Every 15 minutes, upgrade each account whose Bridge KYC is approved (individual customers, account active, below Level 2) to Level 2 through an Account Upgrade Request approved as APPROVE_BRIDGE_KYC. The first run after switching on catches up on existing accounts. Requires Bridge KYC Satisfies Identity. Off by default.",
+   "fieldname": "auto_upgrade_bridge_kyc",
+   "fieldtype": "Check",
+   "label": "Auto-Upgrade Bridge KYC to Level 2"
+  },
+  {
    "fieldname": "retention_section",
    "fieldtype": "Section Break",
    "label": "Retention"
@@ -90,7 +99,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-01 20:30:00.000000",
+ "modified": "2026-10-06 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Admin Panel",
  "name": "ID Verification Settings",

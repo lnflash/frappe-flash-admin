@@ -150,9 +150,10 @@ doc_events = {
 
 # Scheduled Tasks
 # ---------------
-# Only `daily` is enabled. These fire ONLY when a scheduler worker is running
+# `daily` (the ledger anchor) and one `cron` job (the Bridge KYC auto-upgrade)
+# are enabled. These fire ONLY when a scheduler worker is running
 # (`bench schedule` / the scheduler container) and the site's scheduler is not
-# paused — without one post_daily_anchor never runs and nothing warns about it.
+# paused — without one neither job runs and nothing warns about it.
 
 scheduler_events = {
 	"daily": [
@@ -160,6 +161,13 @@ scheduler_events = {
 		# (site_config `ops_discord_webhook_url`); no-op when unset.
 		"admin_panel.api.compliance_audit.post_daily_anchor",
 	],
+	"cron": {
+		# Bridge KYC → Level 2 auto-upgrade. A no-op until "Auto-Upgrade Bridge
+		# KYC to Level 2" is switched on in ID Verification Settings.
+		"*/15 * * * *": [
+			"admin_panel.api.bridge_kyc_upgrade.run_auto_upgrade",
+		],
+	},
 }
 
 # scheduler_events = {

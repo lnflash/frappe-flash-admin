@@ -310,6 +310,8 @@ def test_id_verification_settings_is_a_single_with_defaults():
 	assert f["auto_approve_sampling_percent"]["default"] == "10"
 	assert f["bridge_kyc_satisfies_identity"]["fieldtype"] == "Check"
 	assert f["bridge_kyc_satisfies_identity"]["default"] == "1"
+	assert f["auto_upgrade_bridge_kyc"]["fieldtype"] == "Check"
+	assert f["auto_upgrade_bridge_kyc"]["default"] == "0"
 	assert f["retention_years"]["fieldtype"] == "Int" and f["retention_years"]["default"] == "7"
 	assert f["idv_service_url"]["fieldtype"] == "Data"
 
@@ -410,7 +412,7 @@ def test_doctypes_without_a_tile_are_explicitly_unlisted():
 		assert nav_core.UNLISTED.get(route)
 
 
-def test_hooks_enable_the_daily_anchor_only():
+def test_hooks_schedule_exactly_the_anchor_and_the_bridge_kyc_upgrade():
 	tree = ast.parse(HOOKS_PY)
 	assign = next(
 		n
@@ -418,14 +420,21 @@ def test_hooks_enable_the_daily_anchor_only():
 		if isinstance(n, ast.Assign) and any(getattr(t, "id", None) == "scheduler_events" for t in n.targets)
 	)
 	events = ast.literal_eval(assign.value)
-	assert events == {"daily": ["admin_panel.api.compliance_audit.post_daily_anchor"]}
+	assert events == {
+		"daily": ["admin_panel.api.compliance_audit.post_daily_anchor"],
+		"cron": {"*/15 * * * *": ["admin_panel.api.bridge_kyc_upgrade.run_auto_upgrade"]},
+	}
 	assert "scheduler worker" in HOOKS_PY
 
 
-def test_scheduler_target_exists_and_is_not_an_endpoint():
-	source = (ADMIN_PANEL / "api" / "compliance_audit.py").read_text()
-	assert "\ndef post_daily_anchor():" in source
-	assert "@frappe.whitelist()\n@require_admin()\n@handle_api_errors\ndef post_daily_anchor(" not in source
+@pytest.mark.parametrize(
+	"module,function",
+	[("compliance_audit", "post_daily_anchor"), ("bridge_kyc_upgrade", "run_auto_upgrade")],
+)
+def test_scheduler_targets_exist_and_are_not_endpoints(module, function):
+	source = (ADMIN_PANEL / "api" / f"{module}.py").read_text()
+	assert f"\ndef {function}():" in source
+	assert f"@frappe.whitelist()\n@require_admin()\n@handle_api_errors\ndef {function}(" not in source
 
 
 # ── endpoints ───────────────────────────────────────────────────────────

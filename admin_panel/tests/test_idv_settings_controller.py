@@ -12,6 +12,7 @@ GOOD = {
 	"auto_approve_min_score": 0.9,
 	"auto_approve_sampling_percent": 10,
 	"bridge_kyc_satisfies_identity": 1,
+	"auto_upgrade_bridge_kyc": 0,
 	"retention_years": 7,
 	"idv_service_url": None,
 }
@@ -63,6 +64,21 @@ def test_boundaries_are_inclusive(fake):
 	make({**GOOD, "auto_approve_sampling_percent": 100, "auto_approve_min_score": 1}).validate()
 
 
+def test_auto_upgrade_requires_bridge_kyc_to_count_as_identity(fake):
+	with pytest.raises(Thrown, match="requires Bridge KYC Satisfies Identity"):
+		make({**GOOD, "auto_upgrade_bridge_kyc": 1, "bridge_kyc_satisfies_identity": 0}).validate()
+	# The form posts strings.
+	with pytest.raises(Thrown, match="requires Bridge KYC Satisfies Identity"):
+		make({**GOOD, "auto_upgrade_bridge_kyc": "1", "bridge_kyc_satisfies_identity": "0"}).validate()
+	make({**GOOD, "auto_upgrade_bridge_kyc": 1, "bridge_kyc_satisfies_identity": 1}).validate()
+	make({**GOOD, "auto_upgrade_bridge_kyc": 0, "bridge_kyc_satisfies_identity": 0}).validate()
+
+
+def test_a_settings_doc_saved_before_the_switch_existed_still_validates(fake):
+	legacy = {k: v for k, v in GOOD.items() if k != "auto_upgrade_bridge_kyc"}
+	make(legacy).validate()
+
+
 def test_form_strings_are_coerced_before_the_bounds_check(fake):
 	make(
 		{
@@ -98,6 +114,11 @@ def test_on_update_records_the_diff(fake, events):
 			},
 		)
 	]
+
+
+def test_switching_the_auto_upgrade_on_is_ledgered(fake, events):
+	make({**GOOD, "auto_upgrade_bridge_kyc": 1}, before=dict(GOOD)).on_update()
+	assert events[0][3] == {"changed": {"auto_upgrade_bridge_kyc": {"from": 0, "to": 1}}}
 
 
 def test_on_update_skips_when_nothing_changed(fake, events):

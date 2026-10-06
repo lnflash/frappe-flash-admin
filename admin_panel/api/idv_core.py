@@ -30,6 +30,7 @@ SETTINGS_FIELDS = (
 	("auto_approve_min_score", "Float"),
 	("auto_approve_sampling_percent", "Int"),
 	("bridge_kyc_satisfies_identity", "Check"),
+	("auto_upgrade_bridge_kyc", "Check"),
 	("retention_years", "Int"),
 	("idv_service_url", "Data"),
 )

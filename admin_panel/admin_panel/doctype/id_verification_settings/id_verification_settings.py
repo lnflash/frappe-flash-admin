@@ -15,6 +15,12 @@ class IDVerificationSettings(Document):
 		min_score = coerce("Float", self.auto_approve_min_score)
 		if min_score < 0 or min_score > 1:
 			frappe.throw("Auto-Approve Minimum Score must be between 0 and 1.")
+		# The auto-upgrade approves on Bridge KYC alone, so it cannot run while
+		# Bridge KYC does not count as identity.
+		if coerce("Check", self.get("auto_upgrade_bridge_kyc")) and not coerce(
+			"Check", self.get("bridge_kyc_satisfies_identity")
+		):
+			frappe.throw("Auto-Upgrade Bridge KYC to Level 2 requires Bridge KYC Satisfies Identity.")
 
 	def on_update(self):
 		# Every policy change is a ledger event; an untouched save is not.

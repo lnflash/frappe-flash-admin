@@ -26,6 +26,12 @@ ELIGIBLE_LEVEL_NAMES = ("ZERO", "ONE")
 # than firing every approval in one job.
 MAX_UPGRADES_PER_RUN = 25
 
+# A failed upgrade writes an Error Log titled FAILURE_TITLE_PREFIX + username,
+# and the account is not tried again until RETRY_AFTER_HOURS have passed, so a
+# persistent failure is retried daily instead of every 15 minutes.
+FAILURE_TITLE_PREFIX = "Bridge KYC auto-upgrade failed for "
+RETRY_AFTER_HOURS = 24
+
 # Skip reasons. Stable strings: the preview endpoint and the run summary
 # report them as-is.
 SKIP_MISSING_AT_BRIDGE = "missing_at_bridge"
@@ -38,6 +44,7 @@ SKIP_NO_PHONE = "no_phone"
 SKIP_NO_LEGAL_NAME = "no_legal_name"
 SKIP_ALREADY_UPGRADED = "already_level_two_or_above"
 SKIP_ERP_PARTY_MISMATCH = "erp_party_not_found_by_mobile"
+SKIP_RECENT_FAILURE = "failed_in_the_last_day"
 
 
 def _level(value):
@@ -62,14 +69,15 @@ def _skip(row, reason):
 	}
 
 
-def select_candidates(accounts, customers, pending_usernames):
+def select_candidates(accounts, customers, pending_usernames, recently_failed=()):
 	"""Split Bridge-linked Flash accounts into upgrade candidates and skips.
 
 	``accounts`` are ``mongo_reader.load_bridge_accounts()`` rows,
 	``customers`` is ``BridgeClient.list_customers()`` (live: Bridge, not the
-	status flash stored, is the source of truth for KYC state), and
+	status flash stored, is the source of truth for KYC state),
 	``pending_usernames`` are usernames with a Pending Account Upgrade Request,
-	which a reviewer owns.
+	which a reviewer owns, and ``recently_failed`` are usernames whose upgrade
+	failed within RETRY_AFTER_HOURS.
 
 	Accounts already at Level 2 or above and customers that have not passed
 	KYC are the steady state, so they are left out silently. Everything else
@@ -83,6 +91,7 @@ def select_candidates(accounts, customers, pending_usernames):
 	for row in accounts or []:
 		links.setdefault(row.get("bridge_customer_id"), []).append(row)
 	pending = set(pending_usernames or [])
+	recently_failed = set(recently_failed or [])
 
 	candidates, skipped = [], []
 	for customer_id, rows in links.items():
@@ -108,6 +117,8 @@ def select_candidates(accounts, customers, pending_usernames):
 				skipped.append(_skip(row, SKIP_NO_USERNAME))
 			elif row.get("username") in pending:
 				skipped.append(_skip(row, SKIP_PENDING_REQUEST))
+			elif row.get("username") in recently_failed:
+				skipped.append(_skip(row, SKIP_RECENT_FAILURE))
 			else:
 				candidates.append({"account": row, "customer": customer})
 
@@ -146,11 +157,19 @@ def build_request(account, customer):
 		"requested_level": TARGET_LEVEL,
 		"status": "Pending",
 		"terminal_requested": 0,
-		"support_note": (
-			f"Automatic: identity verified by Bridge KYC (customer {customer.get('id')}). "
-			"Level 2 under the Bridge KYC auto-upgrade policy. No address or bank account collected."
-		),
 	}, None
+
+
+def reviewer_note(customer):
+	"""Why the request exists, for the ID Verification's internal reviewer note.
+
+	Not the request's support_note: the reviewer pages show that one under
+	"Rejection Reason".
+	"""
+	return (
+		f"Automatic: identity verified by Bridge KYC (customer {customer.get('id')}). "
+		"Level 2 under the Bridge KYC auto-upgrade policy. No address or bank account collected."
+	)
 
 
 def bridge_snapshot(customer):

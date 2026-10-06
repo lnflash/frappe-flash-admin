@@ -141,13 +141,13 @@
 			"fieldname": "address_title",
 			"fieldtype": "Data",
 			"label": "Business Name",
-			"reqd": 1
+			"mandatory_depends_on": "eval:doc.requested_level=='THREE'"
 		},
 		{
 			"fieldname": "address_line1",
 			"fieldtype": "Data",
 			"label": "Address Line 1",
-			"reqd": 1
+			"mandatory_depends_on": "eval:doc.requested_level=='THREE'"
 		},
 		{
 			"fieldname": "address_line2",
@@ -158,13 +158,13 @@
 			"fieldname": "city",
 			"fieldtype": "Data",
 			"label": "City",
-			"reqd": 1
+			"mandatory_depends_on": "eval:doc.requested_level=='THREE'"
 		},
 		{
 			"fieldname": "state",
 			"fieldtype": "Data",
 			"label": "State",
-			"reqd": 1
+			"mandatory_depends_on": "eval:doc.requested_level=='THREE'"
 		},
 		{
 			"fieldname": "pincode",
@@ -175,8 +175,8 @@
 			"fieldname": "country",
 			"fieldtype": "Link",
 			"label": "Country",
-			"options": "Country",
-			"reqd": 1
+			"mandatory_depends_on": "eval:doc.requested_level=='THREE'",
+			"options": "Country"
 		},
 		{
 			"default": "0",
@@ -220,7 +220,7 @@
 	],
 	"index_web_pages_for_search": 1,
 	"links": [],
-	"modified": "2026-09-01 20:30:00.000000",
+	"modified": "2026-10-06 18:00:00.000000",
 	"modified_by": "Administrator",
 	"module": "Admin Panel",
 	"name": "Account Upgrade Request",

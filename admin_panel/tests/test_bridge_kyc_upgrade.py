@@ -10,6 +10,7 @@ the normal approval rather than around it.
 import json
 import logging
 import types
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -121,6 +122,12 @@ def test_reported_skips(accounts, customers, pending, expected):
 	assert skipped[0]["bridge_customer_id"] == "cus-1"
 
 
+def test_recently_failed_accounts_wait_out_the_retry_window():
+	candidates, skipped = core.select_candidates([row()], [customer()], [], recently_failed={"creech147"})
+	assert candidates == []
+	assert reasons(skipped) == {"creech147": core.SKIP_RECENT_FAILURE}
+
+
 def test_an_account_without_a_status_history_is_still_a_candidate():
 	candidates, _ = core.select_candidates([row(status=None)], [customer()], [])
 	assert usernames(candidates) == ["creech147"]
@@ -155,11 +162,14 @@ def test_request_carries_the_bridge_name_the_live_phone_and_no_address():
 		"requested_level": "TWO",
 		"status": "Pending",
 		"terminal_requested": 0,
-		"support_note": (
-			"Automatic: identity verified by Bridge KYC (customer cus-1). "
-			"Level 2 under the Bridge KYC auto-upgrade policy. No address or bank account collected."
-		),
 	}
+
+
+def test_the_reviewer_note_says_why_the_request_exists():
+	assert core.reviewer_note(customer()) == (
+		"Automatic: identity verified by Bridge KYC (customer cus-1). "
+		"Level 2 under the Bridge KYC auto-upgrade policy. No address or bank account collected."
+	)
 
 
 def test_email_falls_back_to_the_flash_email_then_to_none():
@@ -198,6 +208,35 @@ def test_snapshot_keeps_no_name_email_or_address():
 
 # ── the job ─────────────────────────────────────────────────────────────
 
+DOCTYPES = Path(__file__).resolve().parents[1] / "admin_panel" / "doctype"
+
+
+def required_fields(folder):
+	fields = json.loads((DOCTYPES / folder / f"{folder}.json").read_text())["fields"]
+	return [f["fieldname"] for f in fields if f.get("reqd")]
+
+
+# Read from the real doctype JSON: frappe checks these on every insert AND
+# every save (Document._validate_mandatory), unless the doc carries
+# flags.ignore_mandatory. FakeDoc checks nothing on its own, which is how an
+# approval that re-saves an address-less request once passed these tests.
+REQUIRED = {
+	"Account Upgrade Request": required_fields("account_upgrade_request"),
+	"ID Verification": required_fields("id_verification"),
+}
+
+
+class MandatoryError(Exception):
+	pass
+
+
+def enforce_mandatory(doc):
+	if getattr(doc.flags, "ignore_mandatory", False):
+		return
+	missing = [f for f in REQUIRED.get(doc.doctype, ()) if not str(doc.get(f) or "").strip()]
+	if missing:
+		raise MandatoryError(f"[{doc.doctype}]: {', '.join(missing)}")
+
 
 @pytest.fixture()
 def job(fake, monkeypatch):
@@ -233,6 +272,11 @@ def job(fake, monkeypatch):
 		flags={},
 		raise_for=set(),
 		fail_idv_for=set(),
+		# Second and later reads of an account (the post-failure check).
+		live_after={},
+		unreadable_after=set(),
+		reads_by_user={},
+		save_fails_for=set(),
 	)
 
 	def load_accounts():
@@ -248,6 +292,13 @@ def job(fake, monkeypatch):
 		def get_account_by_username(self, username):
 			if username in state.raise_for:
 				raise RuntimeError(f"flash unreachable for {username}")
+			seen = state.reads_by_user.get(username, 0)
+			state.reads_by_user[username] = seen + 1
+			if seen:
+				if username in state.unreadable_after:
+					raise RuntimeError(f"flash unreachable for {username}")
+				if username in state.live_after:
+					return state.live_after[username]
 			return state.live.get(username)
 
 	class StubApproveClient:
@@ -261,17 +312,30 @@ def job(fake, monkeypatch):
 
 	def create_erp_records(req):
 		state.erp.append(req.name)
-		return [], f"CUST-{req.username}"
+		name = f"CUST-{req.username}"
+		frappe.get_doc({"doctype": "Customer", "name": name, "mobile_no": req.phone_number}).insert(
+			ignore_permissions=True
+		)
+		return [], name
 
 	real_insert = fake.insert
+	real_update = fake.update
 
 	def spy_insert(doc, ignore_permissions=False):
 		state.flags[doc.doctype] = dict(vars(doc.flags))
 		if doc.doctype == "ID Verification" and doc.username in state.fail_idv_for:
 			raise RuntimeError(f"ID Verification insert failed for {doc.username}")
+		enforce_mandatory(doc)
 		real_insert(doc, ignore_permissions=ignore_permissions)
 
+	def spy_update(doc):
+		enforce_mandatory(doc)
+		if doc.doctype == "Account Upgrade Request" and doc.username in state.save_fails_for:
+			raise RuntimeError("database went away")
+		real_update(doc)
+
 	monkeypatch.setattr(fake, "insert", spy_insert)
+	monkeypatch.setattr(fake, "update", spy_update)
 	monkeypatch.setattr(bridge_kyc_upgrade, "load_bridge_accounts", load_accounts)
 	monkeypatch.setattr(bridge_kyc_upgrade, "BridgeClient", StubBridge)
 	monkeypatch.setattr(bridge_kyc_upgrade, "GraphQLClient", StubPlanClient)
@@ -279,12 +343,22 @@ def job(fake, monkeypatch):
 	monkeypatch.setattr(admin_api, "_create_erp_records", create_erp_records)
 	monkeypatch.setattr(admin_api, "record_event", lambda *args: state.events.append(args))
 	monkeypatch.setattr(admin_api, "audit_log", lambda *args: None)
-	monkeypatch.setattr(
-		frappe,
-		"log_error",
-		lambda title=None, message=None: state.errors.append((title, message)),
-		raising=False,
-	)
+
+	def log_error(title=None, message=None, reference_doctype=None, reference_name=None):
+		# Like frappe: an Error Log row inside the current transaction.
+		state.errors.append((title, message))
+		fake.rows("Error Log").append(
+			{
+				"doctype": "Error Log",
+				"method": title,
+				"error": message,
+				"reference_doctype": reference_doctype,
+				"reference_name": reference_name,
+				"creation": fake.now_datetime(),
+			}
+		)
+
+	monkeypatch.setattr(frappe, "log_error", log_error, raising=False)
 
 	# A real logger that starts at ERROR, like frappe's on the cluster, so a
 	# summary line only lands if the module raises the level itself.
@@ -347,14 +421,21 @@ def test_upgrade_goes_through_the_normal_approval(job):
 	assert req["full_name"] == "William Creech"
 	assert req["current_level"] == "ONE" and req["requested_level"] == "TWO"
 	assert job.erp == [req["name"]]
-	# Saved without the form's mandatory address block.
-	assert job.flags["Account Upgrade Request"].get("ignore_mandatory") is True
+	# No address, and nothing bypasses the required-field check: the fixture
+	# enforces the doctype's reqd fields on every insert and save.
+	assert req.get("address_line1") is None and req.get("country") is None
+	assert not job.flags["Account Upgrade Request"].get("ignore_mandatory")
+	# Reviewer pages show support_note as "Rejection Reason"; the why lives on
+	# the ID Verification instead.
+	assert req.get("support_note") is None
+	assert [c["name"] for c in job.fake.rows("Customer")] == ["CUST-creech147"]
 
 	[idv] = idvs(job)
 	assert idv["upgrade_request"] == req["name"]
 	assert idv["identity_source"] == "bridge_kyc"
 	assert idv["bridge_customer_id"] == "cus-1"
 	assert "Creech" not in idv["bridge_snapshot_json"]
+	assert idv["reviewer_note"].startswith("Automatic: identity verified by Bridge KYC (customer cus-1)")
 	assert idv["status"] == "Approved" and idv["decision_reason"] == "APPROVE_BRIDGE_KYC"
 
 	[event] = job.events
@@ -388,21 +469,84 @@ def test_an_existing_erp_party_not_found_by_mobile_is_left_for_a_human(job):
 	assert requests_(job) == [] and job.level_updates == []
 
 
-def test_a_failed_approval_is_left_pending_for_a_reviewer_and_not_retried(job):
+def error_logs(state):
+	return [r["method"] for r in state.fake.rows("Error Log")]
+
+
+def test_a_failure_before_flash_moves_leaves_no_trace_and_waits_a_day(job):
 	job.flash_result = {"errors": [{"message": "erpParty rejected"}]}
 
 	summary = bridge_kyc_upgrade.run_auto_upgrade()
+
 	[failure] = summary["failed"]
 	assert failure["username"] == "creech147" and "erpParty rejected" in failure["error"]
-	[req] = requests_(job)
-	assert req["status"] == "Pending"
-	assert job.errors and job.errors[0][0] == "Bridge KYC auto-upgrade failed for creech147"
+	assert "flash_changed" not in failure
+	# No request the user never filed (the app would show it as pending), no
+	# ID Verification, no Customer.
+	assert requests_(job) == [] and idvs(job) == [] and job.fake.rows("Customer") == []
+	assert error_logs(job) == ["Bridge KYC auto-upgrade failed for creech147"]
 
 	job.flash_result = {}
 	again = bridge_kyc_upgrade.run_auto_upgrade()
 	assert again["upgraded"] == [] and again["failed"] == []
-	assert reasons(again["skipped"]) == {"creech147": core.SKIP_PENDING_REQUEST}
-	assert len(requests_(job)) == 1
+	assert reasons(again["skipped"]) == {"creech147": core.SKIP_RECENT_FAILURE}
+
+	job.fake.clock += timedelta(hours=core.RETRY_AFTER_HOURS, minutes=1)
+	assert bridge_kyc_upgrade.run_auto_upgrade()["upgraded"] == ["creech147"]
+
+
+def test_a_failure_after_flash_moved_keeps_the_customer_and_the_pending_request(job):
+	"""Flash is already at Level 2 with erpParty naming the new Customer, so
+	rolling back would leave erpParty pointing at nothing."""
+	job.save_fails_for = {"creech147"}
+	job.live_after["creech147"] = live(level="TWO")
+
+	summary = bridge_kyc_upgrade.run_auto_upgrade()
+
+	[failure] = summary["failed"]
+	assert failure["flash_changed"] is True
+	assert job.level_updates == [("uid-+16065550123", "TWO", "CUST-creech147")]
+	assert [c["name"] for c in job.fake.rows("Customer")] == ["CUST-creech147"]
+	[req] = requests_(job)
+	assert req["status"] == "Pending" and failure["request"] == req["name"]
+	assert len(idvs(job)) == 1
+	[log] = job.fake.rows("Error Log")
+	assert log["reference_doctype"] == "Account Upgrade Request" and log["reference_name"] == req["name"]
+	# The pending request now keeps the account out of later runs.
+	job.save_fails_for = set()
+	job.fake.clock += timedelta(hours=core.RETRY_AFTER_HOURS, minutes=1)
+	assert reasons(bridge_kyc_upgrade.run_auto_upgrade()["skipped"]) == {
+		"creech147": core.SKIP_PENDING_REQUEST
+	}
+
+
+def test_when_flash_cannot_be_read_after_a_failure_the_records_are_kept(job):
+	job.flash_result = {"errors": [{"message": "timeout"}]}
+	job.unreadable_after = {"creech147"}
+
+	[failure] = bridge_kyc_upgrade.run_auto_upgrade()["failed"]
+
+	assert failure["flash_changed"] is True
+	assert [r["status"] for r in requests_(job)] == ["Pending"]
+	assert [c["name"] for c in job.fake.rows("Customer")] == ["CUST-creech147"]
+
+
+def test_an_error_log_survives_the_next_accounts_rollback(job):
+	job.accounts = [
+		row("first", "cus-1", created_at="2026-07-01T00:00:00"),
+		row("second", "cus-2", created_at="2026-08-08T00:00:00"),
+	]
+	job.customers = [customer("cus-1"), customer("cus-2")]
+	job.live = {"first": live("first", phone="+16065550001"), "second": live("second")}
+	job.flash_result = {"errors": [{"message": "flash said no"}]}
+	job.fail_idv_for = {"second"}
+
+	bridge_kyc_upgrade.run_auto_upgrade()
+
+	assert error_logs(job) == [
+		"Bridge KYC auto-upgrade failed for first",
+		"Bridge KYC auto-upgrade failed for second",
+	]
 
 
 def test_an_exception_rolls_back_that_account_and_the_run_continues(job):
@@ -478,6 +622,22 @@ def test_preview_reports_without_writing(job):
 	assert preview["candidates"] == [{"username": "creech147", "level": 1, "bridge_customer_id": "cus-1"}]
 	assert reasons(preview["skipped"]) == {"someone": core.SKIP_MISSING_AT_BRIDGE}
 	assert requests_(job) == [] and job.level_updates == [] and job.lookups == []
+
+
+def test_the_request_address_is_only_required_for_level_three_and_only_in_the_form():
+	"""The server enforces static reqd only (frappe ignores mandatory_depends_on
+	there), so an address-less Level 2 request can be saved, approved, rejected
+	and closed. Flash's API still requires an address on customer requests."""
+	fields = {
+		f["fieldname"]: f
+		for f in json.loads(
+			(DOCTYPES / "account_upgrade_request" / "account_upgrade_request.json").read_text()
+		)["fields"]
+	}
+	for name in ("address_title", "address_line1", "city", "state", "country"):
+		assert not fields[name].get("reqd"), name
+		assert fields[name]["mandatory_depends_on"] == "eval:doc.requested_level=='THREE'"
+	assert set(REQUIRED["Account Upgrade Request"]) == {"username", "full_name", "phone_number"}
 
 
 def test_preview_is_whitelisted_and_admin_gated():

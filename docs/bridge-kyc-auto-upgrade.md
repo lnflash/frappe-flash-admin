@@ -27,11 +27,19 @@ approval a reviewer clicks. That approval:
 Flash then posts the level change to the ops feed. Scheduled approvals are
 stamped as reviewed by the scheduler's session user (Administrator).
 
-The request has no address or bank account. The form marks the address block
-mandatory, so the job saves with `ignore_mandatory`; `_create_erp_records`
-already treats address and bank as optional. The ID Verification keeps only
-Bridge's id, status, `updated_at` and endorsements (the same slice flash keeps),
-not the name, email or address.
+The request has no address or bank account. The request's address fields are
+required only for Level 3, and only in the desk form (`mandatory_depends_on`);
+frappe enforces static `reqd` on every save, so a required address would make
+every later save of the request fail: this approval, a reviewer's reject, the
+Account Hub's phone sync, and flash closing a user's pending requests. Flash's
+API still requires an address on every request a customer submits.
+`_create_erp_records` already treats address and bank as optional, and with no
+`address_title` the Customer is created as an Individual.
+
+The ID Verification keeps only Bridge's id, status, `updated_at` and endorsements
+(the same slice flash keeps), not the name, email or address. Why the request
+exists goes in its internal `reviewer_note`, not the request's `support_note`,
+which the reviewer pages show as "Rejection Reason".
 
 ## Switches (ID Verification Settings)
 
@@ -64,6 +72,7 @@ bench --site <site> execute admin_panel.api.bridge_kyc_upgrade.preview_bridge_ky
 | `no_username` | the account has no username |
 | `no_phone` / `no_legal_name` | the live re-check found no phone, or Bridge has no name |
 | `already_level_two_or_above` | the live re-check found the account already upgraded |
+| `failed_in_the_last_day` | its upgrade failed less than 24 hours ago; retried once that passes |
 | `erp_party_not_found_by_mobile` | the account already has an ERP party that the approval would not find by mobile number; approving would repoint `erpParty` at a new Customer, so a human re-levels it (Account Hub) |
 
 Accounts already at Level 2+ and Bridge customers still in review, rejected or
@@ -72,11 +81,27 @@ downgraded.
 
 ## Failures
 
-If an approval fails, its request stays **Pending**, so it shows up in the
-reviewer queue, and later runs skip that account instead of retrying it. Each
-failure also writes an **Error Log** row ("Bridge KYC auto-upgrade failed for
-…"). A run that upgraded or failed anything prints one summary line to the
-worker's stdout.
+Nothing is committed until the approval commits it. When an approval fails:
+
+- **Flash is still below Level 2** (the common case: the flash lookup, the ERP
+  records or the level change failed): everything is rolled back. The user is
+  left with no request they never filed (the app would show it as pending and
+  could not dismiss it) and no orphan Customer. The account is retried after 24
+  hours.
+- **Flash already moved, or cannot be read to tell**: the records are kept,
+  because flash's `erpParty` may now name the new Customer. The request stays
+  **Pending** for a reviewer, who can approve or reject it.
+
+Each failure writes an **Error Log** row ("Bridge KYC auto-upgrade failed for
+…", referencing the request when one was kept), committed on its own so a later
+rollback cannot remove it. A run that upgraded or failed anything prints one
+summary line to the worker's stdout.
+
+Reviewers: don't use *Resubmit* on a request whose ID Verification has
+`identity_source = bridge_kyc`. The app's resubmit path sends the customer
+through a form that needs an address this request never had. Approve or reject
+it instead. Scheduled approvals count toward reviewer throughput on the
+dashboards, stamped as Administrator.
 
 The job only runs when the site's scheduler is enabled and a scheduler worker
 is running (see hooks.py).

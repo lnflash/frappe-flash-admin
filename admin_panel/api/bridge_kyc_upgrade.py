@@ -12,14 +12,20 @@ decision, mirrors it onto the ID Verification and writes the ledger event.
 Scheduled approvals are stamped as reviewed by the scheduler's session user
 (Administrator).
 
-A request whose approval fails is left Pending. It lands in the reviewer
-queue, and the next run skips the account (it has a pending request) instead
-of retrying it every 15 minutes.
+Nothing is committed until the approval commits it. When an approval fails:
+- if flash is still below Level 2, everything is rolled back (no request the
+  user never filed, no Customer), and the account is retried after
+  RETRY_AFTER_HOURS;
+- if flash already moved, or cannot be read to tell, the records are kept:
+  flash's erpParty may now name the new Customer, and the request stays
+  Pending for a reviewer.
+Either way an Error Log row is written and committed on its own.
 """
 
 import logging
 import sys
 import traceback
+from datetime import timedelta
 
 import frappe
 
@@ -27,11 +33,15 @@ from .admin_api import approve_upgrade_request
 from .auth import require_admin
 from .bridge_client import BridgeClient
 from .bridge_kyc_upgrade_core import (
+	ELIGIBLE_LEVEL_NAMES,
+	FAILURE_TITLE_PREFIX,
 	MAX_UPGRADES_PER_RUN,
 	REASON_CODE,
+	RETRY_AFTER_HOURS,
 	SKIP_ERP_PARTY_MISMATCH,
 	bridge_snapshot,
 	build_request,
+	reviewer_note,
 	select_candidates,
 )
 from .common import handle_api_errors
@@ -64,9 +74,27 @@ def _switches():
 	return True, None
 
 
+def _recently_failed():
+	"""Usernames with a failure Error Log inside the retry window."""
+	cutoff = frappe.utils.now_datetime() - timedelta(hours=RETRY_AFTER_HOURS)
+	titles = frappe.get_all("Error Log", filters={"creation": [">=", cutoff]}, pluck="method")
+	return {t[len(FAILURE_TITLE_PREFIX) :] for t in titles if (t or "").startswith(FAILURE_TITLE_PREFIX)}
+
+
 def _plan():
 	pending = frappe.get_all("Account Upgrade Request", filters={"status": "Pending"}, pluck="username")
-	return select_candidates(load_bridge_accounts(), BridgeClient().list_customers(), pending)
+	return select_candidates(
+		load_bridge_accounts(), BridgeClient().list_customers(), pending, _recently_failed()
+	)
+
+
+def _flash_still_below_level_two(client, username):
+	"""True only when flash is readable and the account is still below Level 2."""
+	try:
+		account = client.get_account_by_username(username)
+	except Exception:
+		return False
+	return bool(account) and account.get("level") in ELIGIBLE_LEVEL_NAMES
 
 
 def _upgrade(candidate, client):
@@ -89,10 +117,9 @@ def _upgrade(candidate, client):
 	if party and frappe.db.get_value("Customer", {"mobile_no": fields["phone_number"]}, "name") != party:
 		return {"username": username, "outcome": "skipped", "reason": SKIP_ERP_PARTY_MISMATCH}
 
+	# No address: the request doctype only requires one for Level 3, and
+	# _create_erp_records already treats address and bank as optional.
 	req = frappe.get_doc({"doctype": "Account Upgrade Request", **fields})
-	# The address block is mandatory on the form, and a Bridge-only upgrade has
-	# none. _create_erp_records already treats address and bank as optional.
-	req.flags.ignore_mandatory = True
 	req.insert(ignore_permissions=True)
 	frappe.get_doc(
 		{
@@ -104,20 +131,33 @@ def _upgrade(candidate, client):
 			"identity_source": "bridge_kyc",
 			"bridge_customer_id": customer.get("id"),
 			"bridge_snapshot_json": bridge_snapshot(customer),
+			"reviewer_note": reviewer_note(customer),
 		}
 	).insert(ignore_permissions=True)
-	# Committed before flash is touched, so a run that dies mid-approval still
-	# leaves the request on record for a reviewer.
-	frappe.db.commit()
 
-	result = approve_upgrade_request(req.name, reason_code=REASON_CODE) or {}
+	# Not committed yet: the approval commits once flash has moved.
+	detail = None
+	try:
+		result = approve_upgrade_request(req.name, reason_code=REASON_CODE) or {}
+	except Exception as exc:
+		detail = traceback.format_exc()
+		result = {"error": f"{type(exc).__name__}: {exc}"}
 	if result.get("success"):
 		outcome = {"username": username, "outcome": "upgraded", "request": req.name}
 		if result.get("warning"):
 			outcome["warning"] = result["warning"]
 		return outcome
+
 	error = result.get("error") or "; ".join(result.get("errors") or []) or "approval returned no result"
-	return {"username": username, "outcome": "failed", "request": req.name, "error": error}
+	outcome = {"username": username, "outcome": "failed", "error": error, "detail": detail}
+	if _flash_still_below_level_two(client, username):
+		# Flash never moved: leave no trace and retry after the backoff.
+		frappe.db.rollback()
+		return outcome
+	# Flash moved (or cannot be read): its erpParty may name the Customer this
+	# approval created, so keep it, and leave the request Pending for a reviewer.
+	frappe.db.commit()
+	return {**outcome, "request": req.name, "flash_changed": True}
 
 
 def run_auto_upgrade():
@@ -131,20 +171,30 @@ def run_auto_upgrade():
 	outcomes = []
 	for candidate in candidates[:MAX_UPGRADES_PER_RUN]:
 		username = candidate["account"].get("username")
-		detail = None
 		try:
 			outcome = _upgrade(candidate, client)
 		except Exception as exc:
-			# Discards a request/ID Verification inserted but not yet committed.
+			# Raised before the approval ran, so flash is untouched: discard the
+			# uncommitted request / ID Verification.
 			frappe.db.rollback()
-			detail = traceback.format_exc()
-			outcome = {"username": username, "outcome": "failed", "error": str(exc)}
+			outcome = {
+				"username": username,
+				"outcome": "failed",
+				"error": str(exc),
+				"detail": traceback.format_exc(),
+			}
 		if outcome["outcome"] == "failed":
+			detail = outcome.pop("detail", None)
 			# Error Log rows live in the database, unlike frappe.logger() files.
+			# Logged after the rollback/commit above and committed on its own, so
+			# the next account's rollback cannot take it with it.
 			frappe.log_error(
-				title=f"Bridge KYC auto-upgrade failed for {username}",
-				message=detail or str(outcome),
+				title=f"{FAILURE_TITLE_PREFIX}{username}",
+				message=f"{outcome}\n\n{detail}" if detail else str(outcome),
+				reference_doctype="Account Upgrade Request" if outcome.get("request") else None,
+				reference_name=outcome.get("request"),
 			)
+			frappe.db.commit()
 		outcomes.append(outcome)
 
 	summary = {

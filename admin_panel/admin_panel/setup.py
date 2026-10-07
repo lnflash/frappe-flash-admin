@@ -313,8 +313,11 @@ def heal_stale_assets_manifest():
 
 	Scheduled Job Log says "Complete" after every run, delete or not, so the
 	job logs through _logger. A delete logs one INFO line naming the first
-	differing bundle both ways: its hash names the build that re-cached the
-	key, and the number of these lines is how often deploys still hit the race.
+	differing bundle both ways: cached= is the build that wrote the key,
+	shipped= is this worker's own. A line whose shipped= is the release being
+	deployed is the race. A line whose shipped= is the previous release comes
+	from the outgoing worker, which runs this job too and deletes the new
+	manifest until it is replaced, so count only the former.
 	A key it cannot check, because this worker has no manifest of its own, is
 	left alone with a WARNING on every run, since on that worker the heal is off.
 	"""

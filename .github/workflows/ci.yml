@@ -47,7 +47,9 @@ jobs:
       # so it needs no bench, no site and no database — pytest + requests is
       # the whole dependency set.
       - name: Install test dependencies
-        run: pip install pytest requests
+        # phonenumbers: bridge_kyc_upgrade_core resolves phone countries with it
+        # (frappe ships it in the image; pinned to the image's version).
+        run: pip install pytest requests phonenumbers==8.13.55
 
       - name: Run the test suite
         run: python -m pytest admin_panel/tests -q

@@ -1,7 +1,8 @@
 # Bridge KYC → Level 2 auto-upgrade
 
 Policy (2026-10-06): a Flash account whose Bridge customer has passed KYC has a
-verified identity, and that is enough for Level 2. A scheduled job applies it.
+verified identity, and that is enough for Level 2, provided its phone country
+is one Flash serves. A scheduled job applies it.
 
 ## What it does
 
@@ -11,7 +12,16 @@ account that is linked to a Bridge customer and:
 - the Bridge customer's **live** status is `active` (Bridge is the source of
   truth, not the status flash stored),
 - the Bridge customer is an **individual**,
-- the account is at Level 0 or 1 and active.
+- the account is at Level 0 or 1 and active,
+- its phone country is marked `flash_allowed` in **Allowed Country**: the list
+  flash's Bridge KYC gate checks before anyone can start KYC
+  (`src/app/bridge/kyc-gate.ts`). The country is resolved the same way: the
+  Twilio Lookup country stamped at signup (`phoneMetadata.countryCode`) while
+  the number on file agrees with it, otherwise the number itself (its region,
+  or every region on its calling code, any allowed one passing). Accounts that
+  finished Bridge KYC before the gate existed are held to it here. An empty
+  allowlist upgrades nobody. The live number is checked again just before
+  upgrading.
 
 For each one it files an **Account Upgrade Request** (Level 2) and an **ID
 Verification** with `identity_source = bridge_kyc`, then approves the request
@@ -27,7 +37,11 @@ approval a reviewer clicks. That approval:
 Flash then posts the level change to the ops feed. Scheduled approvals are
 stamped as reviewed by the scheduler's session user (Administrator).
 
-The request has no address or bank account. The request's address fields are
+The request has no address or bank account. The fields the job leaves empty
+are listed in the doc's `dont_update_if_missing`. Otherwise frappe fills an
+empty Link field from the site's global default on insert, and the request
+would record the site's default Country ("United States" on prod) and
+Currency for someone who supplied neither. The request's address fields are
 required only for Level 3, and only in the desk form (`mandatory_depends_on`);
 frappe enforces static `reqd` on every save, so a required address would make
 every later save of the request fail: this approval, a reviewer's reject, the
@@ -73,6 +87,8 @@ bench --site <site> execute admin_panel.api.bridge_kyc_upgrade.preview_bridge_ky
 | `no_phone` / `no_legal_name` | the live re-check found no phone, or Bridge has no name |
 | `already_level_two_or_above` | the live re-check found the account already upgraded |
 | `failed_in_the_last_day` | its upgrade failed less than 24 hours ago; retried once that passes |
+| `country_not_allowed` | the phone country is not `flash_allowed` (reported with the country) |
+| `phone_country_unknown` | no phone country could be resolved (no number, non-geographic number) |
 | `erp_party_not_found_by_mobile` | the account already has an ERP party that the approval would not find by mobile number; approving would repoint `erpParty` at a new Customer, so a human re-levels it (Account Hub) |
 
 Accounts already at Level 2+ and Bridge customers still in review, rejected or

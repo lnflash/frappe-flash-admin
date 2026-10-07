@@ -129,22 +129,37 @@ def load_bridge_accounts() -> list:
 	"""Accounts with a Bridge customer linked, for the bridge-kyc join.
 
 	Returns [{bridge_customer_id, bridge_kyc_status, username, level, status,
-	created_at}] — one entry per account whose bridgeCustomerId is set.
+	created_at, phone, phone_lookup_country}] — one entry per account whose
+	bridgeCustomerId is set. phone and phone_lookup_country come from the
+	owner's users row; the latter is the Twilio Lookup country flash stamps
+	at signup (phoneMetadata.countryCode), the first thing flash's Bridge KYC
+	gate resolves a phone country from.
 	"""
 	db = _get_db()
-	out = []
-	cursor = db.accounts.find(
-		{"bridgeCustomerId": {"$nin": [None, ""]}},
-		{
-			"bridgeCustomerId": 1,
-			"bridgeKycStatus": 1,
-			"username": 1,
-			"level": 1,
-			"statusHistory": 1,
-			"created_at": 1,
-		},
+	docs = list(
+		db.accounts.find(
+			{"bridgeCustomerId": {"$nin": [None, ""]}},
+			{
+				"bridgeCustomerId": 1,
+				"bridgeKycStatus": 1,
+				"username": 1,
+				"level": 1,
+				"statusHistory": 1,
+				"created_at": 1,
+				"kratosUserId": 1,
+			},
+		)
 	)
-	for doc in cursor:
+	user_ids = [doc.get("kratosUserId") for doc in docs if doc.get("kratosUserId")]
+	users = {}
+	if user_ids:
+		for user in db.users.find(
+			{"userId": {"$in": user_ids}}, {"userId": 1, "phone": 1, "phoneMetadata.countryCode": 1}
+		):
+			users[user.get("userId")] = user
+	out = []
+	for doc in docs:
+		user = users.get(doc.get("kratosUserId")) or {}
 		out.append(
 			{
 				"bridge_customer_id": doc.get("bridgeCustomerId"),
@@ -153,6 +168,8 @@ def load_bridge_accounts() -> list:
 				"level": doc.get("level"),
 				"status": _latest_status(doc.get("statusHistory")),
 				"created_at": _iso(doc.get("created_at")),
+				"phone": user.get("phone"),
+				"phone_lookup_country": (user.get("phoneMetadata") or {}).get("countryCode"),
 			}
 		)
 	return out

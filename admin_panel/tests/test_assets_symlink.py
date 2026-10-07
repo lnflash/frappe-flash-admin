@@ -15,25 +15,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
 	sys.path.insert(0, str(REPO_ROOT))
 
-import importlib.util
 import os
 
-# setup.py imports frappe at module level; load just the pure helper's source
-# the way the other contract tests read text, then exec the single function.
+import idv_stubs  # the frappe stand-in setup.py imports against, as in the sibling tests
+
+from admin_panel.admin_panel.setup import _ensure_symlink as ensure
+
+# Read as text only for the after_migrate wiring check at the bottom.
 SETUP_SRC = (REPO_ROOT / "admin_panel" / "admin_panel" / "setup.py").read_text()
-
-
-def load_helper():
-	import ast
-
-	tree = ast.parse(SETUP_SRC)
-	fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_ensure_symlink")
-	ns = {}
-	exec(compile(ast.Module(body=[fn], type_ignores=[]), "setup.py", "exec"), ns)
-	return ns["_ensure_symlink"]
-
-
-ensure = load_helper()
 
 
 def test_creates_the_link_when_absent(tmp_path):

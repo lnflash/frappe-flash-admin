@@ -412,7 +412,7 @@ def test_doctypes_without_a_tile_are_explicitly_unlisted():
 		assert nav_core.UNLISTED.get(route)
 
 
-def test_hooks_schedule_exactly_the_anchor_and_the_bridge_kyc_upgrade():
+def test_hooks_schedule_exactly_the_anchor_the_bridge_kyc_upgrade_and_the_manifest_heal():
 	tree = ast.parse(HOOKS_PY)
 	assign = next(
 		n
@@ -422,7 +422,10 @@ def test_hooks_schedule_exactly_the_anchor_and_the_bridge_kyc_upgrade():
 	events = ast.literal_eval(assign.value)
 	assert events == {
 		"daily": ["admin_panel.api.compliance_audit.post_daily_anchor"],
-		"cron": {"*/15 * * * *": ["admin_panel.api.bridge_kyc_upgrade.run_auto_upgrade"]},
+		"cron": {
+			"*/15 * * * *": ["admin_panel.api.bridge_kyc_upgrade.run_auto_upgrade"],
+			"* * * * *": ["admin_panel.admin_panel.setup.heal_stale_assets_manifest"],
+		},
 	}
 	assert "scheduler worker" in HOOKS_PY
 

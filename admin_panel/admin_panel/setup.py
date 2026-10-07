@@ -1,3 +1,7 @@
+import logging
+import os
+import sys
+
 import frappe
 
 from admin_panel.admin_panel.doctype.allowed_country.seed import seed_allowed_countries
@@ -15,6 +19,8 @@ def after_migrate():
 	seed_decision_reasons()
 	seed_identity_document_types()
 	seed_chain_genesis()
+	# A backup only. The fix is heal_stale_assets_manifest on the scheduler.
+	clear_shared_assets_manifest()
 
 
 def ensure_roles():
@@ -221,8 +227,6 @@ def _ensure_symlink(link, target):
 	Pure helper (no frappe) so the branch logic is testable with tmp paths.
 	Returns what it did: "created", "repointed", "ok", or "kept-dir".
 	"""
-	import os
-
 	if os.path.islink(link):
 		if os.readlink(link) == target:
 			return "ok"
@@ -248,13 +252,147 @@ def ensure_public_assets_symlink():
 	migrate, which executes with the PVC mounted; harmless on a plain bench
 	where the link already exists and is correct.
 	"""
-	import os
-
 	bench_path = frappe.utils.get_bench_path()
 	_ensure_symlink(
 		os.path.join(bench_path, "sites", "assets", "admin_panel"),
 		os.path.join(bench_path, "apps", "admin_panel", "admin_panel", "public"),
 	)
+
+
+# The key frappe.utils.get_assets_json caches the merged manifest under (a
+# literal there). Only read here: deletes go through frappe's own key list.
+ASSETS_JSON_KEY = "assets_json"
+# This image's manifest, relative to sites/ (see _shipped_assets_manifest).
+SHIPPED_MANIFEST = "assets/assets.json"
+
+# The heal's log, set up like bridge_kyc_upgrade._logger. frappe.logger()
+# drops INFO on the cluster (its level is ERROR off a dev server) and writes
+# its files to a pod with no volume, so _logger raises the level and copies
+# each line to stdout (support_lookup._audit_logger has the details). One
+# handler object, attached by identity, so attaching it on every run is a no-op.
+_STDOUT_HANDLER = logging.StreamHandler(sys.stdout)
+_STDOUT_HANDLER.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+
+
+def _logger():
+	logger = frappe.logger("assets_manifest", max_size=1_000_000, file_count=5)
+	logger.setLevel(logging.INFO)
+	logger.addHandler(_STDOUT_HANDLER)
+	return logger
+
+
+def heal_stale_assets_manifest():
+	"""Scheduler job, every minute: delete the cached asset manifest if this image did not ship it.
+
+	frappe.utils.get_assets_json caches the merged assets.json + assets-rtl.json
+	under one shared (cross-site), never-expiring key, and every page links its
+	CSS/JS bundles through it. ``bench migrate`` already deletes that key as it
+	starts (SiteMigration.setUp -> clear_global_cache). It still went stale
+	after deploys (both envs 2026-08-31, prod 2026-10-07) because an old-image
+	process re-cached its own manifest after that clear. The migrate Job runs
+	alongside the rolling update, and every container resolves sites/assets to
+	the manifest baked into its own image. So any old-image render writes the
+	OLD manifest back: the old gunicorn rendering the maintenance page, or any
+	page until its replacement is Ready, or an old long worker running the
+	search-index rebuild the migrate enqueues. Pages then link bundle hashes
+	the new image does not ship, and the CSS/JS 404s. A delete at any fixed
+	point in the deploy can lose that race.
+
+	This job does not depend on deploy timing. It deletes the key only when it
+	differs from this worker's own manifest, and the next render rebuilds it.
+	An old process still alive may cache its manifest again and the next run
+	deletes that too. The first run after the last old process exits clears
+	whatever is left, and from then on only the new image writes the key. It
+	reads without a generator and never writes the key itself, so on an old
+	worker mid-rollout the worst it can do is force one rebuild. It does
+	nothing when the key matches or is absent.
+
+	Scheduled Job Log says "Complete" after every run, delete or not, so the
+	job logs through _logger. A delete logs one INFO line naming the first
+	differing bundle both ways: cached= is the build that wrote the key,
+	shipped= is this worker's own. A line whose shipped= is the release being
+	deployed is the race. A line whose shipped= is the previous release comes
+	from the outgoing worker, which runs this job too and deletes the new
+	manifest until it is replaced, so count only the former.
+	A key it cannot check, because this worker has no manifest of its own, is
+	left alone with a WARNING on every run, since on that worker the heal is off.
+	"""
+	cached = frappe.cache.get_value(ASSETS_JSON_KEY, shared=True)
+	if cached is None:
+		return
+	shipped = _shipped_assets_manifest()
+	if not shipped:
+		_logger().warning(
+			"left the shared assets_json alone: no usable manifest at %s to check it against",
+			os.path.abspath(SHIPPED_MANIFEST),
+		)
+		return
+	if cached == shipped:
+		return
+	if clear_shared_assets_manifest():
+		_logger().info("cleared the stale shared assets_json: %s", _manifest_difference(cached, shipped))
+
+
+def _shipped_assets_manifest():
+	"""This image's merged manifest, built the way get_assets_json builds it.
+
+	The paths are relative to sites/, where every bench process runs and where
+	sites/assets resolves to the assets baked into this container's image.
+	None when there is no manifest to compare against.
+	"""
+	assets = frappe.parse_json(frappe.read_file(SHIPPED_MANIFEST))
+	if not assets:
+		return None
+	if assets_rtl := frappe.read_file("assets/assets-rtl.json"):
+		assets.update(frappe.parse_json(assets_rtl))
+	return assets
+
+
+def _manifest_difference(cached, shipped):
+	"""The heal's evidence: how many entries differ, and the first one both ways.
+
+	Runs after the delete, on whatever was cached, so it never raises on a
+	value that is not a manifest.
+	"""
+	if not isinstance(cached, dict):
+		return f"cached={type(cached).__name__} (not a manifest)"
+	differing = [name for name in cached.keys() | shipped.keys() if cached.get(name) != shipped.get(name)]
+	first = min(differing, key=str, default=None)
+	return (
+		f"differing_entries={len(differing)} first={first}"
+		f" cached={cached.get(first)} shipped={shipped.get(first)}"
+	)
+
+
+def clear_shared_assets_manifest():
+	"""Delete frappe's shared asset-manifest cache key. Never raises.
+
+	A backup to heal_stale_assets_manifest, run at the end of every migrate.
+	frappe already made this same delete when the migrate started, so it only
+	helps when an old process re-cached the key during the migrate and is gone
+	by its end. Pages then heal at once instead of on the next scheduler run
+	(or at all, when the scheduler is not running). It uses frappe's own key
+	list (cache_manager.bench_cache_keys), so it deletes what frappe deletes.
+
+	Connection failures are silently skipped by frappe
+	(RedisWrapper.delete_value swallows redis ConnectionError), so they still
+	return True. Other redis errors, such as a timeout, are logged to the Error
+	Log and return False, so the heal does not log them as a delete.
+	"""
+	try:
+		from frappe.cache_manager import bench_cache_keys
+
+		frappe.cache.delete_value(bench_cache_keys, shared=True)
+	except Exception:
+		try:
+			frappe.log_error(
+				title="Could not clear the shared asset manifest cache",
+				message=frappe.get_traceback(),
+			)
+		except Exception:
+			pass
+		return False
+	return True
 
 
 # ── ID verification seed data ─────────────────────────────────────────────

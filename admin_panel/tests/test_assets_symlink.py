@@ -19,7 +19,8 @@ import importlib.util
 import os
 
 # setup.py imports frappe at module level; load just the pure helper's source
-# the way the other contract tests read text, then exec the single function.
+# the way the other contract tests read text, then exec the single function
+# together with the module-level ``import os`` it uses.
 SETUP_SRC = (REPO_ROOT / "admin_panel" / "admin_panel" / "setup.py").read_text()
 
 
@@ -28,8 +29,13 @@ def load_helper():
 
 	tree = ast.parse(SETUP_SRC)
 	fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_ensure_symlink")
+	# ``os`` is a module-level import in setup.py, so exec it with the function;
+	# in this bare namespace the helper would otherwise NameError on first use.
+	os_import = next(
+		n for n in tree.body if isinstance(n, ast.Import) and any(alias.name == "os" for alias in n.names)
+	)
 	ns = {}
-	exec(compile(ast.Module(body=[fn], type_ignores=[]), "setup.py", "exec"), ns)
+	exec(compile(ast.Module(body=[os_import, fn], type_ignores=[]), "setup.py", "exec"), ns)
 	return ns["_ensure_symlink"]
 
 

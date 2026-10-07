@@ -227,8 +227,6 @@ def _ensure_symlink(link, target):
 	Pure helper (no frappe) so the branch logic is testable with tmp paths.
 	Returns what it did: "created", "repointed", "ok", or "kept-dir".
 	"""
-	import os
-
 	if os.path.islink(link):
 		if os.readlink(link) == target:
 			return "ok"
@@ -254,8 +252,6 @@ def ensure_public_assets_symlink():
 	migrate, which executes with the PVC mounted; harmless on a plain bench
 	where the link already exists and is correct.
 	"""
-	import os
-
 	bench_path = frappe.utils.get_bench_path()
 	_ensure_symlink(
 		os.path.join(bench_path, "sites", "assets", "admin_panel"),

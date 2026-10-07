@@ -10,6 +10,11 @@ Verified join keys (see census.py):
   IBEX account.name == str(accounts._id) == str(wallets._accountId)
                     == cashwalletmigrations.accountId
 
+Users ↔ accounts: a ``users`` document names the Kratos identity
+``userId``; the account stores the same id as ``kratosUserId``. users has no
+``kratosUserId`` field at all (prod: 0 of 7,184 documents, 2026-10-07), so a
+users query on it silently matches nothing.
+
 Config (site_config.json / frappe.conf):
   customer_mongo_uri   (required) — the MONGODB_CON connection string
   customer_mongo_db    (optional) — database name, defaults to "galoy"
@@ -178,9 +183,9 @@ def load_bridge_accounts() -> list:
 def find_account(query: str):
 	"""Resolve a single account doc by accountId / username / phone / wallet id.
 
-	Resolution order: mongo _id (== IBEX account name) → username → phone
-	(via the users collection + kratosUserId) → wallet id. Returns the raw
-	account doc or None.
+	Resolution order: mongo _id (== IBEX account name) → username → account
+	uuid → phone (users.phone, then users.userId == accounts.kratosUserId) →
+	wallet id. Returns the raw account doc or None.
 	"""
 	from bson import ObjectId
 
@@ -204,19 +209,24 @@ def find_account(query: str):
 	if acct:
 		return acct
 
-	# Support pastes of formatted numbers ("876 555-1234", "(876) 5551234"):
-	# try the raw query, a compacted form, and a "+"-prefixed compacted form.
+	# users.phone is E.164 ("+18765551234"); support pastes it formatted.
+	# Candidates: the raw query, its compacted form ("+1 876-555-1234"), the
+	# compacted form with "+" ("1 876 555 1234") and, for 10 digits
+	# ("876 555-1234", "(876) 5551234"), with "+1": a 10-digit number is a
+	# NANP national number (JM, US, CA, most of the Caribbean).
 	compact = re.sub(r"[\s\-().]", "", query)
 	candidates = [query, compact]
 	if compact and not compact.startswith("+"):
 		candidates.append("+" + compact)
+	if re.fullmatch(r"[0-9]{10}", compact):
+		candidates.append("+1" + compact)
 	user = None
 	for candidate in dict.fromkeys(c for c in candidates if c):
 		user = db.users.find_one({"phone": candidate})
 		if user:
 			break
-	if user and user.get("kratosUserId"):
-		acct = db.accounts.find_one({"kratosUserId": user["kratosUserId"]})
+	if user and user.get("userId"):
+		acct = db.accounts.find_one({"kratosUserId": user["userId"]})
 		if acct:
 			return acct
 
@@ -262,7 +272,7 @@ def customer_bundle(account: dict) -> dict:
 	user = None
 	if account.get("kratosUserId"):
 		user = db.users.find_one(
-			{"kratosUserId": account["kratosUserId"]},
+			{"userId": account["kratosUserId"]},
 			{"phone": 1, "deviceId": 1, "deviceTokens": 1, "phoneMetadata": 1},
 		)
 	user = user or {}
@@ -334,8 +344,8 @@ def load_payer_identities(account_refs, usernames) -> dict:
 	kratos_ids = [a["kratosUserId"] for a in accounts if a.get("kratosUserId")]
 	phones = {}
 	if kratos_ids:
-		for user in db.users.find({"kratosUserId": {"$in": kratos_ids}}, {"kratosUserId": 1, "phone": 1}):
-			phones[user["kratosUserId"]] = user.get("phone")
+		for user in db.users.find({"userId": {"$in": kratos_ids}}, {"userId": 1, "phone": 1}):
+			phones[user["userId"]] = user.get("phone")
 
 	out = {}
 	for account in accounts:

@@ -8,7 +8,7 @@ Field priority (Flash account truth first, provider payload as fallback):
   username — accounts.username, else Fygaro ``customReference``
   name     — ERPNext Customer name (via erpParty), else Fygaro ``client.name``
   email    — ERPNext Customer email_id, else Fygaro ``client.email``
-  phone    — mongo users.phone (via kratosUserId), else Customer mobile_no
+  phone    — mongo users.phone (users.userId == accounts.kratosUserId), else Customer mobile_no
 
 Values that fell back to the provider payload are listed in
 ``payer_provider_fields`` so the UI can label them "(from provider)" — a

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 from idv_stubs import frappe
+from mongo_stubs import mongo_project
 
 from admin_panel.api import admin_api, bridge_kyc_upgrade
 from admin_panel.api import bridge_kyc_upgrade_core as core
@@ -802,27 +803,6 @@ def test_every_link_field_the_job_leaves_empty_is_kept_from_site_defaults():
 	set_by_job = set(core.build_request(live(), customer(), ALLOWED)[0])
 	set_by_approval = {"reviewed_by", "decision_reason"}
 	assert links - set_by_job - set_by_approval <= set(core.UNSUPPLIED_FIELDS)
-
-
-def mongo_project(doc, projection):
-	"""What Mongo returns for an inclusion projection: ``_id`` plus only the
-	projected fields, a dotted path keeping just that part of its subdocument."""
-	if projection is None:
-		return dict(doc)
-	out = {"_id": doc["_id"]} if "_id" in doc and projection.get("_id", 1) else {}
-	for path, keep in projection.items():
-		if not keep or path == "_id":
-			continue
-		*parents, leaf = path.split(".")
-		src, dst = doc, out
-		for key in parents:
-			if not isinstance(src.get(key), dict):
-				break
-			src, dst = src[key], dst.setdefault(key, {})
-		else:
-			if leaf in src:
-				dst[leaf] = src[leaf]
-	return out
 
 
 class FakeCollection:

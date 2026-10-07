@@ -3,12 +3,26 @@
 Policy (operator decision, 2026-10-06): a Flash account whose Bridge customer
 has passed KYC — Bridge customer status ``active``, the same mapping flash's
 KYC webhook uses for ``approved`` — has a verified identity, and that is
-enough for Level 2. ``bridge_kyc_upgrade`` applies the policy through the
+enough for Level 2, provided its phone country is marked flash_allowed in
+"Allowed Country". The phone country is resolved and checked the way flash's
+Bridge KYC gate does it before anyone can start KYC
+(src/app/bridge/kyc-gate.ts), and accounts that finished KYC before that gate
+existed are held to it here.
+
+The gate itself reads "Allowed Country" only where flash's
+``bridge.kycGate.countryAllowlist.source`` is "erpnext". Under flash's
+default, "config", it reads its config list (BRIDGE_KYC_DEFAULT_COUNTRIES
+unless overridden). As of 2026-10-06 only TEST reads ERPNext
+(deployments#206): prod's gate reads its config list, so the two lists must
+be kept in step until prod is switched too (docs/bridge-kyc-auto-upgrade.md,
+"Rollout (prod)"). ``bridge_kyc_upgrade`` applies the policy through the
 normal Account Upgrade Request path; this module holds the rules so they can
 be tested without a bench.
 """
 
 import json
+
+import phonenumbers
 
 TARGET_LEVEL = "TWO"
 REASON_CODE = "APPROVE_BRIDGE_KYC"
@@ -45,6 +59,28 @@ SKIP_NO_LEGAL_NAME = "no_legal_name"
 SKIP_ALREADY_UPGRADED = "already_level_two_or_above"
 SKIP_ERP_PARTY_MISMATCH = "erp_party_not_found_by_mobile"
 SKIP_RECENT_FAILURE = "failed_in_the_last_day"
+SKIP_COUNTRY_NOT_ALLOWED = "country_not_allowed"
+SKIP_PHONE_COUNTRY_UNKNOWN = "phone_country_unknown"
+
+# Request fields the job never fills. Frappe fills an empty Link field from
+# the site's global default on insert (update_if_missing), so without this the
+# request would record the site's default Country ("United States") and
+# Currency for someone who supplied neither. Listed in the doc's
+# dont_update_if_missing, they stay NULL like the rest of the address.
+UNSUPPLIED_FIELDS = (
+	"address_title",
+	"address_line1",
+	"address_line2",
+	"city",
+	"state",
+	"pincode",
+	"country",
+	"bank_name",
+	"bank_branch",
+	"account_type",
+	"account_number",
+	"currency",
+)
 
 
 def _level(value):
@@ -61,30 +97,75 @@ def legal_name(customer):
 	return f"{first} {last}".strip() or None
 
 
-def _skip(row, reason):
-	return {
+def _alpha2(code):
+	code = (code or "").strip().upper()
+	# "ZZ" is libphonenumber's unknown region.
+	return code if len(code) == 2 and code.isalpha() and code != "ZZ" else None
+
+
+def _countries_from_number(phone):
+	"""The number's region, else every region on its calling code, else []."""
+	try:
+		number = phonenumbers.parse(phone or "", None)
+	except phonenumbers.NumberParseException:
+		return []
+	region = _alpha2(phonenumbers.region_code_for_number(number))
+	if region:
+		return [region]
+	return [c for c in map(_alpha2, phonenumbers.region_codes_for_country_code(number.country_code)) if c]
+
+
+def phone_countries(phone, lookup_country=None):
+	"""The phone's country (or candidate countries) as upper-case ISO alpha-2.
+
+	Mirrors flash's resolvePhoneCountries (src/app/bridge/kyc-gate.ts). The
+	Twilio Lookup country stamped at signup wins while the number on file
+	agrees with it or cannot be resolved. Otherwise the number decides: a
+	user who signed up on a Jamaican SIM and later re-registered a Nigerian
+	number is Nigerian here, as at the gate.
+	"""
+	from_lookup = _alpha2(lookup_country)
+	from_number = _countries_from_number(phone)
+	if from_lookup and (not from_number or from_lookup in from_number):
+		return [from_lookup]
+	return from_number
+
+
+def country_allowed(countries, allowed_countries):
+	"""Any allowed candidate passes, as at the gate. An empty allowlist allows nothing."""
+	return any(country in allowed_countries for country in countries)
+
+
+def _skip(row, reason, countries=None):
+	skip = {
 		"username": row.get("username"),
 		"bridge_customer_id": row.get("bridge_customer_id"),
 		"reason": reason,
 	}
+	if countries is not None:
+		skip["country"] = "/".join(countries) or None
+	return skip
 
 
-def select_candidates(accounts, customers, pending_usernames, recently_failed=()):
+def select_candidates(accounts, customers, pending_usernames, recently_failed=(), *, allowed_countries):
 	"""Split Bridge-linked Flash accounts into upgrade candidates and skips.
 
 	``accounts`` are ``mongo_reader.load_bridge_accounts()`` rows,
 	``customers`` is ``BridgeClient.list_customers()`` (live: Bridge, not the
 	status flash stored, is the source of truth for KYC state),
 	``pending_usernames`` are usernames with a Pending Account Upgrade Request,
-	which a reviewer owns, and ``recently_failed`` are usernames whose upgrade
-	failed within RETRY_AFTER_HOURS.
+	which a reviewer owns, ``recently_failed`` are usernames whose upgrade
+	failed within RETRY_AFTER_HOURS, and ``allowed_countries`` is the set of
+	alpha-2 codes with flash_allowed = 1 (empty: nobody qualifies).
 
 	Accounts already at Level 2 or above and customers that have not passed
 	KYC are the steady state, so they are left out silently. Everything else
 	that is not upgraded is reported with a reason.
 
 	Returns ``(candidates, skipped)``: candidates are
-	``{"account": row, "customer": customer}``, oldest account first.
+	``{"account": row, "customer": customer, "countries": [...]}``, oldest
+	account first. ``countries`` is the row's resolved phone country
+	(``phone_countries``), which the preview reports.
 	"""
 	by_id = {c.get("id"): c for c in customers or [] if c.get("id")}
 	links = {}
@@ -92,6 +173,7 @@ def select_candidates(accounts, customers, pending_usernames, recently_failed=()
 		links.setdefault(row.get("bridge_customer_id"), []).append(row)
 	pending = set(pending_usernames or [])
 	recently_failed = set(recently_failed or [])
+	allowed = set(allowed_countries or [])
 
 	candidates, skipped = [], []
 	for customer_id, rows in links.items():
@@ -115,24 +197,30 @@ def select_candidates(accounts, customers, pending_usernames, recently_failed=()
 				skipped.append(_skip(row, SKIP_NOT_ACTIVE))
 			elif not row.get("username"):
 				skipped.append(_skip(row, SKIP_NO_USERNAME))
+			elif not (countries := phone_countries(row.get("phone"), row.get("phone_lookup_country"))):
+				skipped.append(_skip(row, SKIP_PHONE_COUNTRY_UNKNOWN, countries))
+			elif not country_allowed(countries, allowed):
+				skipped.append(_skip(row, SKIP_COUNTRY_NOT_ALLOWED, countries))
 			elif row.get("username") in pending:
 				skipped.append(_skip(row, SKIP_PENDING_REQUEST))
 			elif row.get("username") in recently_failed:
 				skipped.append(_skip(row, SKIP_RECENT_FAILURE))
 			else:
-				candidates.append({"account": row, "customer": customer})
+				candidates.append({"account": row, "customer": customer, "countries": countries})
 
 	candidates.sort(key=lambda c: (c["account"].get("created_at") or "", c["account"].get("username")))
 	return candidates, skipped
 
 
-def build_request(account, customer):
+def build_request(account, customer, allowed_countries):
 	"""Account Upgrade Request fields for one candidate: ``(fields, None)`` or ``(None, reason)``.
 
 	``account`` is the live admin-GraphQL account (AccountDetail fragment),
 	re-read just before upgrading. Its phone is what ``approve_upgrade_request``
 	finds the account by, and what ``_create_erp_records`` matches or creates
-	the ERP Customer on. The name comes from Bridge, which verified it.
+	the ERP Customer on. The name comes from Bridge, which verified it. The
+	live number is held to the country rule again: the plan used the stored
+	one, and a phone can change in between.
 	"""
 	level = account.get("level")
 	if level not in ELIGIBLE_LEVEL_NAMES:
@@ -143,6 +231,8 @@ def build_request(account, customer):
 	phone = (owner.get("phone") or "").strip()
 	if not phone:
 		return None, SKIP_NO_PHONE
+	if not country_allowed(phone_countries(phone), allowed_countries):
+		return None, SKIP_COUNTRY_NOT_ALLOWED
 	name = legal_name(customer)
 	if not name:
 		return None, SKIP_NO_LEGAL_NAME

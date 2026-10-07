@@ -10,7 +10,7 @@ the normal approval rather than around it.
 import json
 import logging
 import types
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -36,7 +36,15 @@ def customer(cid="cus-1", status="active", type_="individual", first="William", 
 	}
 
 
-def row(username="creech147", cid="cus-1", level=1, status="active", created_at="2026-08-08T00:00:00"):
+def row(
+	username="creech147",
+	cid="cus-1",
+	level=1,
+	status="active",
+	created_at="2026-08-08T00:00:00",
+	phone="+16065550123",
+	lookup="US",
+):
 	return {
 		"bridge_customer_id": cid,
 		"bridge_kyc_status": "approved",
@@ -44,6 +52,8 @@ def row(username="creech147", cid="cus-1", level=1, status="active", created_at=
 		"level": level,
 		"status": status,
 		"created_at": created_at,
+		"phone": phone,
+		"phone_lookup_country": lookup,
 	}
 
 
@@ -55,6 +65,16 @@ def live(username="creech147", level="ONE", status="ACTIVE", phone="+16065550123
 		"status": status,
 		"owner": {"phone": phone, "email": {"address": email, "verified": True}},
 	}
+
+
+# Flash markets for these tests (the "Allowed Country" flash_allowed set).
+ALLOWED = {"US", "JM"}
+
+
+def select(accounts, customers, pending_usernames=(), recently_failed=(), allowed=ALLOWED):
+	return core.select_candidates(
+		accounts, customers, pending_usernames, recently_failed, allowed_countries=allowed
+	)
 
 
 def usernames(items):
@@ -73,34 +93,32 @@ def test_level_zero_and_one_accounts_of_approved_individuals_are_candidates_olde
 		row("newer", "cus-1", level=1, created_at="2026-09-01T00:00:00"),
 		row("older", "cus-2", level=0, created_at="2026-07-01T00:00:00"),
 	]
-	candidates, skipped = core.select_candidates(
-		accounts, [customer("cus-1"), customer("cus-2")], pending_usernames=[]
-	)
+	candidates, skipped = select(accounts, [customer("cus-1"), customer("cus-2")], pending_usernames=[])
 	assert usernames(candidates) == ["older", "newer"]
 	assert candidates[0]["customer"]["id"] == "cus-2"
 	assert skipped == []
 
 
 def test_a_missing_level_counts_as_level_zero():
-	candidates, _ = core.select_candidates([row(level=None)], [customer()], [])
+	candidates, _ = select([row(level=None)], [customer()], [])
 	assert usernames(candidates) == ["creech147"]
 
 
 @pytest.mark.parametrize("level", [2, 3])
 def test_level_two_and_up_are_left_out_silently(level):
-	assert core.select_candidates([row(level=level)], [customer()], []) == ([], [])
+	assert select([row(level=level)], [customer()], []) == ([], [])
 
 
 @pytest.mark.parametrize(
 	"status", ["not_started", "incomplete", "under_review", "paused", "rejected", "offboarded"]
 )
 def test_customers_that_have_not_passed_kyc_are_left_out_silently(status):
-	assert core.select_candidates([row()], [customer(status=status)], []) == ([], [])
+	assert select([row()], [customer(status=status)], []) == ([], [])
 
 
 def test_bridge_is_the_source_of_truth_not_the_stored_status():
 	stale = {**row(), "bridge_kyc_status": "under_review"}
-	candidates, _ = core.select_candidates([stale], [customer()], [])
+	candidates, _ = select([stale], [customer()], [])
 	assert usernames(candidates) == ["creech147"]
 
 
@@ -116,42 +134,136 @@ def test_bridge_is_the_source_of_truth_not_the_stored_status():
 	],
 )
 def test_reported_skips(accounts, customers, pending, expected):
-	candidates, skipped = core.select_candidates(accounts, customers, pending)
+	candidates, skipped = select(accounts, customers, pending)
 	assert candidates == []
 	assert [s["reason"] for s in skipped] == [expected]
 	assert skipped[0]["bridge_customer_id"] == "cus-1"
 
 
 def test_recently_failed_accounts_wait_out_the_retry_window():
-	candidates, skipped = core.select_candidates([row()], [customer()], [], recently_failed={"creech147"})
+	candidates, skipped = select([row()], [customer()], [], recently_failed={"creech147"})
 	assert candidates == []
 	assert reasons(skipped) == {"creech147": core.SKIP_RECENT_FAILURE}
 
 
 def test_an_account_without_a_status_history_is_still_a_candidate():
-	candidates, _ = core.select_candidates([row(status=None)], [customer()], [])
+	candidates, _ = select([row(status=None)], [customer()], [])
 	assert usernames(candidates) == ["creech147"]
 
 
 def test_a_customer_linked_to_several_accounts_upgrades_none_of_them():
 	accounts = [row("a", "cus-1"), row("b", "cus-1"), row("c", "cus-2")]
-	candidates, skipped = core.select_candidates(accounts, [customer("cus-1"), customer("cus-2")], [])
+	candidates, skipped = select(accounts, [customer("cus-1"), customer("cus-2")], [])
 	assert usernames(candidates) == ["c"]
 	assert reasons(skipped) == {"a": core.SKIP_SHARED_CUSTOMER, "b": core.SKIP_SHARED_CUSTOMER}
 
 
 def test_a_shared_customer_still_blocks_when_the_other_account_is_already_level_two():
 	accounts = [row("a", "cus-1", level=2), row("b", "cus-1", level=1)]
-	candidates, skipped = core.select_candidates(accounts, [customer("cus-1")], [])
+	candidates, skipped = select(accounts, [customer("cus-1")], [])
 	assert candidates == []
 	assert reasons(skipped) == {"b": core.SKIP_SHARED_CUSTOMER}
+
+
+# ── country rule (the same as flash's Bridge KYC gate) ──────────────────
+
+
+@pytest.mark.parametrize(
+	"phone,lookup,expected",
+	[
+		("+18764250250", None, ["JM"]),
+		("+919876543210", None, ["IN"]),
+		("+18764250250", "JM", ["JM"]),
+		# A stale signup stamp: Jamaican SIM at signup, Nigerian number now.
+		("+2348031234567", "JM", ["NG"]),
+		# An unattributable number whose calling code includes the stamped
+		# region: the stamp stands alone (JE), not every region on +44
+		# (GB/GG/IM/JE), which would pass on GB.
+		("+447000000", "JE", ["JE"]),
+		# The stamp stands when the number cannot be resolved.
+		("not a number", "US", ["US"]),
+		(None, "JM", ["JM"]),
+		(None, None, []),
+		# Non-geographic: no country at all.
+		("+80012345678", None, []),
+	],
+)
+def test_phone_countries_mirror_the_kyc_gate(phone, lookup, expected):
+	assert core.phone_countries(phone, lookup) == expected
+
+
+def test_an_unattributable_number_counts_every_region_on_its_calling_code():
+	countries = core.phone_countries("+15550100")
+	assert "US" in countries and "JM" in countries
+	# Any allowed candidate passes, as at the gate.
+	assert core.country_allowed(countries, {"JM"})
+
+
+def test_accounts_outside_flash_markets_are_skipped_with_their_country():
+	accounts = [row("ravi", "cus-1", phone="+919876543210", lookup="IN"), row("ok", "cus-2")]
+	candidates, skipped = select(accounts, [customer("cus-1"), customer("cus-2")])
+	assert usernames(candidates) == ["ok"]
+	assert skipped == [
+		{
+			"username": "ravi",
+			"bridge_customer_id": "cus-1",
+			"reason": core.SKIP_COUNTRY_NOT_ALLOWED,
+			"country": "IN",
+		}
+	]
+
+
+def test_the_number_overrules_a_stale_signup_stamp():
+	candidates, skipped = select([row(phone="+2348031234567", lookup="JM")], [customer()])
+	assert candidates == []
+	assert skipped[0]["reason"] == core.SKIP_COUNTRY_NOT_ALLOWED and skipped[0]["country"] == "NG"
+
+
+def test_a_stamp_on_a_shared_calling_code_is_judged_alone():
+	"""An unattributable +44 number stamped JE is Jersey, and +599 stamped BQ is
+	Bonaire. Widened to every region on the calling code, they would pass on GB
+	and CW."""
+	accounts = [
+		row("jersey", "cus-1", phone="+447000000", lookup="JE"),
+		row("bonaire", "cus-2", phone="+599000000", lookup="BQ"),
+	]
+	candidates, skipped = select(accounts, [customer("cus-1"), customer("cus-2")], allowed={"GB", "CW"})
+	assert candidates == []
+	assert {s["username"]: (s["reason"], s["country"]) for s in skipped} == {
+		"jersey": (core.SKIP_COUNTRY_NOT_ALLOWED, "JE"),
+		"bonaire": (core.SKIP_COUNTRY_NOT_ALLOWED, "BQ"),
+	}
+
+
+def test_an_account_with_no_resolvable_phone_country_is_skipped():
+	candidates, skipped = select([row(phone=None, lookup=None)], [customer()])
+	assert candidates == []
+	assert skipped[0]["reason"] == core.SKIP_PHONE_COUNTRY_UNKNOWN and skipped[0]["country"] is None
+
+
+def test_an_empty_allowlist_allows_nobody():
+	candidates, skipped = select([row()], [customer()], allowed=set())
+	assert candidates == []
+	assert skipped[0]["reason"] == core.SKIP_COUNTRY_NOT_ALLOWED
+
+
+def test_candidates_carry_their_resolved_country():
+	candidates, _ = select([row(phone="+18764250250", lookup="JM")], [customer()])
+	assert candidates[0]["countries"] == ["JM"]
+
+
+def test_the_live_number_is_held_to_the_country_rule_again():
+	assert core.build_request(live(phone="+919876543210"), customer(), ALLOWED) == (
+		None,
+		core.SKIP_COUNTRY_NOT_ALLOWED,
+	)
 
 
 # ── build_request ───────────────────────────────────────────────────────
 
 
 def test_request_carries_the_bridge_name_the_live_phone_and_no_address():
-	fields, reason = core.build_request(live(), customer(email="kyc@example.com"))
+	fields, reason = core.build_request(live(), customer(email="kyc@example.com"), ALLOWED)
 	assert reason is None
 	assert fields == {
 		"username": "creech147",
@@ -173,11 +285,11 @@ def test_the_reviewer_note_says_why_the_request_exists():
 
 
 def test_email_falls_back_to_the_flash_email_then_to_none():
-	fields, _ = core.build_request(live(), customer(email=""))
+	fields, _ = core.build_request(live(), customer(email=""), ALLOWED)
 	assert fields["email"] == "flash@example.com"
 	no_email = live()
 	no_email["owner"]["email"] = None
-	fields, _ = core.build_request(no_email, customer(email=""))
+	fields, _ = core.build_request(no_email, customer(email=""), ALLOWED)
 	assert fields["email"] is None
 
 
@@ -193,7 +305,7 @@ def test_email_falls_back_to_the_flash_email_then_to_none():
 	],
 )
 def test_live_recheck_refusals(account, cust, expected):
-	assert core.build_request(account, cust) == (None, expected)
+	assert core.build_request(account, cust, ALLOWED) == (None, expected)
 
 
 def test_snapshot_keeps_no_name_email_or_address():
@@ -230,6 +342,9 @@ class MandatoryError(Exception):
 	pass
 
 
+SITE_DEFAULTS = {"country": "United States", "currency": "USD"}
+
+
 def enforce_mandatory(doc):
 	if getattr(doc.flags, "ignore_mandatory", False):
 		return
@@ -249,6 +364,12 @@ def job(fake, monkeypatch):
 			"label": "Verified via Bridge KYC",
 			"user_facing_message": "Verified via KYC.",
 		},
+	)
+	fake.seed(
+		"Allowed Country",
+		{"name": "US", "alpha2_code": "US", "flash_allowed": 1},
+		{"name": "JM", "alpha2_code": "JM", "flash_allowed": 1},
+		{"name": "IN", "alpha2_code": "IN", "flash_allowed": 0},
 	)
 	fake.singles[SETTINGS] = {
 		"doctype": SETTINGS,
@@ -325,6 +446,14 @@ def job(fake, monkeypatch):
 		state.flags[doc.doctype] = dict(vars(doc.flags))
 		if doc.doctype == "ID Verification" and doc.username in state.fail_idv_for:
 			raise RuntimeError(f"ID Verification insert failed for {doc.username}")
+		if doc.doctype == "Account Upgrade Request":
+			# frappe's update_if_missing on insert: an empty Link field takes the
+			# site's global default unless the doc lists it in
+			# dont_update_if_missing. Prod's default Country is "United States".
+			keep_empty = getattr(doc, "dont_update_if_missing", None) or []
+			for field, value in SITE_DEFAULTS.items():
+				if doc.get(field) is None and field not in keep_empty:
+					setattr(doc, field, value)
 		enforce_mandatory(doc)
 		real_insert(doc, ignore_permissions=ignore_permissions)
 
@@ -423,7 +552,9 @@ def test_upgrade_goes_through_the_normal_approval(job):
 	assert job.erp == [req["name"]]
 	# No address, and nothing bypasses the required-field check: the fixture
 	# enforces the doctype's reqd fields on every insert and save.
-	assert req.get("address_line1") is None and req.get("country") is None
+	assert req.get("address_line1") is None
+	# Not the site's default Country / Currency: nobody supplied them.
+	assert req.get("country") is None and req.get("currency") is None
 	assert not job.flags["Account Upgrade Request"].get("ignore_mandatory")
 	# Reviewer pages show support_note as "Rejection Reason"; the why lives on
 	# the ID Verification instead.
@@ -619,7 +750,10 @@ def test_preview_reports_without_writing(job):
 
 	assert preview["success"] is True
 	assert preview["enabled"] is False
-	assert preview["candidates"] == [{"username": "creech147", "level": 1, "bridge_customer_id": "cus-1"}]
+	assert preview["candidates"] == [
+		{"username": "creech147", "level": 1, "country": "US", "bridge_customer_id": "cus-1"}
+	]
+	assert preview["allowed_countries"] == 2
 	assert reasons(preview["skipped"]) == {"someone": core.SKIP_MISSING_AT_BRIDGE}
 	assert requests_(job) == [] and job.level_updates == [] and job.lookups == []
 
@@ -638,6 +772,142 @@ def test_the_request_address_is_only_required_for_level_three_and_only_in_the_fo
 		assert not fields[name].get("reqd"), name
 		assert fields[name]["mandatory_depends_on"] == "eval:doc.requested_level=='THREE'"
 	assert set(REQUIRED["Account Upgrade Request"]) == {"username", "full_name", "phone_number"}
+
+
+def test_accounts_outside_flash_markets_are_not_upgraded(job):
+	job.accounts = [row("ravi", "cus-1", phone="+919876543210", lookup="IN")]
+
+	summary = bridge_kyc_upgrade.run_auto_upgrade()
+
+	assert summary["upgraded"] == [] and summary["candidates"] == 0
+	assert reasons(summary["skipped"]) == {"ravi": core.SKIP_COUNTRY_NOT_ALLOWED}
+	assert requests_(job) == [] and job.level_updates == [] and job.lookups == []
+
+
+def test_an_empty_allowed_country_list_upgrades_nobody(job):
+	job.fake.tables["Allowed Country"] = []
+
+	summary = bridge_kyc_upgrade.run_auto_upgrade()
+
+	assert summary["upgraded"] == []
+	assert reasons(summary["skipped"]) == {"creech147": core.SKIP_COUNTRY_NOT_ALLOWED}
+	assert requests_(job) == []
+
+
+def test_every_link_field_the_job_leaves_empty_is_kept_from_site_defaults():
+	fields = json.loads((DOCTYPES / "account_upgrade_request" / "account_upgrade_request.json").read_text())[
+		"fields"
+	]
+	links = {f["fieldname"] for f in fields if f["fieldtype"] == "Link"}
+	set_by_job = set(core.build_request(live(), customer(), ALLOWED)[0])
+	set_by_approval = {"reviewed_by", "decision_reason"}
+	assert links - set_by_job - set_by_approval <= set(core.UNSUPPLIED_FIELDS)
+
+
+def mongo_project(doc, projection):
+	"""What Mongo returns for an inclusion projection: ``_id`` plus only the
+	projected fields, a dotted path keeping just that part of its subdocument."""
+	if projection is None:
+		return dict(doc)
+	out = {"_id": doc["_id"]} if "_id" in doc and projection.get("_id", 1) else {}
+	for path, keep in projection.items():
+		if not keep or path == "_id":
+			continue
+		*parents, leaf = path.split(".")
+		src, dst = doc, out
+		for key in parents:
+			if not isinstance(src.get(key), dict):
+				break
+			src, dst = src[key], dst.setdefault(key, {})
+		else:
+			if leaf in src:
+				dst[leaf] = src[leaf]
+	return out
+
+
+class FakeCollection:
+	"""Honours the projection like the server does, so a field the reader stops
+	projecting comes back missing here too, not only against real Mongo."""
+
+	def __init__(self, docs):
+		self.docs = docs
+		self.filters = []
+
+	def find(self, filters, projection=None):
+		self.filters.append(filters)
+		return [mongo_project(doc, projection) for doc in self.docs]
+
+
+def test_the_fake_collection_returns_only_projected_fields():
+	doc = {"_id": 1, "phone": "+1", "phoneMetadata": {"countryCode": "JM", "carrier": "x"}, "language": "en"}
+	[out] = FakeCollection([doc]).find({}, {"phoneMetadata.countryCode": 1})
+	assert out == {"_id": 1, "phoneMetadata": {"countryCode": "JM"}}
+
+
+def test_load_bridge_accounts_joins_the_owner_phone_and_lookup_country(monkeypatch):
+	from admin_panel.api import mongo_reader
+
+	accounts = FakeCollection(
+		[
+			{
+				"_id": "acct-a",
+				"bridgeCustomerId": "cus-1",
+				"bridgeKycStatus": "approved",
+				"username": "a",
+				"level": 1,
+				"statusHistory": [{"status": "locked"}, {"status": "active"}],
+				"created_at": datetime(2026, 8, 8),
+				"kratosUserId": "k1",
+				"defaultWalletId": "wallet-a",
+			},
+			{"_id": "acct-b", "bridgeCustomerId": "cus-2", "username": "b", "level": 1, "kratosUserId": "k2"},
+		]
+	)
+	users = FakeCollection(
+		[
+			{
+				"_id": "user-k1",
+				"userId": "k1",
+				"phone": "+18764250250",
+				"phoneMetadata": {"countryCode": "JM", "carrier": {"type": "mobile"}},
+				"deviceTokens": ["token"],
+			}
+		]
+	)
+	monkeypatch.setattr(
+		mongo_reader, "_get_db", lambda: types.SimpleNamespace(accounts=accounts, users=users)
+	)
+
+	rows = mongo_reader.load_bridge_accounts()
+
+	assert accounts.filters == [{"bridgeCustomerId": {"$nin": [None, ""]}}]
+	assert users.filters == [{"userId": {"$in": ["k1", "k2"]}}]
+	# Whole rows, because the fake returns only projected fields: a field
+	# dropped from a projection fails here, not in prod, where a missing
+	# kratosUserId makes every row phone_country_unknown and a missing
+	# phoneMetadata.countryCode silently drops the Lookup stamp from the rule.
+	assert rows == [
+		{
+			"bridge_customer_id": "cus-1",
+			"bridge_kyc_status": "approved",
+			"username": "a",
+			"level": 1,
+			"status": "active",
+			"created_at": "2026-08-08T00:00:00",
+			"phone": "+18764250250",
+			"phone_lookup_country": "JM",
+		},
+		{
+			"bridge_customer_id": "cus-2",
+			"bridge_kyc_status": None,
+			"username": "b",
+			"level": 1,
+			"status": None,
+			"created_at": None,
+			"phone": None,
+			"phone_lookup_country": None,
+		},
+	]
 
 
 def test_preview_is_whitelisted_and_admin_gated():

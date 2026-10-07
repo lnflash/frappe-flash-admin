@@ -44,10 +44,15 @@ jobs:
           python-version: "3.10"
 
       # The suite deliberately stubs frappe (see the test module docstrings),
-      # so it needs no bench, no site and no database — pytest + requests is
-      # the whole dependency set.
+      # so it needs no bench, no site and no database — pytest, requests and
+      # phonenumbers are the whole dependency set.
       - name: Install test dependencies
-        run: pip install pytest requests
+        # phonenumbers: bridge_kyc_upgrade_core resolves phone countries with it.
+        # The app does not install it: frappe does. The release image builds
+        # FROM frappe/erpnext:v15, whose frappe pyproject (version-15 branch)
+        # requires phonenumbers~=9.0.23, so CI uses frappe's own spec. Keep
+        # the two in step if the base image moves.
+        run: pip install pytest requests "phonenumbers~=9.0.23"
 
       - name: Run the test suite
         run: python -m pytest admin_panel/tests -q

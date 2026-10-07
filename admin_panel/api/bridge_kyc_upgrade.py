@@ -2,8 +2,9 @@
 
 Every 15 minutes (hooks.py), while ID Verification Settings has both
 ``bridge_kyc_satisfies_identity`` and ``auto_upgrade_bridge_kyc`` on, each
-Flash account linked to a KYC-approved individual Bridge customer and still
-below Level 2 is upgraded through the reviewer path, not around it: an
+Flash account linked to a KYC-approved individual Bridge customer, still
+below Level 2, and with a phone country marked flash_allowed in "Allowed
+Country" is upgraded through the reviewer path, not around it: an
 Account Upgrade Request plus an ID Verification (identity_source
 ``bridge_kyc``), approved by ``approve_upgrade_request`` with reason
 APPROVE_BRIDGE_KYC. That approval creates (or reuses, by mobile number) the
@@ -11,6 +12,11 @@ ERP Customer that flash requires as ``erpParty`` for Level 2, stamps the
 decision, mirrors it onto the ID Verification and writes the ledger event.
 Scheduled approvals are stamped as reviewed by the scheduler's session user
 (Administrator).
+
+"Allowed Country" is the list flash's Bridge KYC gate reads only where its
+countryAllowlist.source is "erpnext" (TEST). Prod's gate reads its config
+list, so the two must be kept in step there until prod is switched (see
+``bridge_kyc_upgrade_core``).
 
 Nothing is committed until the approval commits it. When an approval fails:
 - if flash is still below Level 2, everything is rolled back (no request the
@@ -39,6 +45,7 @@ from .bridge_kyc_upgrade_core import (
 	REASON_CODE,
 	RETRY_AFTER_HOURS,
 	SKIP_ERP_PARTY_MISMATCH,
+	UNSUPPLIED_FIELDS,
 	bridge_snapshot,
 	build_request,
 	reviewer_note,
@@ -81,10 +88,20 @@ def _recently_failed():
 	return {t[len(FAILURE_TITLE_PREFIX) :] for t in titles if (t or "").startswith(FAILURE_TITLE_PREFIX)}
 
 
-def _plan():
+def _allowed_countries():
+	"""Alpha-2 codes with flash_allowed = 1. Empty means nobody qualifies."""
+	codes = frappe.get_all("Allowed Country", filters={"flash_allowed": 1}, pluck="alpha2_code")
+	return {code.strip().upper() for code in codes if code and code.strip()}
+
+
+def _plan(allowed):
 	pending = frappe.get_all("Account Upgrade Request", filters={"status": "Pending"}, pluck="username")
 	return select_candidates(
-		load_bridge_accounts(), BridgeClient().list_customers(), pending, _recently_failed()
+		load_bridge_accounts(),
+		BridgeClient().list_customers(),
+		pending,
+		_recently_failed(),
+		allowed_countries=allowed,
 	)
 
 
@@ -97,7 +114,7 @@ def _flash_still_below_level_two(client, username):
 	return bool(account) and account.get("level") in ELIGIBLE_LEVEL_NAMES
 
 
-def _upgrade(candidate, client):
+def _upgrade(candidate, client, allowed):
 	"""File and approve one Bridge KYC upgrade. Returns the outcome."""
 	customer = candidate["customer"]
 	username = candidate["account"].get("username")
@@ -107,7 +124,7 @@ def _upgrade(candidate, client):
 	account = client.get_account_by_username(username)
 	if not account:
 		return {"username": username, "outcome": "skipped", "reason": "account_not_found"}
-	fields, reason = build_request(account, customer)
+	fields, reason = build_request(account, customer, allowed)
 	if reason:
 		return {"username": username, "outcome": "skipped", "reason": reason}
 	# The approval finds the ERP Customer by mobile number. If that is not the
@@ -118,8 +135,11 @@ def _upgrade(candidate, client):
 		return {"username": username, "outcome": "skipped", "reason": SKIP_ERP_PARTY_MISMATCH}
 
 	# No address: the request doctype only requires one for Level 3, and
-	# _create_erp_records already treats address and bank as optional.
+	# _create_erp_records already treats address and bank as optional. The
+	# unsupplied fields stay NULL instead of taking the site's default Country
+	# and Currency.
 	req = frappe.get_doc({"doctype": "Account Upgrade Request", **fields})
+	req.dont_update_if_missing = list(UNSUPPLIED_FIELDS)
 	req.insert(ignore_permissions=True)
 	frappe.get_doc(
 		{
@@ -166,13 +186,14 @@ def run_auto_upgrade():
 	if not enabled:
 		return {"enabled": False, "reason": reason}
 
-	candidates, skipped = _plan()
+	allowed = _allowed_countries()
+	candidates, skipped = _plan(allowed)
 	client = GraphQLClient()
 	outcomes = []
 	for candidate in candidates[:MAX_UPGRADES_PER_RUN]:
 		username = candidate["account"].get("username")
 		try:
-			outcome = _upgrade(candidate, client)
+			outcome = _upgrade(candidate, client, allowed)
 		except Exception as exc:
 			# Raised before the approval ran, so flash is untouched: discard the
 			# uncommitted request / ID Verification.
@@ -223,16 +244,19 @@ def run_auto_upgrade():
 def preview_bridge_kyc_upgrades():
 	"""Read-only: who the auto-upgrade would move to Level 2, who it skips and why."""
 	enabled, reason = _switches()
-	candidates, skipped = _plan()
+	allowed = _allowed_countries()
+	candidates, skipped = _plan(allowed)
 	return {
 		"success": True,
 		"enabled": enabled,
 		"disabled_reason": reason,
 		"max_per_run": MAX_UPGRADES_PER_RUN,
+		"allowed_countries": len(allowed),
 		"candidates": [
 			{
 				"username": c["account"].get("username"),
 				"level": c["account"].get("level"),
+				"country": "/".join(c["countries"]),
 				"bridge_customer_id": c["customer"].get("id"),
 			}
 			for c in candidates

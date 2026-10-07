@@ -11,12 +11,15 @@ heal_stale_assets_manifest (scheduler, every minute) deletes the key whenever
 it is not this image's manifest; clear_shared_assets_manifest is the
 after_migrate backup. They run against stand-ins for the slice of frappe they
 touch: the shared cache, read_file / parse_json (frappe v15 semantics) and
-cache_manager.bench_cache_keys.
+cache_manager.bench_cache_keys. frappe.logger hands back a real logger left
+at ERROR, frappe's level on the cluster, so a heal line only lands if setup
+raises the level itself.
 """
 
 import ast
 import importlib
 import json
+import logging
 import sys
 import types
 from pathlib import Path
@@ -25,6 +28,10 @@ import pytest
 from idv_stubs import frappe
 
 from admin_panel.admin_panel import setup
+
+# The process stdout as setup was imported, i.e. the stream its handler wraps.
+# Bound now, not read at assertion time, so capsys cannot sway the check.
+STDOUT_AT_IMPORT = sys.stdout
 
 ADMIN_PANEL = Path(__file__).resolve().parents[1]
 SETUP_PY = ADMIN_PANEL / "admin_panel" / "setup.py"
@@ -84,9 +91,23 @@ def parse_json(val):
 	return json.loads(val) if isinstance(val, str) else val
 
 
+class Capture(logging.Handler):
+	"""Keeps (level, message) for every record that gets past the logger's level."""
+
+	def __init__(self):
+		super().__init__()
+		self.lines = []
+
+	def emit(self, record):
+		self.lines.append((record.levelname, record.getMessage()))
+
+
 @pytest.fixture
 def bench(monkeypatch, tmp_path):
-	"""A worker of the NEW image: cwd is sites/, and sites/assets is its own build."""
+	"""A worker of the NEW image: cwd is sites/, and sites/assets is its own build.
+
+	``log`` holds the heal's lines that survive a logger frappe built at ERROR.
+	"""
 	sites = tmp_path / "sites"
 	(sites / "assets").mkdir(parents=True)
 	monkeypatch.chdir(sites)
@@ -96,6 +117,15 @@ def bench(monkeypatch, tmp_path):
 	cache_manager = types.ModuleType("frappe.cache_manager")
 	cache_manager.bench_cache_keys = ("assets_json",)
 	monkeypatch.setitem(sys.modules, "frappe.cache_manager", cache_manager)
+
+	# frappe.logger caches one logger per module and sets its level once, when
+	# it builds it: ERROR off a dev server (frappe/utils/logger.py).
+	capture = Capture()
+	logger = logging.getLogger("test-assets-manifest")
+	logger.handlers = [capture]
+	logger.propagate = False
+	logger.setLevel(logging.ERROR)
+	monkeypatch.setattr(frappe, "logger", lambda *args, **kwargs: logger, raising=False)
 
 	def ship(ltr=SHIPPED_LTR, rtl=SHIPPED_RTL):
 		if ltr is not None:
@@ -108,7 +138,14 @@ def bench(monkeypatch, tmp_path):
 		monkeypatch.setattr(frappe, "cache", shared, raising=False)
 		return shared
 
-	return types.SimpleNamespace(ship=ship, cache=cache, bench_cache_keys=cache_manager.bench_cache_keys)
+	return types.SimpleNamespace(
+		ship=ship,
+		cache=cache,
+		bench_cache_keys=cache_manager.bench_cache_keys,
+		sites=sites,
+		logger=logger,
+		log=capture.lines,
+	)
 
 
 # ── heal_stale_assets_manifest (the scheduler job) ───────────────────────
@@ -174,7 +211,9 @@ def test_heal_never_writes_an_absent_key(bench):
 	[(None, None), (None, SHIPPED_RTL), ({}, None)],
 	ids=["no-manifest", "rtl-only", "empty-manifest"],
 )
-def test_heal_does_nothing_without_a_manifest_to_compare(bench, ltr, rtl):
+def test_heal_only_warns_without_a_manifest_to_compare(bench, ltr, rtl):
+	"""The heal is off on a worker with no manifest of its own. The warning
+	says so on every run, and names the file it looked for."""
 	bench.ship(ltr=ltr, rtl=rtl)
 	cache = bench.cache(assets_json=OLD_IMAGE)
 
@@ -182,6 +221,13 @@ def test_heal_does_nothing_without_a_manifest_to_compare(bench, ltr, rtl):
 
 	assert cache.keys == {"assets_json": OLD_IMAGE}
 	assert cache.deletes == []
+	manifest = bench.sites / "assets" / "assets.json"
+	assert bench.log == [
+		(
+			"WARNING",
+			f"left the shared assets_json alone: no usable manifest at {manifest} to check it against",
+		)
+	]
 
 
 def test_heal_is_scheduled_every_minute_and_is_not_an_endpoint():
@@ -203,13 +249,110 @@ def test_heal_is_scheduled_every_minute_and_is_not_an_endpoint():
 	assert fn.decorator_list == []  # not @frappe.whitelist(): nothing calls it over HTTP
 
 
+# ── what the heal logs (Scheduled Job Log says "Complete" either way) ────
+
+
+def test_a_delete_logs_one_info_line_naming_both_builds(bench):
+	bench.ship()
+	bench.cache(assets_json=OLD_IMAGE)
+
+	setup.heal_stale_assets_manifest()
+
+	assert bench.log == [
+		(
+			"INFO",
+			"cleared the stale shared assets_json: differing_entries=1 first=controls.bundle.js"
+			" cached=/assets/frappe/dist/js/controls.bundle.RG3B2JBD.js"
+			" shipped=/assets/frappe/dist/js/controls.bundle.XTQ4CE6N.js",
+		)
+	]
+
+
+def test_a_deleted_empty_manifest_is_logged_by_what_it_lacks(bench):
+	bench.ship()
+	bench.cache(assets_json={})
+
+	setup.heal_stale_assets_manifest()
+
+	[(level, line)] = bench.log
+	assert level == "INFO"
+	assert "differing_entries=3 first=controls.bundle.js cached=None shipped=/assets/" in line
+
+
+def test_a_cached_value_that_is_not_a_manifest_is_cleared_and_logged(bench):
+	"""The evidence is built after the delete, so it must not raise on
+	whatever was cached."""
+	bench.ship()
+	cache = bench.cache(assets_json="<html>")
+
+	setup.heal_stale_assets_manifest()
+
+	assert "assets_json" not in cache.keys
+	assert bench.log == [("INFO", "cleared the stale shared assets_json: cached=str (not a manifest)")]
+
+
+@pytest.mark.parametrize(
+	"shipped,keys",
+	[(True, {"assets_json": SHIPPED}), (True, {}), (False, {})],
+	ids=["match", "absent", "absent-and-no-manifest"],
+)
+def test_no_line_when_there_is_nothing_to_delete(bench, shipped, keys):
+	"""The steady state, every minute: one line here is 1,440 a day."""
+	if shipped:
+		bench.ship()
+	bench.cache(**keys)
+
+	setup.heal_stale_assets_manifest()
+
+	assert bench.log == []
+
+
+def test_a_delete_that_failed_logs_no_info_line(bench, monkeypatch):
+	"""The Error Log row is the record. A "cleared" line would report a delete
+	that did not happen."""
+	bench.ship()
+	cache = bench.cache(assets_json=OLD_IMAGE)
+
+	def timeout(keys, **kwargs):
+		raise RedisTimeoutError("Timeout reading from socket")
+
+	logged = []
+	monkeypatch.setattr(cache, "delete_value", timeout)
+	monkeypatch.setattr(frappe, "get_traceback", lambda: "traceback", raising=False)
+	monkeypatch.setattr(
+		frappe, "log_error", lambda title=None, message=None: logged.append(title), raising=False
+	)
+
+	setup.heal_stale_assets_manifest()
+
+	assert cache.keys == {"assets_json": OLD_IMAGE}
+	assert logged == ["Could not clear the shared asset manifest cache"]
+	assert bench.log == []
+
+
+def test_the_heal_log_gets_past_frappes_level_and_off_the_pod(bench):
+	"""frappe's file handlers are pod-local and nothing mounts a volume over
+	logs/, so the stdout copy is the one the log collector keeps. Assert on
+	the real handler: the capture stays green without it."""
+	logger = setup._logger()
+	setup._logger()  # every run attaches it again; it must not stack
+
+	assert logger is bench.logger
+	assert logger.isEnabledFor(logging.INFO)
+	assert [h for h in logger.handlers if h is setup._STDOUT_HANDLER] == [setup._STDOUT_HANDLER]
+	assert setup._STDOUT_HANDLER.stream is STDOUT_AT_IMPORT
+	# The level reaches the collector too, so a WARNING can be told from an INFO.
+	record = logging.LogRecord("assets_manifest", logging.WARNING, __file__, 1, "left it alone", (), None)
+	assert " WARNING assets_manifest left it alone" in setup._STDOUT_HANDLER.format(record)
+
+
 # ── clear_shared_assets_manifest (the after_migrate backup) ──────────────
 
 
 def test_clear_deletes_frappes_own_bench_cache_keys_shared(bench):
 	cache = bench.cache(assets_json=OLD_IMAGE)
 
-	setup.clear_shared_assets_manifest()
+	assert setup.clear_shared_assets_manifest() is True
 
 	# frappe's own tuple (clear_global_cache deletes the same one), not a
 	# copy; shared=True, because a site-scoped delete misses the key.
@@ -233,7 +376,7 @@ def test_a_redis_timeout_is_logged_and_never_fails_the_migrate(bench, monkeypatc
 		frappe, "log_error", lambda title=None, message=None: logged.append((title, message)), raising=False
 	)
 
-	setup.clear_shared_assets_manifest()
+	assert setup.clear_shared_assets_manifest() is False  # so the heal logs no delete
 
 	assert attempted == [(bench.bench_cache_keys, {"shared": True})]
 	assert logged == [("Could not clear the shared asset manifest cache", "traceback")]
@@ -248,7 +391,7 @@ def test_a_frappe_without_bench_cache_keys_is_logged_not_raised(bench, monkeypat
 		frappe, "log_error", lambda title=None, message=None: logged.append((title, message)), raising=False
 	)
 
-	setup.clear_shared_assets_manifest()
+	assert setup.clear_shared_assets_manifest() is False
 
 	assert cache.deletes == []
 	assert logged == [("Could not clear the shared asset manifest cache", "traceback")]
@@ -262,7 +405,7 @@ def test_even_a_failed_log_never_fails_the_migrate(bench, monkeypatch):
 	monkeypatch.setattr(frappe, "get_traceback", lambda: "traceback", raising=False)
 	monkeypatch.setattr(frappe, "log_error", boom, raising=False)
 
-	setup.clear_shared_assets_manifest()
+	assert setup.clear_shared_assets_manifest() is False
 
 
 def test_after_migrate_clears_the_manifest_last():

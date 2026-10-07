@@ -1,3 +1,7 @@
+import logging
+import os
+import sys
+
 import frappe
 
 from admin_panel.admin_panel.doctype.allowed_country.seed import seed_allowed_countries
@@ -262,6 +266,23 @@ def ensure_public_assets_symlink():
 # The key frappe.utils.get_assets_json caches the merged manifest under (a
 # literal there). Only read here: deletes go through frappe's own key list.
 ASSETS_JSON_KEY = "assets_json"
+# This image's manifest, relative to sites/ (see _shipped_assets_manifest).
+SHIPPED_MANIFEST = "assets/assets.json"
+
+# The heal's log, set up like bridge_kyc_upgrade._logger. frappe.logger()
+# drops INFO on the cluster (its level is ERROR off a dev server) and writes
+# its files to a pod with no volume, so _logger raises the level and copies
+# each line to stdout (support_lookup._audit_logger has the details). One
+# handler object, attached by identity, so attaching it on every run is a no-op.
+_STDOUT_HANDLER = logging.StreamHandler(sys.stdout)
+_STDOUT_HANDLER.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+
+
+def _logger():
+	logger = frappe.logger("assets_manifest", max_size=1_000_000, file_count=5)
+	logger.setLevel(logging.INFO)
+	logger.addHandler(_STDOUT_HANDLER)
+	return logger
 
 
 def heal_stale_assets_manifest():
@@ -288,15 +309,29 @@ def heal_stale_assets_manifest():
 	whatever is left, and from then on only the new image writes the key. It
 	reads without a generator and never writes the key itself, so on an old
 	worker mid-rollout the worst it can do is force one rebuild. It does
-	nothing when the key matches, is absent, or there is no local manifest.
+	nothing when the key matches or is absent.
+
+	Scheduled Job Log says "Complete" after every run, delete or not, so the
+	job logs through _logger. A delete logs one INFO line naming the first
+	differing bundle both ways: its hash names the build that re-cached the
+	key, and the number of these lines is how often deploys still hit the race.
+	A key it cannot check, because this worker has no manifest of its own, is
+	left alone with a WARNING on every run, since on that worker the heal is off.
 	"""
 	cached = frappe.cache.get_value(ASSETS_JSON_KEY, shared=True)
 	if cached is None:
 		return
 	shipped = _shipped_assets_manifest()
-	if not shipped or cached == shipped:
+	if not shipped:
+		_logger().warning(
+			"left the shared assets_json alone: no usable manifest at %s to check it against",
+			os.path.abspath(SHIPPED_MANIFEST),
+		)
 		return
-	clear_shared_assets_manifest()
+	if cached == shipped:
+		return
+	if clear_shared_assets_manifest():
+		_logger().info("cleared the stale shared assets_json: %s", _manifest_difference(cached, shipped))
 
 
 def _shipped_assets_manifest():
@@ -306,12 +341,28 @@ def _shipped_assets_manifest():
 	sites/assets resolves to the assets baked into this container's image.
 	None when there is no manifest to compare against.
 	"""
-	assets = frappe.parse_json(frappe.read_file("assets/assets.json"))
+	assets = frappe.parse_json(frappe.read_file(SHIPPED_MANIFEST))
 	if not assets:
 		return None
 	if assets_rtl := frappe.read_file("assets/assets-rtl.json"):
 		assets.update(frappe.parse_json(assets_rtl))
 	return assets
+
+
+def _manifest_difference(cached, shipped):
+	"""The heal's evidence: how many entries differ, and the first one both ways.
+
+	Runs after the delete, on whatever was cached, so it never raises on a
+	value that is not a manifest.
+	"""
+	if not isinstance(cached, dict):
+		return f"cached={type(cached).__name__} (not a manifest)"
+	differing = [name for name in cached.keys() | shipped.keys() if cached.get(name) != shipped.get(name)]
+	first = min(differing, key=str, default=None)
+	return (
+		f"differing_entries={len(differing)} first={first}"
+		f" cached={cached.get(first)} shipped={shipped.get(first)}"
+	)
 
 
 def clear_shared_assets_manifest():
@@ -325,8 +376,9 @@ def clear_shared_assets_manifest():
 	list (cache_manager.bench_cache_keys), so it deletes what frappe deletes.
 
 	Connection failures are silently skipped by frappe
-	(RedisWrapper.delete_value swallows redis ConnectionError). Other redis
-	errors, such as a timeout, are logged to the Error Log.
+	(RedisWrapper.delete_value swallows redis ConnectionError), so they still
+	return True. Other redis errors, such as a timeout, are logged to the Error
+	Log and return False, so the heal does not log them as a delete.
 	"""
 	try:
 		from frappe.cache_manager import bench_cache_keys
@@ -340,6 +392,8 @@ def clear_shared_assets_manifest():
 			)
 		except Exception:
 			pass
+		return False
+	return True
 
 
 # ── ID verification seed data ─────────────────────────────────────────────

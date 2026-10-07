@@ -15,6 +15,8 @@ def after_migrate():
 	seed_decision_reasons()
 	seed_identity_document_types()
 	seed_chain_genesis()
+	# Last: see the docstring for why the end of the migrate is the right time.
+	clear_shared_assets_manifest()
 
 
 def ensure_roles():
@@ -255,6 +257,40 @@ def ensure_public_assets_symlink():
 		os.path.join(bench_path, "sites", "assets", "admin_panel"),
 		os.path.join(bench_path, "apps", "admin_panel", "admin_panel", "public"),
 	)
+
+
+# Keys frappe's get_assets_json caches the asset manifest under, in the SHARED
+# (cross-site) redis namespace. frappe v15 merges the RTL manifest into
+# "assets_json"; older releases kept "assets_json_rtl" separately.
+SHARED_ASSET_MANIFEST_KEYS = ("assets_json", "assets_json_rtl")
+
+
+def clear_shared_assets_manifest():
+	"""Drop the cached asset manifest so pages link the bundles this image ships.
+
+	frappe's get_assets_json caches the manifest under a shared, never-expiring
+	redis key, and nothing in a deploy invalidates it: ``bench clear-cache`` is
+	site-scoped, and fresh gunicorn workers re-read the stale key. Whenever a
+	build changes bundle hashes, every page then links old-hash CSS/JS that
+	404s until someone deletes the key by hand (both envs 2026-08-31; prod
+	after v1.30.0, 2026-10-07).
+
+	Runs at the end of every migrate: by then the web pods have normally
+	rolled, so the first request on a new pod rebuilds the key from that pod's
+	manifest. An old pod that serves a request after this and before it
+	terminates could cache its stale manifest again; deleting the key by hand
+	still fixes that. Never fails the migrate.
+	"""
+	try:
+		frappe.cache.delete_value(list(SHARED_ASSET_MANIFEST_KEYS), shared=True)
+	except Exception:
+		try:
+			frappe.log_error(
+				title="Could not clear the shared asset manifest cache",
+				message=frappe.get_traceback(),
+			)
+		except Exception:
+			pass
 
 
 # ── ID verification seed data ─────────────────────────────────────────────

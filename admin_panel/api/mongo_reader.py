@@ -183,9 +183,9 @@ def load_bridge_accounts() -> list:
 def find_account(query: str):
 	"""Resolve a single account doc by accountId / username / phone / wallet id.
 
-	Resolution order: mongo _id (== IBEX account name) → username → phone
-	(users.phone, then users.userId == accounts.kratosUserId) → wallet id.
-	Returns the raw account doc or None.
+	Resolution order: mongo _id (== IBEX account name) → username → account
+	uuid → phone (users.phone, then users.userId == accounts.kratosUserId) →
+	wallet id. Returns the raw account doc or None.
 	"""
 	from bson import ObjectId
 
@@ -209,12 +209,17 @@ def find_account(query: str):
 	if acct:
 		return acct
 
-	# Support pastes of formatted numbers ("876 555-1234", "(876) 5551234"):
-	# try the raw query, a compacted form, and a "+"-prefixed compacted form.
+	# users.phone is E.164 ("+18765551234"); support pastes it formatted.
+	# Candidates: the raw query, its compacted form ("+1 876-555-1234"), the
+	# compacted form with "+" ("1 876 555 1234") and, for 10 digits
+	# ("876 555-1234", "(876) 5551234"), with "+1": a 10-digit number is a
+	# NANP national number (JM, US, CA, most of the Caribbean).
 	compact = re.sub(r"[\s\-().]", "", query)
 	candidates = [query, compact]
 	if compact and not compact.startswith("+"):
 		candidates.append("+" + compact)
+	if re.fullmatch(r"[0-9]{10}", compact):
+		candidates.append("+1" + compact)
 	user = None
 	for candidate in dict.fromkeys(c for c in candidates if c):
 		user = db.users.find_one({"phone": candidate})

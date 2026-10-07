@@ -9,7 +9,7 @@ it left payer phones, phone search and the customer page's phone empty.
 
 import types
 
-import idv_stubs  # noqa: F401  (installs the frappe stub the api package imports)
+import idv_stubs  # installs the frappe stub the api package imports
 import pytest
 
 from admin_panel.api import mongo_reader
@@ -71,9 +71,7 @@ ACCOUNT_ID = "6a770f76f0452bcc2db47c43"
 
 @pytest.fixture()
 def db(monkeypatch):
-	monkeypatch.setitem(
-		__import__("sys").modules, "bson", types.SimpleNamespace(ObjectId=FakeObjectId)
-	)
+	monkeypatch.setitem(__import__("sys").modules, "bson", types.SimpleNamespace(ObjectId=FakeObjectId))
 	fake = types.SimpleNamespace(
 		accounts=Collection(
 			[

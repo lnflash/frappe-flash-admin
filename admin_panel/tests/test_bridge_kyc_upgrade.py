@@ -10,7 +10,7 @@ the normal approval rather than around it.
 import json
 import logging
 import types
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -176,6 +176,10 @@ def test_a_shared_customer_still_blocks_when_the_other_account_is_already_level_
 		("+18764250250", "JM", ["JM"]),
 		# A stale signup stamp: Jamaican SIM at signup, Nigerian number now.
 		("+2348031234567", "JM", ["NG"]),
+		# An unattributable number whose calling code includes the stamped
+		# region: the stamp stands alone (JE), not every region on +44
+		# (GB/GG/IM/JE), which would pass on GB.
+		("+447000000", "JE", ["JE"]),
 		# The stamp stands when the number cannot be resolved.
 		("not a number", "US", ["US"]),
 		(None, "JM", ["JM"]),
@@ -213,6 +217,22 @@ def test_the_number_overrules_a_stale_signup_stamp():
 	candidates, skipped = select([row(phone="+2348031234567", lookup="JM")], [customer()])
 	assert candidates == []
 	assert skipped[0]["reason"] == core.SKIP_COUNTRY_NOT_ALLOWED and skipped[0]["country"] == "NG"
+
+
+def test_a_stamp_on_a_shared_calling_code_is_judged_alone():
+	"""An unattributable +44 number stamped JE is Jersey, and +599 stamped BQ is
+	Bonaire. Widened to every region on the calling code, they would pass on GB
+	and CW."""
+	accounts = [
+		row("jersey", "cus-1", phone="+447000000", lookup="JE"),
+		row("bonaire", "cus-2", phone="+599000000", lookup="BQ"),
+	]
+	candidates, skipped = select(accounts, [customer("cus-1"), customer("cus-2")], allowed={"GB", "CW"})
+	assert candidates == []
+	assert {s["username"]: (s["reason"], s["country"]) for s in skipped} == {
+		"jersey": (core.SKIP_COUNTRY_NOT_ALLOWED, "JE"),
+		"bonaire": (core.SKIP_COUNTRY_NOT_ALLOWED, "BQ"),
+	}
 
 
 def test_an_account_with_no_resolvable_phone_country_is_skipped():
@@ -784,34 +804,110 @@ def test_every_link_field_the_job_leaves_empty_is_kept_from_site_defaults():
 	assert links - set_by_job - set_by_approval <= set(core.UNSUPPLIED_FIELDS)
 
 
+def mongo_project(doc, projection):
+	"""What Mongo returns for an inclusion projection: ``_id`` plus only the
+	projected fields, a dotted path keeping just that part of its subdocument."""
+	if projection is None:
+		return dict(doc)
+	out = {"_id": doc["_id"]} if "_id" in doc and projection.get("_id", 1) else {}
+	for path, keep in projection.items():
+		if not keep or path == "_id":
+			continue
+		*parents, leaf = path.split(".")
+		src, dst = doc, out
+		for key in parents:
+			if not isinstance(src.get(key), dict):
+				break
+			src, dst = src[key], dst.setdefault(key, {})
+		else:
+			if leaf in src:
+				dst[leaf] = src[leaf]
+	return out
+
+
+class FakeCollection:
+	"""Honours the projection like the server does, so a field the reader stops
+	projecting comes back missing here too, not only against real Mongo."""
+
+	def __init__(self, docs):
+		self.docs = docs
+		self.filters = []
+
+	def find(self, filters, projection=None):
+		self.filters.append(filters)
+		return [mongo_project(doc, projection) for doc in self.docs]
+
+
+def test_the_fake_collection_returns_only_projected_fields():
+	doc = {"_id": 1, "phone": "+1", "phoneMetadata": {"countryCode": "JM", "carrier": "x"}, "language": "en"}
+	[out] = FakeCollection([doc]).find({}, {"phoneMetadata.countryCode": 1})
+	assert out == {"_id": 1, "phoneMetadata": {"countryCode": "JM"}}
+
+
 def test_load_bridge_accounts_joins_the_owner_phone_and_lookup_country(monkeypatch):
 	from admin_panel.api import mongo_reader
 
-	class Collection:
-		def __init__(self, docs):
-			self.docs = docs
-			self.filters = []
-
-		def find(self, filters, projection=None):
-			self.filters.append(filters)
-			return list(self.docs)
-
-	accounts = Collection(
+	accounts = FakeCollection(
 		[
-			{"bridgeCustomerId": "cus-1", "username": "a", "level": 1, "kratosUserId": "k1"},
-			{"bridgeCustomerId": "cus-2", "username": "b", "level": 1, "kratosUserId": "k2"},
+			{
+				"_id": "acct-a",
+				"bridgeCustomerId": "cus-1",
+				"bridgeKycStatus": "approved",
+				"username": "a",
+				"level": 1,
+				"statusHistory": [{"status": "locked"}, {"status": "active"}],
+				"created_at": datetime(2026, 8, 8),
+				"kratosUserId": "k1",
+				"defaultWalletId": "wallet-a",
+			},
+			{"_id": "acct-b", "bridgeCustomerId": "cus-2", "username": "b", "level": 1, "kratosUserId": "k2"},
 		]
 	)
-	users = Collection([{"userId": "k1", "phone": "+18764250250", "phoneMetadata": {"countryCode": "JM"}}])
+	users = FakeCollection(
+		[
+			{
+				"_id": "user-k1",
+				"userId": "k1",
+				"phone": "+18764250250",
+				"phoneMetadata": {"countryCode": "JM", "carrier": {"type": "mobile"}},
+				"deviceTokens": ["token"],
+			}
+		]
+	)
 	monkeypatch.setattr(
 		mongo_reader, "_get_db", lambda: types.SimpleNamespace(accounts=accounts, users=users)
 	)
 
 	rows = mongo_reader.load_bridge_accounts()
 
+	assert accounts.filters == [{"bridgeCustomerId": {"$nin": [None, ""]}}]
 	assert users.filters == [{"userId": {"$in": ["k1", "k2"]}}]
-	assert (rows[0]["phone"], rows[0]["phone_lookup_country"]) == ("+18764250250", "JM")
-	assert (rows[1]["phone"], rows[1]["phone_lookup_country"]) == (None, None)
+	# Whole rows, because the fake returns only projected fields: a field
+	# dropped from a projection fails here, not in prod, where a missing
+	# kratosUserId makes every row phone_country_unknown and a missing
+	# phoneMetadata.countryCode silently drops the Lookup stamp from the rule.
+	assert rows == [
+		{
+			"bridge_customer_id": "cus-1",
+			"bridge_kyc_status": "approved",
+			"username": "a",
+			"level": 1,
+			"status": "active",
+			"created_at": "2026-08-08T00:00:00",
+			"phone": "+18764250250",
+			"phone_lookup_country": "JM",
+		},
+		{
+			"bridge_customer_id": "cus-2",
+			"bridge_kyc_status": None,
+			"username": "b",
+			"level": 1,
+			"status": None,
+			"created_at": None,
+			"phone": None,
+			"phone_lookup_country": None,
+		},
+	]
 
 
 def test_preview_is_whitelisted_and_admin_gated():

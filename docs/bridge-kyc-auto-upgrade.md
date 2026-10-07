@@ -13,15 +13,16 @@ account that is linked to a Bridge customer and:
   truth, not the status flash stored),
 - the Bridge customer is an **individual**,
 - the account is at Level 0 or 1 and active,
-- its phone country is marked `flash_allowed` in **Allowed Country**: the list
-  flash's Bridge KYC gate checks before anyone can start KYC
-  (`src/app/bridge/kyc-gate.ts`). The country is resolved the same way: the
-  Twilio Lookup country stamped at signup (`phoneMetadata.countryCode`) while
-  the number on file agrees with it, otherwise the number itself (its region,
-  or every region on its calling code, any allowed one passing). Accounts that
-  finished Bridge KYC before the gate existed are held to it here. An empty
-  allowlist upgrades nobody. The live number is checked again just before
-  upgrading.
+- its phone country is marked `flash_allowed` in **Allowed Country**
+  (`/app/allowed-country`). The country is resolved the way flash's Bridge KYC
+  gate resolves it before anyone can start KYC (`src/app/bridge/kyc-gate.ts`):
+  the Twilio Lookup country stamped at signup (`phoneMetadata.countryCode`)
+  while the number on file agrees with it, otherwise the number itself (its
+  region, or every region on its calling code, any allowed one passing).
+  Accounts that finished Bridge KYC before the gate existed are held to it
+  here. An empty allowlist upgrades nobody. The live number is checked again
+  just before upgrading. The gate itself does not read this list on prod yet:
+  see [Which list the gate reads](#which-list-the-gate-reads).
 
 For each one it files an **Account Upgrade Request** (Level 2) and an **ID
 Verification** with `identity_source = bridge_kyc`, then approves the request
@@ -66,6 +67,42 @@ Changing either one is a ledger event (`idv_settings_changed`).
 
 The first run after switching on catches up on existing accounts, at most
 **25 per run**. Anything over that is picked up by the following runs.
+
+## Which list the gate reads
+
+Flash's gate reads Allowed Country only where
+`bridge.kycGate.countryAllowlist.source` is `"erpnext"`. Under flash's
+default, `"config"`, it reads its config list instead:
+`countryAllowlist.defaultCountries`, which defaults to
+`BRIDGE_KYC_DEFAULT_COUNTRIES` (`src/config/schema.ts`). As of 2026-10-06
+only TEST reads ERPNext (deployments#206). Prod's values set no `kycGate`, so
+prod's gate reads its config list. Both lists were seeded with the same 35
+countries, so they agree until one of them is edited. Until prod is switched,
+ticking or unticking a country at `/app/allowed-country` changes this job and
+not prod's gate.
+
+### Rollout (prod)
+
+Before switching the job on in prod, point prod's gate at the same list, so
+that one edit at `/app/allowed-country` moves both. That is a deployments
+change mirroring #206: in `prod/flash-values.prod.yaml`, under the existing
+`galoy.config.bridge` block, add
+
+```yaml
+kycGate:
+  countryAllowlist:
+    source: "erpnext"
+```
+
+then `make flash ENV=prod`. Flash's schema says to flip only after the
+Allowed Country reseed has run on that site (before it, 165 countries were
+ticked); the preview's `allowed_countries` count shows how many are ticked
+now (35 as seeded). With `"erpnext"`, flash falls back to its config list only
+when ERPNext cannot be read or returns no allowed rows.
+
+Until that change is applied, keep the two lists in step by hand: an edit at
+`/app/allowed-country` also needs the same edit to flash's
+`countryAllowlist.defaultCountries` in prod's values.
 
 ## Who is skipped, and why
 

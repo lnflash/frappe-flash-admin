@@ -4,8 +4,7 @@ Every 15 minutes (hooks.py), while ID Verification Settings has both
 ``bridge_kyc_satisfies_identity`` and ``auto_upgrade_bridge_kyc`` on, each
 Flash account linked to a KYC-approved individual Bridge customer, still
 below Level 2, and with a phone country marked flash_allowed in "Allowed
-Country" (the list flash's Bridge KYC gate uses) is upgraded through the
-reviewer path, not around it: an
+Country" is upgraded through the reviewer path, not around it: an
 Account Upgrade Request plus an ID Verification (identity_source
 ``bridge_kyc``), approved by ``approve_upgrade_request`` with reason
 APPROVE_BRIDGE_KYC. That approval creates (or reuses, by mobile number) the
@@ -13,6 +12,11 @@ ERP Customer that flash requires as ``erpParty`` for Level 2, stamps the
 decision, mirrors it onto the ID Verification and writes the ledger event.
 Scheduled approvals are stamped as reviewed by the scheduler's session user
 (Administrator).
+
+"Allowed Country" is the list flash's Bridge KYC gate reads only where its
+countryAllowlist.source is "erpnext" (TEST). Prod's gate reads its config
+list, so the two must be kept in step there until prod is switched (see
+``bridge_kyc_upgrade_core``).
 
 Nothing is committed until the approval commits it. When an approval fails:
 - if flash is still below Level 2, everything is rolled back (no request the

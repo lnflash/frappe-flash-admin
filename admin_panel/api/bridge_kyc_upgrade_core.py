@@ -3,12 +3,21 @@
 Policy (operator decision, 2026-10-06): a Flash account whose Bridge customer
 has passed KYC — Bridge customer status ``active``, the same mapping flash's
 KYC webhook uses for ``approved`` — has a verified identity, and that is
-enough for Level 2, provided its phone country is one Flash serves: the same
-"Allowed Country" (flash_allowed) rule flash's Bridge KYC gate applies before
-anyone can start KYC (src/app/bridge/kyc-gate.ts). Accounts that finished KYC
-before that gate existed are held to it here. ``bridge_kyc_upgrade`` applies
-the policy through the normal Account Upgrade Request path; this module holds
-the rules so they can be tested without a bench.
+enough for Level 2, provided its phone country is marked flash_allowed in
+"Allowed Country". The phone country is resolved and checked the way flash's
+Bridge KYC gate does it before anyone can start KYC
+(src/app/bridge/kyc-gate.ts), and accounts that finished KYC before that gate
+existed are held to it here.
+
+The gate itself reads "Allowed Country" only where flash's
+``bridge.kycGate.countryAllowlist.source`` is "erpnext". Under flash's
+default, "config", it reads its config list (BRIDGE_KYC_DEFAULT_COUNTRIES
+unless overridden). As of 2026-10-06 only TEST reads ERPNext
+(deployments#206): prod's gate reads its config list, so the two lists must
+be kept in step until prod is switched too (docs/bridge-kyc-auto-upgrade.md,
+"Rollout (prod)"). ``bridge_kyc_upgrade`` applies the policy through the
+normal Account Upgrade Request path; this module holds the rules so they can
+be tested without a bench.
 """
 
 import json
@@ -154,7 +163,9 @@ def select_candidates(accounts, customers, pending_usernames, recently_failed=()
 	that is not upgraded is reported with a reason.
 
 	Returns ``(candidates, skipped)``: candidates are
-	``{"account": row, "customer": customer}``, oldest account first.
+	``{"account": row, "customer": customer, "countries": [...]}``, oldest
+	account first. ``countries`` is the row's resolved phone country
+	(``phone_countries``), which the preview reports.
 	"""
 	by_id = {c.get("id"): c for c in customers or [] if c.get("id")}
 	links = {}

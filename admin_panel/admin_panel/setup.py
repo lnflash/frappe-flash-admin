@@ -15,7 +15,7 @@ def after_migrate():
 	seed_decision_reasons()
 	seed_identity_document_types()
 	seed_chain_genesis()
-	# Last: see the docstring for why the end of the migrate is the right time.
+	# A backup only. The fix is heal_stale_assets_manifest on the scheduler.
 	clear_shared_assets_manifest()
 
 
@@ -259,30 +259,79 @@ def ensure_public_assets_symlink():
 	)
 
 
-# Keys frappe's get_assets_json caches the asset manifest under, in the SHARED
-# (cross-site) redis namespace. frappe v15 merges the RTL manifest into
-# "assets_json"; older releases kept "assets_json_rtl" separately.
-SHARED_ASSET_MANIFEST_KEYS = ("assets_json", "assets_json_rtl")
+# The key frappe.utils.get_assets_json caches the merged manifest under (a
+# literal there). Only read here: deletes go through frappe's own key list.
+ASSETS_JSON_KEY = "assets_json"
+
+
+def heal_stale_assets_manifest():
+	"""Scheduler job, every minute: delete the cached asset manifest if this image did not ship it.
+
+	frappe.utils.get_assets_json caches the merged assets.json + assets-rtl.json
+	under one shared (cross-site), never-expiring key, and every page links its
+	CSS/JS bundles through it. ``bench migrate`` already deletes that key as it
+	starts (SiteMigration.setUp -> clear_global_cache). It still went stale
+	after deploys (both envs 2026-08-31, prod 2026-10-07) because an old-image
+	process re-cached its own manifest after that clear. The migrate Job runs
+	alongside the rolling update, and every container resolves sites/assets to
+	the manifest baked into its own image. So any old-image render writes the
+	OLD manifest back: the old gunicorn rendering the maintenance page, or any
+	page until its replacement is Ready, or an old long worker running the
+	search-index rebuild the migrate enqueues. Pages then link bundle hashes
+	the new image does not ship, and the CSS/JS 404s. A delete at any fixed
+	point in the deploy can lose that race.
+
+	This job does not depend on deploy timing. It deletes the key only when it
+	differs from this worker's own manifest, and the next render rebuilds it.
+	An old process still alive may cache its manifest again and the next run
+	deletes that too. The first run after the last old process exits clears
+	whatever is left, and from then on only the new image writes the key. It
+	reads without a generator and never writes the key itself, so on an old
+	worker mid-rollout the worst it can do is force one rebuild. It does
+	nothing when the key matches, is absent, or there is no local manifest.
+	"""
+	cached = frappe.cache.get_value(ASSETS_JSON_KEY, shared=True)
+	if cached is None:
+		return
+	shipped = _shipped_assets_manifest()
+	if not shipped or cached == shipped:
+		return
+	clear_shared_assets_manifest()
+
+
+def _shipped_assets_manifest():
+	"""This image's merged manifest, built the way get_assets_json builds it.
+
+	The paths are relative to sites/, where every bench process runs and where
+	sites/assets resolves to the assets baked into this container's image.
+	None when there is no manifest to compare against.
+	"""
+	assets = frappe.parse_json(frappe.read_file("assets/assets.json"))
+	if not assets:
+		return None
+	if assets_rtl := frappe.read_file("assets/assets-rtl.json"):
+		assets.update(frappe.parse_json(assets_rtl))
+	return assets
 
 
 def clear_shared_assets_manifest():
-	"""Drop the cached asset manifest so pages link the bundles this image ships.
+	"""Delete frappe's shared asset-manifest cache key. Never raises.
 
-	frappe's get_assets_json caches the manifest under a shared, never-expiring
-	redis key, and nothing in a deploy invalidates it: ``bench clear-cache`` is
-	site-scoped, and fresh gunicorn workers re-read the stale key. Whenever a
-	build changes bundle hashes, every page then links old-hash CSS/JS that
-	404s until someone deletes the key by hand (both envs 2026-08-31; prod
-	after v1.30.0, 2026-10-07).
+	A backup to heal_stale_assets_manifest, run at the end of every migrate.
+	frappe already made this same delete when the migrate started, so it only
+	helps when an old process re-cached the key during the migrate and is gone
+	by its end. Pages then heal at once instead of on the next scheduler run
+	(or at all, when the scheduler is not running). It uses frappe's own key
+	list (cache_manager.bench_cache_keys), so it deletes what frappe deletes.
 
-	Runs at the end of every migrate: by then the web pods have normally
-	rolled, so the first request on a new pod rebuilds the key from that pod's
-	manifest. An old pod that serves a request after this and before it
-	terminates could cache its stale manifest again; deleting the key by hand
-	still fixes that. Never fails the migrate.
+	Connection failures are silently skipped by frappe
+	(RedisWrapper.delete_value swallows redis ConnectionError). Other redis
+	errors, such as a timeout, are logged to the Error Log.
 	"""
 	try:
-		frappe.cache.delete_value(list(SHARED_ASSET_MANIFEST_KEYS), shared=True)
+		from frappe.cache_manager import bench_cache_keys
+
+		frappe.cache.delete_value(bench_cache_keys, shared=True)
 	except Exception:
 		try:
 			frappe.log_error(

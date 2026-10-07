@@ -150,10 +150,11 @@ doc_events = {
 
 # Scheduled Tasks
 # ---------------
-# `daily` (the ledger anchor) and one `cron` job (the Bridge KYC auto-upgrade)
-# are enabled. These fire ONLY when a scheduler worker is running
-# (`bench schedule` / the scheduler container) and the site's scheduler is not
-# paused — without one neither job runs and nothing warns about it.
+# `daily` (the ledger anchor) and two `cron` jobs (the Bridge KYC auto-upgrade
+# and the asset-manifest heal) are enabled. These fire ONLY when a
+# scheduler worker is running (`bench schedule` / the scheduler container) and
+# the site's scheduler is not paused — without one no job runs and nothing
+# warns about it.
 
 scheduler_events = {
 	"daily": [
@@ -166,6 +167,12 @@ scheduler_events = {
 		# KYC to Level 2" is switched on in ID Verification Settings.
 		"*/15 * * * *": [
 			"admin_panel.api.bridge_kyc_upgrade.run_auto_upgrade",
+		],
+		# Deletes frappe's shared asset-manifest cache when an old-image
+		# process re-cached it during a deploy (unstyled pages, 404ing CSS/JS).
+		# A no-op whenever the cached manifest is this image's own.
+		"* * * * *": [
+			"admin_panel.admin_panel.setup.heal_stale_assets_manifest",
 		],
 	},
 }

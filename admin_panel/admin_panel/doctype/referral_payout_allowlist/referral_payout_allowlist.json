@@ -1,0 +1,107 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:account_id",
+ "creation": "2026-10-10 00:00:00.000000",
+ "custom": 0,
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "account",
+  "enabled",
+  "note",
+  "resolved_section",
+  "account_id",
+  "username",
+  "account_uuid"
+ ],
+ "fields": [
+  {
+   "description": "The flash username or account UUID to allowlist. Verified against flash when you save; the row is refused if flash cannot confirm the account. Fixed after creation: delete the row and add a new one to change it.",
+   "fieldname": "account",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Flash username or account UUID",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "default": "1",
+   "description": "Uncheck to stop payouts for this account. Flash re-reads within ~60s.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Enabled"
+  },
+  {
+   "description": "Who approved this account and why.",
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note"
+  },
+  {
+   "fieldname": "resolved_section",
+   "fieldtype": "Section Break",
+   "label": "Resolved from flash"
+  },
+  {
+   "description": "What flash matches on. Set automatically from the flash account found when the row was saved.",
+   "fieldname": "account_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Flash Account ID (Mongo)",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "description": "Display only. Usernames can change on flash; matching uses the account ID.",
+   "fieldname": "username",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Username",
+   "read_only": 1
+  },
+  {
+   "description": "Display only.",
+   "fieldname": "account_uuid",
+   "fieldtype": "Data",
+   "label": "Flash Account UUID",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-10 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Admin Panel",
+ "name": "Referral Payout Allowlist",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

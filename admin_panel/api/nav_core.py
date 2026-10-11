@@ -160,6 +160,12 @@ NAV_GROUPS = (
 				"Master kill switch for referral reward payouts",
 			),
 			_doctype(
+				"Referral Payout Allowlist",
+				"Referral Payout Allowlist",
+				"RA",
+				"Accounts paid referral rewards while the global pause is on",
+			),
+			_doctype(
 				"System Funding Log",
 				"System Funding Log",
 				"FL",

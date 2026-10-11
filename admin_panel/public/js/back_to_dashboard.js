@@ -39,6 +39,7 @@
 		"Fygaro Settings",
 		"Cashout Settings",
 		"Referral Settings",
+		"Referral Payout Allowlist",
 		"System Funding Log",
 		"System Transfer Log",
 	];

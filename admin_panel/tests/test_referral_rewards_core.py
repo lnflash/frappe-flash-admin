@@ -515,3 +515,64 @@ def test_unredeemed_lifecycle_rows_consume_cap_budget():
 	by_id = {r["invite_id"]: r for r in full["rows"]}
 	assert by_id["revoked-1"]["reward_status"] == "revoked"
 	assert by_id["sent-new"]["reward_status"] == "sent"
+
+
+# ── Referral Payout Allowlist badges (ENG-640) ────────────────────────────
+
+
+def test_no_allowlist_leaves_every_party_unflagged():
+	# Existing callers pass no allowlisted_ids; their rows must be unaffected.
+	invites, accounts = _fixture()
+	out = build_overview(invites, accounts, counter_seq=5)
+
+	assert out["rows"], "fixture produced no rows"
+	for row in out["rows"]:
+		assert row["inviter_allowlisted"] is False
+		assert row["invitee_allowlisted"] is False
+
+
+def test_allowlisted_inviter_is_flagged_on_every_invite_they_sent():
+	invites, accounts = _fixture()
+	out = build_overview(invites, accounts, counter_seq=5, allowlisted_ids={"acc-alice"})
+	by_id = {r["invite_id"]: r for r in out["rows"]}
+
+	# alice sent i1, i4 and i5 (i5 never redeemed): the inviter cell is hers
+	# on all three.
+	for invite_id in ("i1", "i4", "i5"):
+		assert by_id[invite_id]["inviter_allowlisted"] is True, invite_id
+	# alice redeemed nothing, so no invitee cell is hers.
+	assert all(r["invitee_allowlisted"] is False for r in out["rows"])
+	# Nobody else is flagged as an inviter.
+	others = {r["invite_id"] for r in out["rows"] if r["inviter_allowlisted"]}
+	assert others == {"i1", "i4", "i5"}
+
+
+def test_allowlisted_invitee_is_flagged_only_on_the_invite_they_redeemed():
+	invites, accounts = _fixture()
+	# erin sent i3 and redeemed i4 (alice's invite).
+	out = build_overview(invites, accounts, counter_seq=5, allowlisted_ids={"acc-erin"})
+	by_id = {r["invite_id"]: r for r in out["rows"]}
+
+	assert {r["invite_id"] for r in out["rows"] if r["invitee_allowlisted"]} == {"i4"}
+	assert {r["invite_id"] for r in out["rows"] if r["inviter_allowlisted"]} == {"i3"}
+	# i4's inviter is alice, who is not on the list.
+	assert by_id["i4"]["inviter_allowlisted"] is False
+
+
+def test_unredeemed_rows_never_flag_the_invitee():
+	# Un-redeemed rows show the invite contact in the invitee cell, not an
+	# account, so a stray redeemed_by_id on a non-ACCEPTED invite must never
+	# light up the badge.
+	invites, accounts = _fixture()
+	stray = dict(invites[6], invite_id="i9", redeemed_by_id="acc-bob")  # EXPIRED
+	assert stray["status"] == "EXPIRED"
+	invites.append(stray)
+	allow = {"acc-bob", "acc-dan", "acc-erin", "acc-frank", "acc-hugo"}
+	out = build_overview(invites, accounts, counter_seq=5, allowlisted_ids=allow)
+
+	for row in out["rows"]:
+		if row["status"] != "ACCEPTED":
+			assert row["invitee_allowlisted"] is False, row["invite_id"]
+	# The redeemed rows for those invitees do flag.
+	flagged = {r["invite_id"] for r in out["rows"] if r["invitee_allowlisted"]}
+	assert flagged == {"i1", "i2", "i3", "i4", "i8"}

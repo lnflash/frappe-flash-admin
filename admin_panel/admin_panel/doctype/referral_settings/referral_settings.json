@@ -16,7 +16,7 @@
   },
   {
    "default": "1",
-   "description": "Master kill switch for referral reward payouts. When unchecked, NO referral rewards are paid: payouts triggered by an invitee's KYC approval are DEFERRED (the invite stays unrewarded and can be paid later after re-enabling), never lost and never marked failed. Invites, signups, and KYC itself are unaffected. Flash re-reads this within ~60 seconds of a change.",
+   "description": "Master kill switch for referral reward payouts. When unchecked, NO referral rewards are paid: payouts triggered by an invitee's KYC approval are DEFERRED (the invite stays unrewarded and can be paid later after re-enabling), never lost and never marked failed. Invites, signups, and KYC itself are unaffected. Flash re-reads this within ~60 seconds of a change. Accounts on the Referral Payout Allowlist can be paid while flash's global pause is on, but only while this box is checked. Unchecking it stops every payout, allowlisted or not.",
    "fieldname": "rewards_enabled",
    "fieldtype": "Check",
    "label": "Rewards Payouts Enabled"
@@ -25,7 +25,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-01 00:00:00.000000",
+ "modified": "2026-10-10 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Admin Panel",
  "name": "Referral Settings",

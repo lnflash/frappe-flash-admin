@@ -65,7 +65,7 @@ def test_js_escapes_user_data():
 
 	Static sweep: an interpolation that references response/row data (r., d.,
 	s., f., t., counts[, this.) must run through an escaping/formatting helper
-	(esc / escape_html / rr_money / rr_ago / paidMark / Number) or be an
+	(esc / escape_html / rr_money / rr_ago / paidMark / allowMark / Number) or be an
 	explicitly reviewed numeric expression in the allowlist below. Adding e.g.
 	`${r.contact}` unescaped fails this test.
 	"""
@@ -81,6 +81,7 @@ def test_js_escapes_user_data():
 		"rr_money(",
 		"rr_ago(",
 		"paidMark(",
+		"allowMark(",
 		"Number(",
 	)
 	data_ref = re.compile(r"\b[rdfts]\.|counts\[|this\.")
@@ -164,3 +165,28 @@ def test_core_module_has_no_frappe_or_pymongo_imports():
 	assert "import frappe" not in core
 	assert "pymongo" not in core
 	assert "import requests" not in core
+
+
+def test_endpoint_reads_enabled_allowlist_rows_by_account_id():
+	# ENG-640: the page badges the parties flash would pay while the global
+	# pause is on. flash matches on account_id (the Mongo id), the same id
+	# space as the invite's inviterId / redeemedById, so that is the column the
+	# endpoint must pluck, and only enabled rows count.
+	api_py = read_text(ADMIN_PANEL / "api" / "referral_rewards.py")
+
+	assert '"Referral Payout Allowlist"' in api_py
+	assert 'filters={"enabled": 1}' in api_py
+	assert 'pluck="account_id"' in api_py
+	assert "allowlisted_ids=allowlisted_ids" in api_py
+
+
+def test_js_badges_both_inviter_and_invitee_cells():
+	js = read_text(PAGE_DIR / "referral_rewards.js")
+
+	assert "allowMark(r.inviter_allowlisted)" in js
+	assert "allowMark(r.invitee_allowlisted)" in js
+	# The badge is static markup; it must not interpolate anything itself.
+	m = re.search(r"const allowMark = \(b\) =>(.*?);\n", js, re.DOTALL)
+	assert m, "allowMark helper not found"
+	assert "${" not in m.group(1)
+	assert ".referral-rewards-page .rr-allow" in js

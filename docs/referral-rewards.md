@@ -70,9 +70,47 @@ and the fallthrough rule in sync** with the flash backend
 (`flash/src/config/schema.ts` + `flash/src/domain/invite/referral-reward.ts`)
 if either is retuned there.
 
+## Allowlist
+
+The **Referral Payout Allowlist** doctype (Admin Panel, "Settings and audit")
+lists accounts flash pays referral rewards to while its global
+`referralReward.enabled` flag is off. Use it to pay a small pilot group
+without re-opening rewards to everyone.
+
+**Two gates.** A listed account is paid only while the **Rewards Payouts
+Enabled** box on Referral Settings is also checked. That box is the master
+kill: unchecking it stops every payout, allowlisted or not. The allowlist
+can only add payouts while the global flag is off; it never overrides the
+ERP box.
+
+**Who gets paid.** If the inviter OR the invitee of a redeemed invite is on
+the list, flash pays that invite's reward. The Referral Rewards page shows an
+"allowlisted" badge next to each listed party, inviter and invitee.
+
+**Adding a row.** Enter the flash username or account UUID and save. The
+controller looks the account up in flash and stores its Mongo account id in
+`account_id` (plus the username and uuid for display). If flash does not know
+the account, or flash cannot be reached, the save is refused and nothing is
+stored: a row flash cannot confirm would look like it grants a payout while
+never matching. One row per account; a second row for the same account is
+rejected.
+
+**Removing or pausing.** Uncheck **Enabled** or delete the row. Neither calls
+flash, so both work during a flash outage. Flash re-reads the list within
+about 60 seconds, so payouts can still go through in that window, including
+every invite of an allowlisted inviter that is replayed or KYC-approved before
+flash re-reads. Removing
+a row never takes back or re-pays rewards already paid.
+
+**Keyed by Mongo account id.** flash matches on `account_id`, the account's
+Mongo `_id` string (the same id as an invite's `inviterId` /
+`redeemedById`), not the username or the account uuid. A username change on
+flash does not affect matching; the stored username is display-only and can
+go stale. To change which account a row covers, delete it and add a new one.
+
 ## Tests
 
 ```bash
 cd ~/Repos/frappe-flash-admin
-pytest admin_panel/tests/test_referral_rewards_core.py admin_panel/tests/test_referral_rewards_page_contract.py -q
+pytest admin_panel/tests/test_referral_rewards_core.py admin_panel/tests/test_referral_rewards_page_contract.py admin_panel/tests/test_referral_payout_allowlist_contract.py -q
 ```

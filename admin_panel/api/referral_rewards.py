@@ -67,9 +67,20 @@ def get_referral_rewards():
 	accounts = load_accounts()
 	counter_seq = load_reward_counter()
 	wallet_balance = _rewards_wallet_balance()
+	# Accounts flash pays while its global pause is on (ENG-640). Keyed on the
+	# Mongo account id, the same id space as the invite's inviterId and
+	# redeemedById, so the page badges exactly the parties flash would match.
+	allowlisted_ids = set(
+		frappe.get_all("Referral Payout Allowlist", filters={"enabled": 1}, pluck="account_id")
+	)
 
 	overview = build_overview(
-		invites, accounts, counter_seq, tiers=REWARD_TIERS, wallet_balance=wallet_balance
+		invites,
+		accounts,
+		counter_seq,
+		tiers=REWARD_TIERS,
+		wallet_balance=wallet_balance,
+		allowlisted_ids=allowlisted_ids,
 	)
 	overview["success"] = True
 	overview["now"] = frappe.utils.now_datetime().isoformat()

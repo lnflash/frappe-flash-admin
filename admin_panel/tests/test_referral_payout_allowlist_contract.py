@@ -317,8 +317,34 @@ def test_blank_input_is_refused_without_a_lookup(flash, blank):
 	assert flash.lookups == []
 
 
+def test_response_with_uuid_as_id_is_refused(flash):
+	# If flash's admin ``id`` ever resolved to the uuid (as the public schema
+	# already does), every row would save and flash's 24-hex reader would
+	# silently drop it. The save must be refused instead.
+	flash.by_username["alice"] = {"id": ACCOUNT_UUID, "uuid": ACCOUNT_UUID, "username": "alice"}
+	doc = _make_doc(account="alice")
+
+	with pytest.raises(_ValidationError, match="not a Mongo id; nothing was saved"):
+		doc.before_insert()
+
+	assert _unresolved(doc)
+
+
+@pytest.mark.parametrize(
+	"bad_id", ["65F1C2A9E4B0A1B2C3D4E5F6", "65f1c2a9e4b0a1b2c3d4e5f", "65f1c2a9e4b0a1b2c3d4e5f6a"]
+)
+def test_response_with_non_objectid_shape_is_refused(flash, bad_id):
+	flash.by_username["alice"] = {"id": bad_id, "uuid": ACCOUNT_UUID, "username": "alice"}
+	doc = _make_doc(account="alice")
+
+	with pytest.raises(_ValidationError, match="not a Mongo id"):
+		doc.before_insert()
+
+	assert _unresolved(doc)
+
+
 def test_saved_row_identity_edit_is_refused(flash):
-	doc = _make_doc(account="bob", account_id=MONGO_ID)
+	doc = _make_doc(account="bob", account_id=MONGO_ID, name=MONGO_ID)
 	doc.is_new = lambda: False
 	doc.has_value_changed = lambda fieldname: fieldname == "account"
 
@@ -332,7 +358,7 @@ def test_saved_row_toggling_enabled_never_calls_flash(flash):
 	# The per-account kill path must work during a flash outage.
 	flash.error = RuntimeError("flash is down")
 	flash.init_error = ValueError("not configured")
-	doc = _make_doc(account="alice", account_id=MONGO_ID, enabled=0, note="paused")
+	doc = _make_doc(account="alice", account_id=MONGO_ID, name=MONGO_ID, enabled=0, note="paused")
 	doc.is_new = lambda: False
 	doc.has_value_changed = lambda fieldname: fieldname in ("enabled", "note")
 
@@ -340,3 +366,36 @@ def test_saved_row_toggling_enabled_never_calls_flash(flash):
 
 	assert flash.lookups == []
 	assert doc.account_id == MONGO_ID
+
+
+OTHER_MONGO_ID = "65f1c2a9e4b0a1b2c3d4e5f7"
+
+
+@pytest.mark.parametrize("fieldname", ["account_id", "username", "account_uuid"])
+def test_saved_row_resolved_field_edit_is_refused(flash, fieldname):
+	# read_only is desk-only: a REST PUT can still change these. account_id is
+	# the field flash pays on, so repointing it must be refused.
+	doc = _make_doc(
+		account="alice",
+		account_id=OTHER_MONGO_ID if fieldname == "account_id" else MONGO_ID,
+		name=MONGO_ID,
+		username="alice",
+		account_uuid=ACCOUNT_UUID,
+	)
+	doc.is_new = lambda: False
+	doc.has_value_changed = lambda f: f == fieldname
+
+	with pytest.raises(_ValidationError, match="Identity cannot be edited"):
+		doc.validate()
+
+	assert flash.lookups == []
+
+
+def test_saved_row_account_id_diverging_from_name_is_refused(flash):
+	# Even if change tracking misses it, account_id must stay equal to the
+	# document name it was keyed by.
+	doc = _make_doc(account="alice", account_id=OTHER_MONGO_ID, name=MONGO_ID)
+	doc.is_new = lambda: False
+
+	with pytest.raises(_ValidationError, match="Identity cannot be edited"):
+		doc.validate()

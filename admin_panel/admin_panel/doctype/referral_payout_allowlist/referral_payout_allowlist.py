@@ -1,7 +1,17 @@
+import re
+
 import frappe
 from frappe.model.document import Document
 
 from admin_panel.api.flash_identifiers import is_flash_username_candidate
+
+# Fields set from flash at insert time; none may change on a saved row.
+IDENTITY_FIELDS = ("account", "account_id", "username", "account_uuid")
+
+# flash's reader drops any account_id that is not a 24-hex Mongo ObjectId, and
+# drops it silently (ENG-640-flash.md decision 1), so a row with any other
+# shape would save cleanly and never pay.
+MONGO_ID_RE = re.compile(r"[0-9a-f]{24}")
 
 
 class ReferralPayoutAllowlist(Document):
@@ -26,7 +36,14 @@ class ReferralPayoutAllowlist(Document):
 		# Never call flash on a saved row: unchecking Enabled or editing the
 		# note must keep working during a flash outage, because that is the
 		# kill path for a single account.
-		if not self.is_new() and self.has_value_changed("account"):
+		# Every resolved identity field is guarded, not just ``account``:
+		# read_only in the doctype JSON is enforced only in the desk UI, so a
+		# REST PUT could otherwise repoint ``account_id`` (the field flash
+		# matches on) while the name and display fields still show the
+		# original account. The name is pinned to account_id for the same reason.
+		if not self.is_new() and (
+			any(self.has_value_changed(f) for f in IDENTITY_FIELDS) or self.account_id != self.name
+		):
 			frappe.throw("Identity cannot be edited; delete this row and add a new one.")
 
 	def _resolve(self, value):
@@ -62,6 +79,12 @@ class ReferralPayoutAllowlist(Document):
 		if not account_id:
 			frappe.throw(f"Flash returned an account for '{value}' without an account ID; nothing was saved.")
 
-		self.account_id = str(account_id)
+		account_id = str(account_id)
+		if not MONGO_ID_RE.fullmatch(account_id):
+			frappe.throw(
+				f"Flash returned an account ID for '{value}' that is not a Mongo id; nothing was saved."
+			)
+
+		self.account_id = account_id
 		self.username = account.get("username")
 		self.account_uuid = account.get("uuid")

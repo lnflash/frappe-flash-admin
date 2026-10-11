@@ -97,7 +97,9 @@ rejected.
 
 **Removing or pausing.** Uncheck **Enabled** or delete the row. Neither calls
 flash, so both work during a flash outage. Flash re-reads the list within
-about 60 seconds, so one payout can still go through in that window. Removing
+about 60 seconds, so payouts can still go through in that window, including
+every invite of an allowlisted inviter that is replayed or KYC-approved before
+flash re-reads. Removing
 a row never takes back or re-pays rewards already paid.
 
 **Keyed by Mongo account id.** flash matches on `account_id`, the account's

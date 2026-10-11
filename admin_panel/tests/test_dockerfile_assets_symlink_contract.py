@@ -19,20 +19,49 @@ LN_CMD = f"ln -sfn {LINK_TARGET} {LINK_PATH}"
 BUILD_CMD = "bench build --apps admin_panel"
 
 
+def _run_instructions(text):
+	"""Every RUN instruction in ``text``, with line continuations joined."""
+	chains = []
+	for block in text.split("\nRUN ")[1:]:
+		lines = []
+		for line in block.splitlines():
+			lines.append(line.strip().rstrip("\\").strip())
+			if not line.rstrip().endswith("\\"):
+				break
+		chains.append(" ".join(lines))
+	return chains
+
+
+def _build_chain(text):
+	"""The RUN instruction that runs ``bench build``, whatever else the file runs."""
+	chain = next((c for c in _run_instructions(text) if BUILD_CMD in c), None)
+	assert chain is not None, f"no RUN instruction contains {BUILD_CMD!r}"
+	return chain
+
+
 def _run_chain():
-	"""The single RUN instruction, with line continuations joined."""
-	runs = [block for block in DOCKERFILE.split("\nRUN ")[1:]]
-	assert len(runs) == 1, "expected exactly one RUN instruction"
-	lines = []
-	for line in runs[0].splitlines():
-		lines.append(line.strip().rstrip("\\").strip())
-		if not line.rstrip().endswith("\\"):
-			break
-	return " ".join(lines)
+	return _build_chain(DOCKERFILE)
 
 
-def test_dockerfile_bakes_admin_panel_assets_link():
-	assert LN_CMD in DOCKERFILE
+def _ln_segment(chain):
+	"""The ``ln -sfn`` command in an ``&&`` chain, split into tokens."""
+	segments = [seg.split() for seg in chain.split("&&")]
+	matches = [seg for seg in segments if seg[:2] == ["ln", "-sfn"]]
+	assert len(matches) == 1, f"expected exactly one ln -sfn in the chain, got {len(matches)}"
+	return matches[0]
+
+
+def test_build_chain_is_found_among_other_run_instructions():
+	# An unrelated RUN (before or after) must not break the link contract.
+	text = (
+		"FROM base\n"
+		"RUN apt-get update && apt-get install -y curl\n"
+		f"RUN bench get-app x && \\\n    {BUILD_CMD} && \\\n    {LN_CMD}\n"
+		"RUN echo done\n"
+	)
+	chain = _build_chain(text)
+	assert chain.startswith("bench get-app x")
+	assert f"{BUILD_CMD} && {LN_CMD}" in chain
 
 
 def test_assets_link_runs_after_bench_build():
@@ -46,8 +75,16 @@ def test_assets_link_runs_after_bench_build():
 
 def test_assets_link_targets_image_assets_not_sites():
 	# sites/ is shadowed by the PVC; a link written there never reaches nginx.
-	assert LN_CMD.split()[-1] == LINK_PATH
+	ln = _ln_segment(_run_chain())
+	assert ln[-2:] == [LINK_TARGET, LINK_PATH]
 	assert "/sites/assets/admin_panel" not in _run_chain()
+
+
+def test_ln_segment_reads_the_destination_from_the_chain():
+	# Guards the parser itself: a wrong destination must be seen as wrong.
+	chain = f"{BUILD_CMD} && ln -sfn {LINK_TARGET} {BENCH}/sites/assets/admin_panel && true"
+	assert _ln_segment(chain)[-1] == f"{BENCH}/sites/assets/admin_panel"
+	assert _ln_segment(chain)[-1] != LINK_PATH
 
 
 def test_build_asserts_link_is_a_symlink_that_resolves():

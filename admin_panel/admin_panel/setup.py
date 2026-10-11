@@ -241,16 +241,18 @@ def _ensure_symlink(link, target):
 
 
 def ensure_public_assets_symlink():
-	"""Make ``sites/assets/admin_panel`` exist on the runtime volume.
+	"""Make ``sites/assets/admin_panel`` exist on a plain bench.
 
-	nginx serves ``/assets`` with ``root .../sites`` (``try_files $uri``), and
-	in the k8s deployment ``sites/`` is the shared PVC mounted OVER the
-	image's own sites dir. ``bench build`` wrote the assets symlink into the
-	image layer at build time — exactly where nginx never looks — so the
-	app's public files 404'd on every environment while frappe/erpnext
-	(provisioned onto the volume at install) served fine. Runs on every
-	migrate, which executes with the PVC mounted; harmless on a plain bench
-	where the link already exists and is correct.
+	On the k8s deployment this is a no-op for serving. ``sites/`` is the PVC,
+	but ``sites/assets`` on it is a symlink into the image's own
+	``/home/frappe/frappe-bench/assets`` dir, which every pod has its own copy
+	of. So this heal only writes the link into the migrate pod's filesystem,
+	and the link is lost when that pod exits. The real fix is the ``ln -sfn``
+	in ``Dockerfile`` (ENG-643), which bakes the link into the image so every
+	gunicorn and nginx pod serves ``/assets/admin_panel/*``.
+
+	Kept as a safety net for plain-bench installs, where it is harmless when
+	the link already exists and is correct.
 	"""
 	bench_path = frappe.utils.get_bench_path()
 	_ensure_symlink(

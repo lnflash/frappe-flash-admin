@@ -77,7 +77,15 @@ def _pct(n, d):
 	return round(100.0 * n / d, 1) if d else None
 
 
-def build_overview(invites, accounts, counter_seq, tiers=REWARD_TIERS, wallet_balance=None, max_rows=200):
+def build_overview(
+	invites,
+	accounts,
+	counter_seq,
+	tiers=REWARD_TIERS,
+	wallet_balance=None,
+	max_rows=200,
+	allowlisted_ids=None,
+):
 	"""Join invites to accounts and roll up the referral-reward picture.
 
 	Args:
@@ -91,9 +99,13 @@ def build_overview(invites, accounts, counter_seq, tiers=REWARD_TIERS, wallet_ba
 	        only paid/unrewarded rows are truncated — so every row ops must act on
 	        is reachable. The summary aggregates still cover every invite.
 	        None = no cap.
+	    allowlisted_ids: set of Mongo account ids (str) with an enabled Referral
+	        Payout Allowlist row. Same id space as inviter_id / redeemed_by_id;
+	        rows flag each party that is on the list. None = nobody.
 
 	Returns {rows, summary, funnel}, all JSON-serializable.
 	"""
+	allowlisted_ids = allowlisted_ids or set()
 	rows = []
 	status_counts = {status: 0 for status in KNOWN_REWARD_STATUSES}
 	unknown = 0
@@ -147,7 +159,12 @@ def build_overview(invites, accounts, counter_seq, tiers=REWARD_TIERS, wallet_ba
 		# unknown backend status renders fail-visible (the page tones unlisted
 		# values as warnings), matching the reward-status drift philosophy.
 		inviter = accounts.get(inv.get("inviter_id")) or {}
+		inviter_allowlisted = inv.get("inviter_id") in allowlisted_ids
+		# Only a redeemed invite has an invitee account; an un-redeemed row's
+		# invitee cell is the invite contact, which is never on the list.
+		invitee_allowlisted = False
 		if status == "ACCEPTED":
+			invitee_allowlisted = inv.get("redeemed_by_id") in allowlisted_ids
 			if not reward_status:
 				unrewarded += 1
 			invitee = accounts.get(inv.get("redeemed_by_id")) or {}
@@ -182,6 +199,8 @@ def build_overview(invites, accounts, counter_seq, tiers=REWARD_TIERS, wallet_ba
 				"rewarded_at": inv.get("rewarded_at"),
 				"inviter_paid": inviter_paid,
 				"invitee_paid": invitee_paid,
+				"inviter_allowlisted": inviter_allowlisted,
+				"invitee_allowlisted": invitee_allowlisted,
 				"reward_error": inv.get("reward_error"),
 			}
 		)

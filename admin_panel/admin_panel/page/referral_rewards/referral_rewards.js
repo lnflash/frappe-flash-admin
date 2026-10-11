@@ -94,6 +94,8 @@ const RR_CSS = `
     .referral-rewards-page .rr-chip-st.bad { background: var(--rr-serious-bg); color: var(--rr-serious); }
     .referral-rewards-page .rr-yes { color: var(--rr-good); font-weight: 650; }
     .referral-rewards-page .rr-no { color: var(--rr-ink3); }
+    .referral-rewards-page .rr-allow { display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 8px;
+          margin-left: 6px; font-size: 11px; font-weight: 600; background: var(--rr-accent-soft); color: var(--rr-accent-ink); }
     .referral-rewards-page .rr-err { color: var(--rr-serious); font-size: 11.5px; }
     .referral-rewards-page .alert { border-radius: 12px; border: 1px solid var(--rr-line); padding: 12px 16px; font-size: 13px; }
     .referral-rewards-page .alert-warning { background: var(--rr-warn-bg); color: var(--rr-warn); border-color: transparent; }
@@ -381,6 +383,9 @@ class ReferralRewards {
 			frappe.utils.escape_html(String(v === null || v === undefined || v === "" ? "—" : v));
 		const paidMark = (b) =>
 			b ? '<span class="rr-yes">✓</span>' : '<span class="rr-no">✗</span>';
+		// Referral Payout Allowlist membership (ENG-640): flash pays this party
+		// while its global pause is on. Static markup only, never row data.
+		const allowMark = (b) => (b ? ' <span class="rr-allow">allowlisted</span>' : "");
 		const body = rows
 			.map((r) => {
 				// Unknown (drifted) statuses tone as warnings — never render silent.
@@ -390,8 +395,8 @@ class ReferralRewards {
 					: "";
 				return `
             <tr>
-                <td>${esc(r.invitee)}</td>
-                <td>${esc(r.inviter)}</td>
+                <td>${esc(r.invitee)}${allowMark(r.invitee_allowlisted)}</td>
+                <td>${esc(r.inviter)}${allowMark(r.inviter_allowlisted)}</td>
                 <td style="text-align:right">${
 					r.reward_amount_dollars === null || r.reward_amount_dollars === undefined
 						? "—"

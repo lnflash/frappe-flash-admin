@@ -19,32 +19,32 @@ and a **Run Census** button; while a run is in flight it polls for progress.
 
 ### Views
 
-- **Summary cards**: USD float, USDT float, total accounts (funded / zero),
+- **Summary cards** — USD float, USDT float, total accounts (funded / zero),
   BTC wallet count.
-- **Bucket tabs**: `Active + Funded`, `Active + Zero`, `Closed w/ Dust`,
+- **Bucket tabs** — `Active + Funded`, `Active + Zero`, `Closed w/ Dust`,
   `Migrated`, `System` (dealer / bankowner / funder), `Non-default Wallet`
-  (funded on a wallet that isn't the account's default, an anomaly). Buckets
+  (funded on a wallet that isn't the account's default — an anomaly). Buckets
   are overlapping tags: a migrated account can also be active + funded.
-- **Sortable table**: click any header; default sort is balance descending.
-- **CSV export**: exports the currently filtered/sorted view, client-side.
+- **Sortable table** — click any header; default sort is balance descending.
+- **CSV export** — exports the currently filtered/sorted view, client-side.
 
 ## Operational notes
 
-- **Stale runs**: a `Running` snapshot whose worker died (deploy, OOM, kill)
+- **Stale runs** — a `Running` snapshot whose worker died (deploy, OOM, kill)
   would otherwise block new scans forever. The next start marks any `Running`
   snapshot older than 45 minutes (`STALE_RUN_SECONDS`) as `Failed` and starts
   fresh.
-- **Retention**: only the last 20 snapshots are kept (`KEEP_SNAPSHOTS`);
+- **Retention** — only the last 20 snapshots are kept (`KEEP_SNAPSHOTS`);
   older ones are purged **permanently** after each successful run, since
   `rows_json` holds the full per-account table.
-- **`run_census_now`**: synchronous variant for deployments without a `long`
-  worker (local docker-compose, smoke tests). Deliberately **not whitelisted**,
-bench-execute / console only. Because it blocks the caller for the full
+- **`run_census_now`** — synchronous variant for deployments without a `long`
+  worker (local docker-compose, smoke tests). Deliberately **not whitelisted**
+  — bench-execute / console only — because it blocks the caller for the full
   scan. The page always goes through the queued `start_census`.
-- **Table paging vs CSV**: the table renders 200 rows at a time (**Show
+- **Table paging vs CSV** — the table renders 200 rows at a time (**Show
   more** / **Show all** to expand), but **Export CSV** always exports the full
   filtered set regardless of how many rows are rendered.
-- **Access**: the page is gated to the `Accounts Manager`, `Flash Admin`,
+- **Access** — the page is gated to the `Accounts Manager`, `Flash Admin`,
   and `System Manager` roles (plus `Administrator`).
 
 ## Data sources
@@ -53,23 +53,23 @@ This page talks **directly** to IBEX and the customer MongoDB (it does not go
 through the Flash GraphQL admin API, which has no bulk-list or migration-state
 query).
 
-### IBEX Hub API: bulk balances
+### IBEX Hub API — bulk balances
 
 - Auth: OAuth2 **client-credentials** (not email/password). Token from
   `POST {auth_domain}/oauth/token` (`grant_type=client_credentials`,
   `audience`). The hub expects the token as a **raw** `Authorization` header
-  value: no `Bearer` prefix.
+  value — no `Bearer` prefix.
 - Bulk list: `GET {hub_url}/v2/account?expand=true&page=N&limit=100`. `expand`
   is required for balances to appear; balances are in **dollars** and are
   absent when zero.
 - IBEX only custodies USD (`currencyId 3`) and USDT (`currencyId 29`). BTC is
-  on the Lightning side and is **not** returned here, BTC wallets are counted
+  on the Lightning side and is **not** returned here — BTC wallets are counted
   but their balance is reported as `null`, intentionally.
 - The scan paces ~1 req/s and refetches the token once on a `401`.
 - **The hub caps the page size silently in BOTH environments**: requesting
   `limit=100` returns 25 rows (verified prod AND sandbox 2026-07-10; the
   sandbox org actually holds ~3,748 accounts across 150 pages). Pagination
-  therefore terminates only on an **empty page**, never on a short one, a
+  therefore terminates only on an **empty page**, never on a short one — a
   short-page inference truncated the first prod census to 25 of ~8,750
   accounts, and had silently truncated every sandbox sweep to page 1.
 
@@ -109,12 +109,12 @@ Add to the site's `site_config.json` (`frappe.conf`):
 
 Optional:
 
-- `ibex_environment`: `"production"` (default) or `"sandbox"`. Both have their
+- `ibex_environment` — `"production"` (default) or `"sandbox"`. Both have their
   URLs baked in, so sandbox only needs `ibex_environment: "sandbox"` plus
   sandbox `ibex_client_id` / `ibex_client_secret`.
-- `ibex_auth_domain`, `ibex_hub_url`, `ibex_audience`, per-field overrides for
+- `ibex_auth_domain`, `ibex_hub_url`, `ibex_audience` — per-field overrides for
   a bespoke staging setup.
-- `customer_mongo_db`: defaults to `"galoy"`.
+- `customer_mongo_db` — defaults to `"galoy"`.
 
 The `customer_mongo_uri` value is the same connection string the Flash backend
 uses as `MONGODB_CON`. **It is optional:** if unset, the census runs from IBEX
@@ -144,7 +144,7 @@ gate as Account Hub).
 
 | File                                    | Purpose                                        |
 | --------------------------------------- | ---------------------------------------------- |
-| `admin_panel/api/census_core.py`        | Pure join / bucket / totals (`build_census`), no IO, unit-tested |
+| `admin_panel/api/census_core.py`        | Pure join / bucket / totals (`build_census`) — no IO, unit-tested |
 | `admin_panel/api/ibex_client.py`        | IBEX Hub client (client-credentials, bulk list) |
 | `admin_panel/api/mongo_reader.py`       | Read-only mongo loaders (pymongo)              |
 | `admin_panel/api/census.py`             | Whitelisted endpoints + background job         |
@@ -157,6 +157,6 @@ gate as Account Hub).
 All correctness risk lives in `build_census`, which is a pure function and is
 unit-tested against fixtures covering every bucket and edge case
 (`pytest admin_panel/tests/test_census_core.py`). The IBEX/mongo/page wiring is
-exercised end-to-end only against a live Frappe site with the config above set,
+exercised end-to-end only against a live Frappe site with the config above set —
 it cannot run offline because it needs the production IBEX client-credentials
 and the in-cluster mongo URI.

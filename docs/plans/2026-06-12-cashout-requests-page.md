@@ -11,7 +11,7 @@
 ### Task 1: Add support-view statuses to Cashout doctype
 
 - `cashout.json`: add "Pending", "Canceled" to status options
-- Keep existing "Draft", "In Progress", "Completed" — just append
+- Keep existing "Draft", "In Progress", "Completed". Just append
 
 ### Task 2: Rewrite admin_api.py cashout methods
 

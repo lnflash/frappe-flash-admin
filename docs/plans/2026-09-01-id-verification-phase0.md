@@ -1,6 +1,6 @@
-# ID Verification — Phase 0 (ERPNext side)
+# ID Verification: Phase 0 (ERPNext side)
 
-> **Goal:** Give the upgrade-request review a real data model, a reason-coded decision, and an audit of record — before any automated checks exist.
+> **Goal:** Give the upgrade-request review a real data model, a reason-coded decision, and an audit of record. Before any automated checks exist.
 
 **Scope:** `admin_panel` only. No flash changes, no desk page yet, no document checks yet. Everything here is what Phase 1's `flash-idv` service and the reviewer page will write into and read from.
 
@@ -24,15 +24,15 @@ Statuses of `ID Verification`: `Checks pending` → `Ready for review` / `Checks
 
 ## Endpoints (`admin_panel.api.admin_api`, all `require_admin`)
 
-- `approve_upgrade_request(request_id, reason_code=None)` — unchanged flash/ERP logic; then stamps the request (`reviewed_by/at`, `decision_reason`, default `APPROVE_VERIFIED`), mirrors the decision onto the request's `ID Verification` (get-or-create) and ledgers `upgrade_approved`. The reason code is validated **before** the flash call so a bad code can never leave flash upgraded and the request un-decided.
-- `reject_upgrade_request(request_id, reason=None, reason_code=None)` — same, default `REJECT_OTHER`, ledgers `upgrade_rejected`.
-- `request_resubmission(request_id, reason_code, note=None)` — request stays Pending; `ID Verification` → `Resubmit requested` with reason + note; `support_note` records the ask; ledgers `resubmission_requested`. Telling the user is flash-side (out of scope here).
-- `get_id_document_url(file_key)` — unchanged contract (400 on errors, 502 on a null URL) plus an `evidence_viewed` ledger event on every successful mint. A view the ledger cannot record is not served.
+- `approve_upgrade_request(request_id, reason_code=None)`: unchanged flash/ERP logic; then stamps the request (`reviewed_by/at`, `decision_reason`, default `APPROVE_VERIFIED`), mirrors the decision onto the request's `ID Verification` (get-or-create) and ledgers `upgrade_approved`. The reason code is validated **before** the flash call so a bad code can never leave flash upgraded and the request un-decided.
+- `reject_upgrade_request(request_id, reason=None, reason_code=None)`: same, default `REJECT_OTHER`, ledgers `upgrade_rejected`.
+- `request_resubmission(request_id, reason_code, note=None)`: request stays Pending; `ID Verification` → `Resubmit requested` with reason + note; `support_note` records the ask; ledgers `resubmission_requested`. Telling the user is flash-side (out of scope here).
+- `get_id_document_url(file_key)`: unchanged contract (400 on errors, 502 on a null URL) plus an `evidence_viewed` ledger event on every successful mint. A view the ledger cannot record is not served.
 - `get_id_verification(request_id)` → the `ID Verification` dict or `null`.
 - `get_idv_settings()` → the Single's tunable fields.
 - `admin_panel.api.compliance_audit.verify_audit_chain(limit=None)`, `get_audit_anchor()`.
 
-## Compliance Audit Event — the hash chain
+## Compliance Audit Event: the hash chain
 
 Rows are only ever written by `compliance_audit.record_event(event_type, reference_doctype, reference_name, payload)` with `ignore_permissions=True`; no role holds create/write/delete and the controller throws on any update or delete, Administrator included.
 
@@ -51,11 +51,11 @@ Events written today: `upgrade_approved`, `upgrade_rejected`, `resubmission_requ
 
 ## Seeders (`admin_panel.admin_panel.setup`, run from `after_migrate`)
 
-- `seed_decision_reasons()` — 14 codes. Insert-if-missing; re-asserts only `outcome` (the API validates a code's outcome against the action), leaves operator-tuned label/message/active alone.
-- `seed_identity_document_types()` — 17 rows over Jamaica, Cayman Islands, Trinidad and Tobago, Barbados, Bahamas, El Salvador. Insert-only; a row whose Frappe `Country` is missing is skipped with a log line, never fatal.
+- `seed_decision_reasons()`: 14 codes. Insert-if-missing; re-asserts only `outcome` (the API validates a code's outcome against the action), leaves operator-tuned label/message/active alone.
+- `seed_identity_document_types()`: 17 rows over Jamaica, Cayman Islands, Trinidad and Tobago, Barbados, Bahamas, El Salvador. Insert-only; a row whose Frappe `Country` is missing is skipped with a log line, never fatal.
 
 ## Phase 1 (next)
 
-- **`flash-idv` service** — receives `{request, evidence file keys}`, runs document classification against `Identity Document Type`, OCR/MRZ, name/DOB match against the request, face match, expiry; writes `report_json` + `report_sha256`, the `checks` rows and `overall_score`; flips status to `Ready for review` / `Checks unavailable`. Auto-approve (gated by `ID Verification Settings`, sampled) lands here too.
-- **ID Verification desk page** — queue by status, side-by-side evidence viewer (through `get_id_document_url`, so every view is ledgered), the check report, and approve / reject / resubmit buttons driving the endpoints above with a `Decision Reason` picker.
+- **`flash-idv` service**: receives `{request, evidence file keys}`, runs document classification against `Identity Document Type`, OCR/MRZ, name/DOB match against the request, face match, expiry; writes `report_json` + `report_sha256`, the `checks` rows and `overall_score`; flips status to `Ready for review` / `Checks unavailable`. Auto-approve (gated by `ID Verification Settings`, sampled) lands here too.
+- **ID Verification desk page**: queue by status, side-by-side evidence viewer (through `get_id_document_url`, so every view is ledgered), the check report, and approve / reject / resubmit buttons driving the endpoints above with a `Decision Reason` picker.
 - Evidence ingestion from flash (`Verification Evidence` rows with `sha256` at capture time), Bridge KYC snapshotting for `identity_source = bridge_kyc`, and the retention job that sets `deleted_at`.
